@@ -1,0 +1,1252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rhea 拍照批改可信流程｜逻辑原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #eef4ff;
+      --ink: #172033;
+      --muted: #526077;
+      --line: #cbd5e1;
+      --accent: #2457d6;
+      --accent-dark: #173e9f;
+      --accent-soft: #e8efff;
+      --good: #14754a;
+      --good-soft: #e2f5eb;
+      --warn: #8a5000;
+      --warn-soft: #fff1d6;
+      --bad: #a12b37;
+      --bad-soft: #fde8eb;
+      --focus: #ffbf47;
+      --shadow: 0 12px 30px rgba(31, 48, 79, 0.09);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    button, select { font: inherit; }
+
+    button:focus-visible,
+    select:focus-visible,
+    a:focus-visible {
+      outline: 4px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: absolute;
+      left: 12px;
+      top: -80px;
+      z-index: 20;
+      padding: 12px 16px;
+      color: #ffffff;
+      background: var(--ink);
+      border-radius: 10px;
+    }
+
+    .skip-link:focus { top: 12px; }
+
+    header {
+      background: linear-gradient(135deg, #173e9f, #2457d6 58%, #3a6eea);
+      color: #ffffff;
+      padding: 38px 20px 34px;
+    }
+
+    header .inner,
+    main {
+      width: min(1180px, calc(100% - 32px));
+      margin-inline: auto;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      font-size: 0.82rem;
+      font-weight: 750;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.86;
+    }
+
+    h1 {
+      max-width: 24ch;
+      margin: 0;
+      font-size: clamp(1.8rem, 5vw, 3.1rem);
+      line-height: 1.12;
+      text-wrap: balance;
+    }
+
+    header p {
+      max-width: 78ch;
+      margin: 16px 0 0;
+      color: #eef4ff;
+    }
+
+    main { padding: 24px 0 64px; }
+
+    .prototype-note {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+      padding: 16px 18px;
+      background: var(--warn-soft);
+      border: 1px solid #e4b85e;
+      border-radius: 14px;
+    }
+
+    .prototype-note strong { color: #6e3f00; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.7fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    .layout > *,
+    .main-column,
+    .side-column,
+    .panel { min-width: 0; }
+
+    .panel {
+      padding: 20px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel + .panel { margin-top: 20px; }
+
+    .panel h2 {
+      margin: 0 0 6px;
+      font-size: 1.35rem;
+      line-height: 1.3;
+    }
+
+    .panel-description {
+      margin: 0 0 18px;
+      color: var(--muted);
+    }
+
+    .actor-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .actor-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .actor-button,
+    .tab-button,
+    .action-button,
+    .scenario-step,
+    .reset-button {
+      min-height: 48px;
+      border: 1px solid #9aabc4;
+      border-radius: 12px;
+      background: #ffffff;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    .actor-button,
+    .tab-button,
+    .reset-button { padding: 10px 14px; }
+
+    .actor-button:hover,
+    .tab-button:hover,
+    .action-button:hover,
+    .scenario-step:hover,
+    .reset-button:hover { background: var(--surface-soft); }
+
+    .actor-button[aria-pressed="true"],
+    .tab-button[aria-selected="true"] {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+    }
+
+    .message {
+      margin-bottom: 16px;
+      padding: 14px 16px;
+      border-left: 5px solid var(--accent);
+      border-radius: 10px;
+      background: var(--accent-soft);
+    }
+
+    .message.blocked {
+      border-left-color: var(--bad);
+      background: var(--bad-soft);
+    }
+
+    .message strong { display: block; margin-bottom: 2px; }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .state-card {
+      min-width: 0;
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfdff;
+    }
+
+    .state-card h3 {
+      margin: 0 0 12px;
+      font-size: 1rem;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: minmax(92px, 0.78fr) minmax(0, 1.25fr);
+      gap: 8px 10px;
+      margin: 0;
+    }
+
+    dt { color: var(--muted); }
+    dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #eef2f7;
+      font-size: 0.84rem;
+      font-weight: 750;
+    }
+
+    .badge.good { color: #0b5535; background: var(--good-soft); border-color: #78bd99; }
+    .badge.warn { color: #744300; background: var(--warn-soft); border-color: #dfb65f; }
+    .badge.bad { color: #7f1e2a; background: var(--bad-soft); border-color: #d8969e; }
+    .badge.info { color: #173e9f; background: var(--accent-soft); border-color: #9ab4f3; }
+
+    .guardrail-list,
+    .history-list {
+      margin: 12px 0 0;
+      padding-left: 22px;
+    }
+
+    .guardrail-list li,
+    .history-list li { margin-block: 8px; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 3px 3px 10px;
+    }
+
+    .tab-button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+
+    .scenario-intro {
+      margin: 8px 0 16px;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--surface-soft);
+    }
+
+    .scenario-intro p { margin: 4px 0 0; color: var(--muted); }
+
+    .scenario-steps {
+      display: grid;
+      gap: 10px;
+    }
+
+    .scenario-step {
+      position: relative;
+      width: 100%;
+      padding: 12px 14px 12px 52px;
+    }
+
+    .scenario-step::before {
+      content: attr(data-step);
+      position: absolute;
+      left: 13px;
+      top: 12px;
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-weight: 800;
+    }
+
+    .scenario-step.complete {
+      border-color: #78bd99;
+      background: var(--good-soft);
+    }
+
+    .scenario-step.current {
+      border: 2px solid var(--accent);
+      background: #ffffff;
+    }
+
+    .scenario-step.future { opacity: 0.62; }
+
+    .action-groups { display: grid; gap: 16px; }
+
+    .action-group {
+      padding-top: 15px;
+      border-top: 1px solid var(--line);
+    }
+
+    .action-group:first-child { padding-top: 0; border-top: 0; }
+
+    .action-group h3 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+
+    .action-buttons {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .action-button { padding: 10px 12px; }
+
+    .action-button small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .history-list {
+      max-height: 360px;
+      overflow: auto;
+      padding-right: 8px;
+    }
+
+    .history-list strong { color: var(--accent-dark); }
+    .history-list .rejected { color: var(--bad); }
+
+    .reset-button {
+      width: 100%;
+      margin-top: 16px;
+      border-color: var(--bad);
+      color: var(--bad);
+      text-align: center;
+    }
+
+    .empty-history { color: var(--muted); }
+
+    footer {
+      margin-top: 24px;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: minmax(0, 1fr); }
+      .side-column { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+      .side-column .panel + .panel { margin-top: 0; }
+    }
+
+    @media (max-width: 620px) {
+      header { padding-top: 28px; }
+      header .inner, main { width: min(100% - 20px, 1180px); }
+      main { padding-top: 12px; }
+      .panel { padding: 16px; border-radius: 14px; }
+      .prototype-note { display: block; }
+      .state-grid, .action-buttons, .side-column { grid-template-columns: 1fr; }
+      .actor-bar { align-items: stretch; }
+      .actor-controls { width: 100%; }
+      .actor-button { flex: 1; text-align: center; }
+      dl { grid-template-columns: 1fr; gap: 2px; }
+      dd { margin-bottom: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition: none !important;
+      }
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #111827;
+        --surface: #182235;
+        --surface-soft: #202f4d;
+        --ink: #f4f7fb;
+        --muted: #c0cbe0;
+        --line: #4c5e7a;
+        --accent: #83a7ff;
+        --accent-dark: #dce7ff;
+        --accent-soft: #253968;
+        --good: #70d5a4;
+        --good-soft: #173e31;
+        --warn: #ffd17a;
+        --warn-soft: #4d3610;
+        --bad: #ff9aa6;
+        --bad-soft: #55232a;
+        --shadow: none;
+      }
+
+      header { background: #173e9f; }
+      .state-card { background: #141e30; }
+      .actor-button, .tab-button, .action-button, .scenario-step, .reset-button {
+        border-color: #627594;
+        background: #182235;
+        color: var(--ink);
+      }
+      .actor-button[aria-pressed="true"], .tab-button[aria-selected="true"] {
+        background: #315dbb;
+        border-color: #83a7ff;
+      }
+      .scenario-step.current { background: #182235; }
+      .badge.good { color: #d5f9e6; background: #173e31; border-color: #4a966f; }
+      .badge.warn { color: #ffe6b5; background: #4d3610; border-color: #95671c; }
+      .badge.bad { color: #ffd9dd; background: #55232a; border-color: #a4535c; }
+      .badge.info { color: #e4ebff; background: #253968; border-color: #6f8ed4; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#current-state">跳到当前状态</a>
+  <header>
+    <div class="inner">
+      <p class="eyebrow">Rhea · Throwaway logic prototype</p>
+      <h1>拍照批改与分步讲解的可信流程</h1>
+      <p>本原型要验证：学习提交从拍照、内容确认、批改到订正时，识别置信、批改结论和学习进展能否始终分开；任何人修正上游内容后，旧结论能否失效并回到正确步骤。</p>
+    </div>
+  </header>
+
+  <main>
+    <div class="prototype-note">
+      <div>
+        <strong>这是决策原型，不是最终界面。</strong>
+        你可以按引导场景体验，也可以任意点击操作。流程不允许的动作不会静默失败，而会说明原因和下一步。
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="main-column">
+        <section class="panel" aria-labelledby="state-title">
+          <div class="actor-bar">
+            <div>
+              <h2 id="state-title">当前流程状态</h2>
+              <div>当前操作者：<strong id="actor-label">学习者</strong></div>
+            </div>
+            <div class="actor-controls" aria-label="切换操作者">
+              <button class="actor-button" id="actor-learner" type="button" aria-pressed="true">学习者</button>
+              <button class="actor-button" id="actor-guardian" type="button" aria-pressed="false">监护人</button>
+            </div>
+          </div>
+
+          <div id="message" class="message" role="status" aria-live="polite"></div>
+          <div id="current-state" class="state-grid" tabindex="-1"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="walkthrough-title">
+          <h2 id="walkthrough-title">引导场景</h2>
+          <p class="panel-description">每个场景会重置到相同起点。按顺序点击，观察三条状态轴是否符合你的直觉。</p>
+          <div id="scenario-tabs" class="tabs" role="tablist" aria-label="选择场景"></div>
+          <div id="scenario-content"></div>
+        </section>
+
+        <section class="panel" aria-labelledby="guardrail-title">
+          <h2 id="guardrail-title">当前生效的可信护栏</h2>
+          <p class="panel-description">这些不是提示文案，而是状态模型必须守住的边界。</p>
+          <ul id="guardrail-list" class="guardrail-list"></ul>
+        </section>
+      </div>
+
+      <aside class="side-column" aria-label="自由操作与变化记录">
+        <section class="panel" aria-labelledby="free-title">
+          <h2 id="free-title">自由操作</h2>
+          <p class="panel-description">故意乱点也可以。被拒绝的动作会留下记录，方便发现流程漏洞。</p>
+          <div id="action-groups" class="action-groups"></div>
+          <button id="reset" class="reset-button" type="button">重置全部状态</button>
+        </section>
+
+        <section class="panel" aria-labelledby="history-title">
+          <h2 id="history-title">最近变化</h2>
+          <p class="panel-description">保留最近十二步，包括被护栏拒绝的尝试。</p>
+          <ol id="history-list" class="history-list"></ol>
+        </section>
+      </aside>
+    </div>
+
+    <footer>单文件、无数据持久化。刷新页面即可清空原型状态。</footer>
+  </main>
+
+  <script>
+    const FlowMachine = (() => {
+      const initialState = () => ({
+        actor: "learner",
+        submission: {
+          status: "未开始",
+          pages: 0,
+          pageQuality: "未检查",
+          originalImage: "尚未上传",
+          completion: "未开始"
+        },
+        content: {
+          status: "尚未识别",
+          flags: 0,
+          pageOrder: "无需确认",
+          grouping: "尚未确认",
+          sourceVersion: 0
+        },
+        basis: {
+          status: "尚未检查",
+          label: "无",
+          evaluationMode: "尚未选择"
+        },
+        grading: {
+          status: "尚未批改",
+          outcome: "无",
+          confidence: "无",
+          proposedOutcome: "无",
+          invalidatedCount: 0
+        },
+        learning: {
+          errorEntry: "未创建",
+          cause: "尚未建议",
+          hintLevel: 0,
+          correction: "尚未开始",
+          similarQuestion: "尚未生成",
+          reinforcement: "未安排"
+        },
+        lastChange: "请先添加一张作业照片。",
+        blocked: "",
+        lastAccepted: true,
+        history: []
+      });
+
+      const clone = (value) => JSON.parse(JSON.stringify(value));
+
+      const withHistory = (state, label, accepted, message) => {
+        const next = clone(state);
+        next.lastAccepted = accepted;
+        next.blocked = accepted ? "" : message;
+        next.lastChange = message;
+        next.history.unshift({ label, accepted, actor: next.actor, message });
+        next.history = next.history.slice(0, 12);
+        return next;
+      };
+
+      const accept = (state, action, mutate, message) => {
+        const next = clone(state);
+        mutate(next);
+        return withHistory(next, action.label, true, message);
+      };
+
+      const reject = (state, action, reason) => withHistory(state, action.label, false, reason);
+
+      const hasAcceptedGrade = (state) => state.grading.status === "结论可用" && ["正确", "部分正确", "错误"].includes(state.grading.outcome);
+
+      const needsCorrection = (state) => hasAcceptedGrade(state) && ["部分正确", "错误"].includes(state.grading.outcome);
+
+      const invalidateDerived = (next) => {
+        if (next.grading.status !== "尚未批改") {
+          next.grading.invalidatedCount += 1;
+        }
+        next.grading.status = "旧结论已失效";
+        next.grading.outcome = "无";
+        next.grading.confidence = "无";
+        next.grading.proposedOutcome = "无";
+        next.basis.status = "待重新确认";
+        next.basis.label = "旧依据需重新核对";
+        next.basis.evaluationMode = "尚未选择";
+        next.learning.errorEntry = "已暂停，不参与统计";
+        next.learning.cause = "旧建议已失效";
+        next.learning.hintLevel = 0;
+        next.learning.correction = "等待重新批改";
+        next.learning.similarQuestion = "旧题已失效";
+        next.learning.reinforcement = "已暂停";
+        next.submission.completion = "等待重新确认";
+      };
+
+      const reducer = (state, action) => {
+        if (action.type === "RESET") return initialState();
+
+        if (action.type === "SET_ACTOR") {
+          return accept(state, action, next => {
+            next.actor = action.actor;
+          }, `已切换为${action.actor === "learner" ? "学习者" : "监护人"}操作。`);
+        }
+
+        if (state.submission.status === "已归档") {
+          return reject(state, action, "这份学习提交已经归档。请重置原型，或在正式产品中重新开启后再操作。");
+        }
+
+        switch (action.type) {
+          case "ADD_PAGE":
+            return accept(state, action, next => {
+              next.submission.pages += 1;
+              next.submission.status = "收集照片";
+              next.submission.pageQuality = "清晰";
+              next.submission.originalImage = "确认内容后待自动删除";
+              next.content.pageOrder = next.submission.pages > 1 ? "待确认" : "无需确认";
+              next.content.grouping = "尚未确认";
+            }, `已添加第 ${state.submission.pages + 1} 页。照片尚未成为学习依据。`);
+
+          case "FLAG_BLUR":
+            if (state.submission.pages === 0) return reject(state, action, "还没有照片可检查，请先添加照片。");
+            return accept(state, action, next => {
+              next.submission.pageQuality = "需要重拍";
+              next.content.status = "等待清晰照片";
+            }, "检测到模糊或裁切不完整。原图仍可替换，尚未开始批改。");
+
+          case "RETAKE_PAGE":
+            if (state.submission.pages === 0) return reject(state, action, "还没有照片可重拍。");
+            return accept(state, action, next => {
+              const hadDerived = next.grading.status !== "尚未批改";
+              next.submission.pageQuality = "清晰";
+              next.content.status = "尚未识别";
+              next.content.flags = 0;
+              next.content.grouping = "尚未确认";
+              next.content.sourceVersion += hadDerived ? 1 : 0;
+              if (hadDerived) invalidateDerived(next);
+            }, state.grading.status === "尚未批改" ? "照片已替换，请重新识别内容。" : "照片已替换；依赖旧图片的批改、讲解和相似题已失效。");
+
+          case "RECOGNIZE_CLEAR":
+          case "RECOGNIZE_UNCERTAIN":
+            if (state.submission.pages === 0) return reject(state, action, "请先添加至少一张照片。");
+            if (state.submission.pageQuality !== "清晰") return reject(state, action, "照片质量仍需处理；先重拍，再识别。");
+            return accept(state, action, next => {
+              next.submission.status = "识别内容";
+              next.content.status = "内容待确认";
+              next.content.flags = action.type === "RECOGNIZE_UNCERTAIN" ? 2 : 0;
+              next.content.grouping = "待确认";
+              next.content.pageOrder = next.submission.pages > 1 ? "待确认" : "无需确认";
+              next.content.sourceVersion += 1;
+            }, action.type === "RECOGNIZE_UNCERTAIN" ? "识别完成，但有两处字词或算式不确定。批改仍被锁定。" : "识别完成。即使看起来清晰，也需要确认题目与作答分组。");
+
+          case "FIX_RECOGNITION":
+            if (state.content.status !== "内容待确认" || state.content.flags === 0) return reject(state, action, "当前没有需要修正的识别片段。");
+            return accept(state, action, next => {
+              next.content.flags = Math.max(0, next.content.flags - 1);
+            }, `已修正一处识别内容，还剩 ${Math.max(0, state.content.flags - 1)} 处。`);
+
+          case "CONFIRM_STRUCTURE":
+            if (state.content.status !== "内容待确认") return reject(state, action, "需要先完成照片识别，才能确认页序与题目分组。");
+            return accept(state, action, next => {
+              next.content.pageOrder = "已确认";
+              next.content.grouping = "已确认";
+            }, "页序、公共题干和题目分组已确认。多道题会分别形成批改结果。");
+
+          case "CONFIRM_CONTENT":
+            if (state.content.status !== "内容待确认") return reject(state, action, "当前没有可确认的识别内容。");
+            if (state.content.flags > 0) return reject(state, action, `仍有 ${state.content.flags} 处识别疑问，请先修正或交给监护人。`);
+            if (state.content.grouping !== "已确认" || (state.submission.pages > 1 && state.content.pageOrder !== "已确认")) {
+              return reject(state, action, "请先确认页序、公共题干和题目分组。");
+            }
+            return accept(state, action, next => {
+              next.content.status = "内容已确认";
+              next.submission.status = "等待批改";
+              next.submission.originalImage = "进入自动删除队列";
+            }, "题目与作答内容已确认，可以选择当前学习依据和评价方式。原整页图进入自动删除队列。");
+
+          case "SET_OBJECTIVE_BASIS":
+            if (state.content.status !== "内容已确认") return reject(state, action, "内容尚未确认，不能选择学习依据。");
+            return accept(state, action, next => {
+              next.basis.status = "可用";
+              next.basis.label = "已确认答案或可验证规则";
+              next.basis.evaluationMode = "客观评价";
+            }, "已选定可追溯的当前学习依据；客观题允许自动批改。");
+
+          case "SET_RUBRIC_BASIS":
+            if (state.content.status !== "内容已确认") return reject(state, action, "内容尚未确认，不能选择评分量规。");
+            return accept(state, action, next => {
+              next.basis.status = "可用";
+              next.basis.label = "已确认评分量规";
+              next.basis.evaluationMode = "量规评价";
+            }, "已选择评分量规；AI 只能给出建议评价，不能直接形成最终结论。");
+
+          case "SET_MISSING_BASIS":
+            if (state.content.status !== "内容已确认") return reject(state, action, "内容尚未确认，不能判断学习依据是否缺失。");
+            return accept(state, action, next => {
+              next.basis.status = "缺少依据";
+              next.basis.label = "未找到答案、规则或量规";
+              next.basis.evaluationMode = "暂不适用";
+              next.grading.status = "暂无法批改";
+              next.grading.outcome = "暂无法批改";
+              next.grading.confidence = "不适用";
+              next.submission.status = "处理完成";
+              next.submission.completion = "等待监护人补充依据";
+            }, "没有足够学习依据，因此明确标记为暂无法批改，不生成猜测答案。");
+
+          case "GRADE_OBJECTIVE_WRONG":
+            if (state.content.status !== "内容已确认") return reject(state, action, "内容尚未确认，禁止批改。");
+            if (state.basis.status !== "可用" || state.basis.evaluationMode !== "客观评价") return reject(state, action, "只有依据充分、结果可验证的客观题才能自动批改。");
+            return accept(state, action, next => {
+              next.grading.status = "结论可用";
+              next.grading.outcome = "错误";
+              next.grading.confidence = "依据与答案均清晰";
+              next.grading.proposedOutcome = "无";
+              next.learning.errorEntry = "已创建，可被质疑";
+              next.learning.cause = "AI 建议待确认";
+              next.submission.status = "处理完成";
+              next.submission.completion = "等待订正";
+            }, "客观题判定为错误，已进入错题库并等待订正；这不等于能力不足，也不等于永远掌握不了。");
+
+          case "GRADE_LOW_CONFIDENCE":
+            if (state.content.status !== "内容已确认" || state.basis.status !== "可用") return reject(state, action, "内容和当前学习依据必须先确认。");
+            return accept(state, action, next => {
+              next.grading.status = "结果待复核";
+              next.grading.outcome = "无";
+              next.grading.proposedOutcome = "错误";
+              next.grading.confidence = "批改判断有歧义";
+              next.learning.errorEntry = "未创建";
+              next.submission.status = "等待监护人复核";
+              next.submission.completion = "结果待复核";
+            }, "AI 只能建议“可能错误”。复核前不进入错题库，不影响学习进展。");
+
+          case "GRADE_RUBRIC_PARTIAL":
+            if (state.content.status !== "内容已确认" || state.basis.evaluationMode !== "量规评价") return reject(state, action, "需要先确认评分量规，才能给出建议评价。");
+            return accept(state, action, next => {
+              next.grading.status = "结果待复核";
+              next.grading.outcome = "无";
+              next.grading.proposedOutcome = "部分正确";
+              next.grading.confidence = "量规建议，需人工接受";
+              next.learning.errorEntry = "未创建";
+              next.submission.status = "等待监护人复核";
+              next.submission.completion = "结果待复核";
+            }, "AI 已按量规给出“部分正确”的建议，监护人确认前不形成最终结论。");
+
+          case "CHALLENGE_GRADE":
+            if (state.actor !== "learner") return reject(state, action, "这项动作模拟学习者对批改提出质疑，请先切换为学习者。");
+            if (!hasAcceptedGrade(state)) return reject(state, action, "当前没有可质疑的批改结论。");
+            return accept(state, action, next => {
+              next.grading.proposedOutcome = next.grading.outcome;
+              next.grading.outcome = "无";
+              next.grading.status = "结果待复核";
+              next.grading.confidence = "学习者提出合理质疑";
+              next.learning.errorEntry = "已暂停，不参与统计";
+              next.submission.status = "等待监护人复核";
+              next.submission.completion = "结果待复核";
+            }, "学习者已提出质疑。原结论和错题统计暂停，等待监护人检查依据。");
+
+          case "GUARDIAN_ACCEPT":
+            if (state.actor !== "guardian") return reject(state, action, "结果复核需要监护人操作。");
+            if (state.grading.status !== "结果待复核" || state.grading.proposedOutcome === "无") return reject(state, action, "当前没有待接受的建议结论。");
+            return accept(state, action, next => {
+              next.grading.status = "结论可用";
+              next.grading.outcome = next.grading.proposedOutcome;
+              next.grading.proposedOutcome = "无";
+              next.grading.confidence = "监护人已复核";
+              next.learning.errorEntry = ["错误", "部分正确"].includes(next.grading.outcome) ? "已创建" : "未创建";
+              next.learning.cause = ["错误", "部分正确"].includes(next.grading.outcome) ? "AI 建议待确认" : "不适用";
+              next.submission.status = "处理完成";
+              next.submission.completion = ["错误", "部分正确"].includes(next.grading.outcome) ? "等待订正" : "学习完成";
+            }, `监护人接受了建议结论：${state.grading.proposedOutcome}。`);
+
+          case "GUARDIAN_CORRECT_TO_RIGHT":
+            if (state.actor !== "guardian") return reject(state, action, "更正待复核结论需要监护人操作。");
+            if (state.grading.status !== "结果待复核") return reject(state, action, "当前没有待复核的结论。");
+            return accept(state, action, next => {
+              next.grading.status = "结论可用";
+              next.grading.outcome = "正确";
+              next.grading.proposedOutcome = "无";
+              next.grading.confidence = "监护人已更正";
+              next.learning.errorEntry = "未创建";
+              next.learning.cause = "不适用";
+              next.submission.status = "处理完成";
+              next.submission.completion = "学习完成";
+            }, "监护人根据当前学习依据将结论更正为正确；不会创建错题。");
+
+          case "CONFIRM_CAUSE":
+            if (!needsCorrection(state)) return reject(state, action, "只有已确认需要订正的题目才会讨论错因。");
+            return accept(state, action, next => {
+              next.learning.cause = "学习者确认：步骤遗漏";
+            }, "学习者确认了当前最贴近自己的错因。错因是可修正的学习线索，不是人格标签。");
+
+          case "REQUEST_HINT": {
+            if (!needsCorrection(state)) return reject(state, action, "需要先有可用且需要订正的批改结论。");
+            const requestedLevel = action.level;
+            if (requestedLevel > state.learning.hintLevel + 1 && requestedLevel < 3) {
+              return reject(state, action, "请先看上一层提示，避免过早展示答案。完整讲解仍可直接选择。");
+            }
+            return accept(state, action, next => {
+              next.learning.hintLevel = Math.max(next.learning.hintLevel, requestedLevel);
+            }, requestedLevel === 1 ? "第一层只指出应关注的信息，不给答案。" : requestedLevel === 2 ? "第二层给出下一步方法，仍由学习者完成。" : "已展示完整分步讲解，并清楚区分原题依据与 AI 补充说明。");
+          }
+
+          case "CORRECTION_WRONG":
+            if (!needsCorrection(state)) return reject(state, action, "当前没有需要订正的可用结论。");
+            return accept(state, action, next => {
+              next.learning.correction = "再次尝试仍需帮助";
+              next.submission.completion = "继续订正";
+            }, "再次作答还不正确。保留尝试记录，建议升级一层提示，不扣除奖励。");
+
+          case "CORRECTION_RIGHT":
+            if (!needsCorrection(state)) return reject(state, action, "当前没有需要订正的可用结论。");
+            return accept(state, action, next => {
+              next.learning.correction = "即时订正完成";
+              next.learning.errorEntry = "待巩固";
+              next.learning.reinforcement = "已安排跨日复习";
+              next.submission.completion = "学习完成";
+            }, "即时订正完成，状态进入待巩固而不是已掌握；跨日无提示表现才可继续证明掌握。");
+
+          case "GENERATE_SIMILAR":
+            if (state.learning.correction !== "即时订正完成") return reject(state, action, "请先完成原题订正，再生成相似题。");
+            if (state.basis.status !== "可用") return reject(state, action, "缺少可追溯的学习依据，不能生成相似题。");
+            return accept(state, action, next => {
+              next.learning.similarQuestion = "生成检查中";
+            }, "相似题正在重新生成，不复制原题；发布前必须检查可解性、答案一致性和年龄适配。");
+
+          case "SIMILAR_PASS":
+            if (state.learning.similarQuestion !== "生成检查中") return reject(state, action, "当前没有等待检查的相似题。");
+            return accept(state, action, next => {
+              next.learning.similarQuestion = "可直接学习";
+            }, "相似题通过生成检查，可以作为新的练习；它仍是 AI 学习内容，不会成为学习依据。");
+
+          case "SIMILAR_FAIL":
+            if (state.learning.similarQuestion !== "生成检查中") return reject(state, action, "当前没有等待检查的相似题。");
+            return accept(state, action, next => {
+              next.learning.similarQuestion = "暂不可用";
+            }, "相似题未通过检查，已隐藏并标记暂不可用；原题订正结果不受影响。");
+
+          case "CHANGE_CONFIRMED_CONTENT":
+            if (state.content.status !== "内容已确认") return reject(state, action, "只有已经确认的内容发生变化时，才需要让派生结论失效。");
+            return accept(state, action, next => {
+              next.content.status = "内容待确认";
+              next.content.flags = 1;
+              next.content.grouping = "待确认";
+              next.content.sourceVersion += 1;
+              invalidateDerived(next);
+              next.submission.status = "等待重新确认";
+            }, "已更改题目、作答或分组；旧批改、错因、讲解和相似题全部失效，并返回内容确认。");
+
+          case "ARCHIVE":
+            if (state.submission.pages === 0) return reject(state, action, "没有学习提交可归档。");
+            return accept(state, action, next => {
+              next.submission.status = "已归档";
+              next.submission.completion = "已归档，可能仍有未处理事项";
+            }, "学习提交已归档。归档不等于学习完成，也不会伪造掌握状态。");
+
+          default:
+            return reject(state, action, "原型尚未定义这项操作。");
+        }
+      };
+
+      return { initialState, reducer };
+    })();
+
+    const actionGroups = [
+      {
+        title: "照片与识别",
+        actions: [
+          { type: "ADD_PAGE", label: "添加一页照片", help: "可重复添加，测试多页" },
+          { type: "FLAG_BLUR", label: "发现模糊或缺角", help: "应阻止识别和批改" },
+          { type: "RETAKE_PAGE", label: "重新拍摄当前页", help: "若已批改则使派生内容失效" },
+          { type: "RECOGNIZE_CLEAR", label: "识别：内容清晰", help: "仍需确认题目分组" },
+          { type: "RECOGNIZE_UNCERTAIN", label: "识别：两处不确定", help: "逐处修正后才能确认" },
+          { type: "FIX_RECOGNITION", label: "修正一处识别内容", help: "学习者可完成简单修正" },
+          { type: "CONFIRM_STRUCTURE", label: "确认页序与题目分组", help: "处理公共题干和多题" },
+          { type: "CONFIRM_CONTENT", label: "确认题目与作答", help: "内容轴通过后才开放批改" }
+        ]
+      },
+      {
+        title: "依据与批改",
+        actions: [
+          { type: "SET_OBJECTIVE_BASIS", label: "选择可验证答案", help: "客观题允许自动评价" },
+          { type: "SET_RUBRIC_BASIS", label: "选择评分量规", help: "开放题只能建议评价" },
+          { type: "SET_MISSING_BASIS", label: "标记缺少学习依据", help: "明确暂无法批改" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "自动批改为错误", help: "仅用于依据充分的客观题" },
+          { type: "GRADE_LOW_CONFIDENCE", label: "给出低置信建议", help: "不进入错题库" },
+          { type: "GRADE_RUBRIC_PARTIAL", label: "量规建议：部分正确", help: "等待监护人接受" },
+          { type: "CHALLENGE_GRADE", label: "学习者质疑结论", help: "暂停旧结论及统计" },
+          { type: "GUARDIAN_ACCEPT", label: "监护人接受建议", help: "需切换监护人" },
+          { type: "GUARDIAN_CORRECT_TO_RIGHT", label: "监护人更正为正确", help: "需依据并留下人工决定" }
+        ]
+      },
+      {
+        title: "讲解与订正",
+        actions: [
+          { type: "CONFIRM_CAUSE", label: "确认错因：步骤遗漏", help: "错因不是人格标签" },
+          { type: "REQUEST_HINT", level: 1, label: "提示一：定位信息", help: "不直接给答案" },
+          { type: "REQUEST_HINT", level: 2, label: "提示二：给下一步", help: "仍由学习者完成" },
+          { type: "REQUEST_HINT", level: 3, label: "查看完整分步讲解", help: "始终可获得，不用奖励解锁" },
+          { type: "CORRECTION_WRONG", label: "订正后仍需帮助", help: "建议升级提示，不惩罚" },
+          { type: "CORRECTION_RIGHT", label: "即时订正正确", help: "进入待巩固，不是已掌握" },
+          { type: "GENERATE_SIMILAR", label: "重新生成相似题", help: "不能复制原题" },
+          { type: "SIMILAR_PASS", label: "相似题检查通过", help: "标记可直接学习" },
+          { type: "SIMILAR_FAIL", label: "相似题检查失败", help: "隐藏为暂不可用" }
+        ]
+      },
+      {
+        title: "回退与结束",
+        actions: [
+          { type: "CHANGE_CONFIRMED_CONTENT", label: "修改已确认内容", help: "让所有依赖内容失效" },
+          { type: "ARCHIVE", label: "主动归档学习提交", help: "归档不等于完成" }
+        ]
+      }
+    ];
+
+    const scenarios = [
+      {
+        id: "happy",
+        name: "客观错题闭环",
+        title: "从清晰照片到待巩固",
+        description: "观察“批改为错误 → 分层提示 → 即时订正”不会直接跳成已掌握，相似题也必须重新生成并检查。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加一页清晰照片" },
+          { type: "RECOGNIZE_CLEAR", label: "完成识别" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认题目与作答" },
+          { type: "SET_OBJECTIVE_BASIS", label: "选择可验证答案" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "自动批改为错误" },
+          { type: "REQUEST_HINT", level: 1, label: "先看定位提示" },
+          { type: "CORRECTION_WRONG", label: "第一次订正仍需帮助" },
+          { type: "REQUEST_HINT", level: 2, label: "再看下一步方法" },
+          { type: "CORRECTION_RIGHT", label: "即时订正正确" },
+          { type: "GENERATE_SIMILAR", label: "重新生成相似题" },
+          { type: "SIMILAR_PASS", label: "相似题通过生成检查" }
+        ]
+      },
+      {
+        id: "multi-page",
+        name: "多页题组",
+        title: "公共题干和多道小题先分清",
+        description: "连续添加两页后，页面顺序、公共题干和小题分组必须一起确认；在结构确认前，内容不能进入批改。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加第一页" },
+          { type: "ADD_PAGE", label: "添加第二页" },
+          { type: "RECOGNIZE_CLEAR", label: "识别两页内容" },
+          { type: "CONFIRM_CONTENT", label: "故意跳过结构确认", expectBlocked: true },
+          { type: "CONFIRM_STRUCTURE", label: "确认页序、公共题干和小题分组" },
+          { type: "CONFIRM_CONTENT", label: "确认题目与作答" }
+        ]
+      },
+      {
+        id: "uncertain",
+        name: "识别不确定",
+        title: "识别问题必须先解决",
+        description: "验证 OCR 不确定与批改不确定不会混成一个状态；仍有识别疑问时，尝试批改应被拒绝。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加照片" },
+          { type: "RECOGNIZE_UNCERTAIN", label: "识别出两处疑问" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "故意尝试提前批改", expectBlocked: true },
+          { type: "FIX_RECOGNITION", label: "修正第一处" },
+          { type: "FIX_RECOGNITION", label: "修正第二处" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认题目与作答" },
+          { type: "SET_OBJECTIVE_BASIS", label: "选择可验证答案" },
+          { type: "GRADE_LOW_CONFIDENCE", label: "批改本身仍有歧义" }
+        ]
+      },
+      {
+        id: "review",
+        name: "质疑与人工复核",
+        title: "学习者质疑后暂停旧结论",
+        description: "观察学习者提出质疑后，错题统计会暂停；只有监护人基于当前学习依据作出的决定才恢复流程。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加照片" },
+          { type: "RECOGNIZE_CLEAR", label: "完成识别" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认内容" },
+          { type: "SET_OBJECTIVE_BASIS", label: "选择可验证答案" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "形成客观批改结论" },
+          { type: "CHALLENGE_GRADE", label: "学习者认为批改不对" },
+          { type: "SET_ACTOR", actor: "guardian", label: "切换为监护人" },
+          { type: "GUARDIAN_CORRECT_TO_RIGHT", label: "监护人更正为正确" }
+        ]
+      },
+      {
+        id: "rubric",
+        name: "开放题建议评价",
+        title: "量规评价不能伪装成自动判分",
+        description: "用于作文、解题过程或实验解释。AI 只能提出部分正确的量规建议，监护人接受后才进入订正。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加开放题照片" },
+          { type: "RECOGNIZE_CLEAR", label: "完成识别" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认内容" },
+          { type: "SET_RUBRIC_BASIS", label: "选择评分量规" },
+          { type: "GRADE_RUBRIC_PARTIAL", label: "AI 给出部分正确建议" },
+          { type: "SET_ACTOR", actor: "guardian", label: "切换为监护人" },
+          { type: "GUARDIAN_ACCEPT", label: "监护人接受建议" },
+          { type: "SET_ACTOR", actor: "learner", label: "切换回学习者" },
+          { type: "REQUEST_HINT", level: 1, label: "从第一层提示开始" }
+        ]
+      },
+      {
+        id: "missing",
+        name: "缺少学习依据",
+        title: "宁可暂无法批改，也不猜答案",
+        description: "当题目清楚但没有答案、规则或评分量规时，流程结束在可恢复的暂无法批改，而不是虚构结论。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加照片" },
+          { type: "RECOGNIZE_CLEAR", label: "完成识别" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认内容" },
+          { type: "SET_MISSING_BASIS", label: "确认缺少学习依据" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "故意尝试强行批改", expectBlocked: true }
+        ]
+      },
+      {
+        id: "rollback",
+        name: "上游修正回退",
+        title: "改了原题，旧讲解必须失效",
+        description: "先走到生成相似题，再修改已确认内容。观察旧批改、错题、讲解、相似题和进展是否一起停止使用。",
+        steps: [
+          { type: "ADD_PAGE", label: "添加照片" },
+          { type: "RECOGNIZE_CLEAR", label: "完成识别" },
+          { type: "CONFIRM_STRUCTURE", label: "确认题目分组" },
+          { type: "CONFIRM_CONTENT", label: "确认内容" },
+          { type: "SET_OBJECTIVE_BASIS", label: "选择可验证答案" },
+          { type: "GRADE_OBJECTIVE_WRONG", label: "批改为错误" },
+          { type: "REQUEST_HINT", level: 3, label: "查看完整讲解" },
+          { type: "CORRECTION_RIGHT", label: "即时订正正确" },
+          { type: "GENERATE_SIMILAR", label: "生成相似题" },
+          { type: "SIMILAR_PASS", label: "相似题检查通过" },
+          { type: "CHANGE_CONFIRMED_CONTENT", label: "发现原题识别有误并修正" }
+        ]
+      }
+    ];
+
+    let state = FlowMachine.initialState();
+    let selectedScenario = scenarios[0].id;
+    const scenarioProgress = Object.fromEntries(scenarios.map(item => [item.id, 0]));
+
+    const labels = {
+      hint: ["未查看", "第一层：定位信息", "第二层：下一步方法", "完整分步讲解"]
+    };
+
+    const badgeClass = (value) => {
+      if (/已确认|可用|正确|完成|清晰|已安排|通过|直接学习/.test(value)) return "good";
+      if (/错误|失效|需要重拍|不可用/.test(value)) return "bad";
+      if (/待|尚未|无|不适用|缺少|暂停|疑问|歧义|继续/.test(value)) return "warn";
+      return "info";
+    };
+
+    const badge = (value) => `<span class="badge ${badgeClass(String(value))}">${value}</span>`;
+
+    const stateCard = (title, entries) => `
+      <article class="state-card">
+        <h3>${title}</h3>
+        <dl>${entries.map(([term, value]) => `<dt>${term}</dt><dd>${badge(value)}</dd>`).join("")}</dl>
+      </article>`;
+
+    function renderState() {
+      document.getElementById("actor-label").textContent = state.actor === "learner" ? "学习者" : "监护人";
+      document.getElementById("actor-learner").setAttribute("aria-pressed", String(state.actor === "learner"));
+      document.getElementById("actor-guardian").setAttribute("aria-pressed", String(state.actor === "guardian"));
+
+      const message = document.getElementById("message");
+      message.className = `message${state.blocked ? " blocked" : ""}`;
+      message.innerHTML = state.blocked
+        ? `<strong>动作被可信护栏阻止</strong>${state.blocked}`
+        : `<strong>刚刚发生</strong>${state.lastChange}`;
+
+      document.getElementById("current-state").innerHTML = [
+        stateCard("学习提交", [
+          ["页面数量", `${state.submission.pages} 页`],
+          ["照片质量", state.submission.pageQuality],
+          ["处理状态", state.submission.status],
+          ["整页原图", state.submission.originalImage],
+          ["完成含义", state.submission.completion]
+        ]),
+        stateCard("内容轴", [
+          ["识别内容", state.content.status],
+          ["未决片段", `${state.content.flags} 处`],
+          ["页面顺序", state.content.pageOrder],
+          ["题目分组", state.content.grouping],
+          ["来源版本", `第 ${state.content.sourceVersion} 版`]
+        ]),
+        stateCard("批改轴", [
+          ["学习依据", state.basis.status],
+          ["依据说明", state.basis.label],
+          ["评价方式", state.basis.evaluationMode],
+          ["批改状态", state.grading.status],
+          ["当前结论", state.grading.outcome],
+          ["可信说明", state.grading.confidence],
+          ["待复核建议", state.grading.proposedOutcome],
+          ["失效次数", `${state.grading.invalidatedCount} 次`]
+        ]),
+        stateCard("学习轴", [
+          ["错题库", state.learning.errorEntry],
+          ["错因", state.learning.cause],
+          ["提示深度", labels.hint[state.learning.hintLevel]],
+          ["即时订正", state.learning.correction],
+          ["相似题", state.learning.similarQuestion],
+          ["后续巩固", state.learning.reinforcement]
+        ])
+      ].join("");
+    }
+
+    function renderGuardrails() {
+      const rules = [
+        state.content.status !== "内容已确认"
+          ? "内容轴尚未通过：禁止开始批改。"
+          : "内容轴已通过：只有选定当前学习依据后才能批改。",
+        state.grading.status === "结果待复核"
+          ? "批改结论正在复核：不创建有效错题，不更新掌握状态。"
+          : "识别置信与批改可信度分别表达，不用一个百分比分数混淆。",
+        state.basis.status === "缺少依据"
+          ? "缺少学习依据：停在暂无法批改，不生成猜测答案。"
+          : "AI 学习内容只能追溯到当前学习依据，不能反过来成为依据。",
+        state.learning.correction === "即时订正完成"
+          ? "即时订正只进入待巩固；已掌握仍需要跨时间、无提示学习证据。"
+          : "讲解按定位信息、下一步方法、完整步骤逐层展开，但不会用奖励阻挡完整讲解。",
+        state.grading.status === "旧结论已失效"
+          ? "上游内容已变化：旧批改、错因、讲解、相似题和进展全部停止使用。"
+          : "学习者可以质疑结论；人工决定必须留下可见变化。",
+        "整页原图在内容确认后进入自动删除队列；保留只为完成学习所需的最小内容。"
+      ];
+      document.getElementById("guardrail-list").innerHTML = rules.map(rule => `<li>${rule}</li>`).join("");
+    }
+
+    function renderActions() {
+      document.getElementById("action-groups").innerHTML = actionGroups.map(group => `
+        <div class="action-group">
+          <h3>${group.title}</h3>
+          <div class="action-buttons">
+            ${group.actions.map(action => `
+              <button class="action-button" type="button" data-action='${JSON.stringify(action)}'>
+                ${action.label}<small>${action.help}</small>
+              </button>`).join("")}
+          </div>
+        </div>`).join("");
+    }
+
+    function renderHistory() {
+      const list = document.getElementById("history-list");
+      if (!state.history.length) {
+        list.innerHTML = '<li class="empty-history">尚无操作记录。</li>';
+        return;
+      }
+      list.innerHTML = state.history.map(item => `
+        <li>
+          <strong class="${item.accepted ? "" : "rejected"}">${item.accepted ? "已执行" : "已阻止"}：${item.label}</strong><br>
+          <span>${item.actor === "learner" ? "学习者" : "监护人"} · ${item.message}</span>
+        </li>`).join("");
+    }
+
+    function renderScenarios() {
+      const active = scenarios.find(item => item.id === selectedScenario);
+      document.getElementById("scenario-tabs").innerHTML = scenarios.map(scenario => `
+        <button
+          type="button"
+          class="tab-button"
+          role="tab"
+          aria-selected="${scenario.id === selectedScenario}"
+          aria-controls="scenario-panel"
+          data-scenario="${scenario.id}">
+          ${scenario.name}
+        </button>`).join("");
+
+      const progress = scenarioProgress[active.id];
+      document.getElementById("scenario-content").innerHTML = `
+        <div id="scenario-panel" role="tabpanel" tabindex="0">
+          <div class="scenario-intro">
+            <strong>${active.title}</strong>
+            <p>${active.description}</p>
+          </div>
+          <div class="scenario-steps">
+            ${active.steps.map((step, index) => {
+              const stateClass = index < progress ? "complete" : index === progress ? "current" : "future";
+              return `<button type="button" class="scenario-step ${stateClass}" data-step="${index + 1}" data-scenario-step="${index}" aria-current="${index === progress ? "step" : "false"}">${step.label}${step.expectBlocked ? "（预期被阻止）" : ""}</button>`;
+            }).join("")}
+          </div>
+        </div>`;
+    }
+
+    function render() {
+      renderState();
+      renderGuardrails();
+      renderHistory();
+      renderScenarios();
+    }
+
+    function dispatch(action, scenarioStep) {
+      state = FlowMachine.reducer(state, action);
+      if (scenarioStep) {
+        const succeededAsExpected = scenarioStep.expectBlocked ? !state.lastAccepted : state.lastAccepted;
+        if (succeededAsExpected) scenarioProgress[selectedScenario] += 1;
+      }
+      render();
+    }
+
+    document.getElementById("actor-learner").addEventListener("click", () => dispatch({ type: "SET_ACTOR", actor: "learner", label: "切换为学习者" }));
+    document.getElementById("actor-guardian").addEventListener("click", () => dispatch({ type: "SET_ACTOR", actor: "guardian", label: "切换为监护人" }));
+    document.getElementById("reset").addEventListener("click", () => {
+      state = FlowMachine.initialState();
+      scenarioProgress[selectedScenario] = 0;
+      render();
+      document.getElementById("current-state").focus();
+    });
+
+    document.getElementById("action-groups").addEventListener("click", event => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      dispatch(JSON.parse(button.dataset.action));
+    });
+
+    document.getElementById("scenario-tabs").addEventListener("click", event => {
+      const button = event.target.closest("[data-scenario]");
+      if (!button) return;
+      selectedScenario = button.dataset.scenario;
+      scenarioProgress[selectedScenario] = 0;
+      state = FlowMachine.initialState();
+      render();
+      document.getElementById("scenario-panel").focus();
+    });
+
+    document.getElementById("scenario-content").addEventListener("click", event => {
+      const button = event.target.closest("[data-scenario-step]");
+      if (!button) return;
+      const active = scenarios.find(item => item.id === selectedScenario);
+      const index = Number(button.dataset.scenarioStep);
+      if (index !== scenarioProgress[selectedScenario]) {
+        state = {
+          ...state,
+          blocked: "请按场景顺序操作；也可以改用右侧自由操作。",
+          lastChange: "请按场景顺序操作；也可以改用右侧自由操作。",
+          lastAccepted: false
+        };
+        render();
+        return;
+      }
+      dispatch(active.steps[index], active.steps[index]);
+    });
+
+    renderActions();
+    render();
+  </script>
+</body>
+</html>
