@@ -39,6 +39,7 @@
     }
 
     button, select { font: inherit; }
+    button { touch-action: manipulation; }
 
     button:focus-visible,
     select:focus-visible,
@@ -183,6 +184,12 @@
     .action-button:hover,
     .scenario-step:hover,
     .reset-button:hover { background: var(--surface-soft); }
+
+    .actor-button:active,
+    .tab-button:active,
+    .action-button:active,
+    .scenario-step:active,
+    .reset-button:active { background: var(--accent-soft); }
 
     .actor-button[aria-pressed="true"],
     .tab-button[aria-selected="true"] {
@@ -446,7 +453,7 @@
   <a class="skip-link" href="#current-state">跳到当前状态</a>
   <header>
     <div class="inner">
-      <p class="eyebrow">Rhea · Throwaway logic prototype</p>
+      <p class="eyebrow">Rhea · 一次性逻辑原型</p>
       <h1>拍照批改与分步讲解的可信流程</h1>
       <p>本原型要验证：学习提交从拍照、内容确认、批改到订正时，识别置信、批改结论和学习进展能否始终分开；任何人修正上游内容后，旧结论能否失效并回到正确步骤。</p>
     </div>
@@ -1163,16 +1170,18 @@
         <button
           type="button"
           class="tab-button"
+          id="scenario-tab-${scenario.id}"
           role="tab"
           aria-selected="${scenario.id === selectedScenario}"
           aria-controls="scenario-panel"
+          tabindex="${scenario.id === selectedScenario ? "0" : "-1"}"
           data-scenario="${scenario.id}">
           ${scenario.name}
         </button>`).join("");
 
       const progress = scenarioProgress[active.id];
       document.getElementById("scenario-content").innerHTML = `
-        <div id="scenario-panel" role="tabpanel" tabindex="0">
+        <div id="scenario-panel" role="tabpanel" aria-labelledby="scenario-tab-${active.id}" tabindex="0">
           <div class="scenario-intro">
             <strong>${active.title}</strong>
             <p>${active.description}</p>
@@ -1202,6 +1211,13 @@
       render();
     }
 
+    function chooseScenario(id) {
+      selectedScenario = id;
+      scenarioProgress[selectedScenario] = 0;
+      state = FlowMachine.initialState();
+      render();
+    }
+
     document.getElementById("actor-learner").addEventListener("click", () => dispatch({ type: "SET_ACTOR", actor: "learner", label: "切换为学习者" }));
     document.getElementById("actor-guardian").addEventListener("click", () => dispatch({ type: "SET_ACTOR", actor: "guardian", label: "切换为监护人" }));
     document.getElementById("reset").addEventListener("click", () => {
@@ -1220,11 +1236,22 @@
     document.getElementById("scenario-tabs").addEventListener("click", event => {
       const button = event.target.closest("[data-scenario]");
       if (!button) return;
-      selectedScenario = button.dataset.scenario;
-      scenarioProgress[selectedScenario] = 0;
-      state = FlowMachine.initialState();
-      render();
+      chooseScenario(button.dataset.scenario);
       document.getElementById("scenario-panel").focus();
+    });
+
+    document.getElementById("scenario-tabs").addEventListener("keydown", event => {
+      const button = event.target.closest("[data-scenario]");
+      if (!button || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const currentIndex = scenarios.findIndex(item => item.id === button.dataset.scenario);
+      const nextIndex = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? scenarios.length - 1
+          : (currentIndex + (event.key === "ArrowRight" ? 1 : -1) + scenarios.length) % scenarios.length;
+      chooseScenario(scenarios[nextIndex].id);
+      document.getElementById(`scenario-tab-${scenarios[nextIndex].id}`).focus();
     });
 
     document.getElementById("scenario-content").addEventListener("click", event => {
