@@ -1,0 +1,1359 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rhea 复习卡与间隔复习逻辑原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --primary: #6d28d9;
+      --primary-strong: #4c1d95;
+      --primary-soft: #ede9fe;
+      --accent: #b45309;
+      --accent-soft: #fef3c7;
+      --success: #166534;
+      --success-soft: #dcfce7;
+      --danger: #b91c1c;
+      --danger-soft: #fee2e2;
+      --ink: #172033;
+      --muted: #596579;
+      --line: #d9dceb;
+      --surface: #ffffff;
+      --canvas: #f7f5fb;
+      --focus: #2563eb;
+      --shadow: 0 14px 34px rgba(45, 32, 85, 0.09);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 11px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--canvas); }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(124, 58, 237, 0.10), transparent 28rem),
+        var(--canvas);
+      font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    button { font: inherit; }
+    button { touch-action: manipulation; }
+    button:not(:disabled):active { filter: brightness(0.94); }
+
+    button:focus-visible,
+    [role="tab"]:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    button:not(:disabled) { cursor: pointer; }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 20;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--primary-strong);
+      border-radius: 10px;
+      transform: translateY(-160%);
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .prototype-banner {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      color: var(--primary-strong);
+      background: var(--primary-soft);
+      border: 1px solid #c4b5fd;
+      border-radius: var(--radius-md);
+    }
+
+    .prototype-banner svg { flex: 0 0 22px; margin-top: 2px; }
+
+    .prototype-banner strong { display: block; }
+
+    .prototype-banner p { margin: 2px 0 0; color: #514368; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding: 38px 4px 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--primary);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { text-wrap: pretty; }
+
+    h1 {
+      max-width: 19ch;
+      margin: 0;
+      color: var(--primary-strong);
+      font-size: clamp(2rem, 4vw, 3.35rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+
+    .hero-copy {
+      max-width: 720px;
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 1.02rem;
+    }
+
+    .question-box {
+      max-width: 360px;
+      padding: 16px 18px;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+    }
+
+    .question-box strong { color: var(--primary-strong); }
+    .question-box p { margin: 4px 0 0; color: var(--muted); font-size: 0.92rem; }
+
+    .session-bar {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 16px;
+      align-items: center;
+      margin: 0 0 16px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      box-shadow: 0 7px 20px rgba(45, 32, 85, 0.05);
+    }
+
+    .session-mark {
+      display: grid;
+      width: 46px;
+      height: 46px;
+      place-items: center;
+      color: #fff;
+      background: var(--primary);
+      border-radius: 14px;
+      font-size: 1.15rem;
+      font-weight: 900;
+    }
+
+    .session-title { font-weight: 850; }
+    .session-subtitle { color: var(--muted); font-size: 0.88rem; }
+
+    .progress-track {
+      height: 9px;
+      overflow: hidden;
+      background: #ebe8f1;
+      border-radius: 999px;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      background: var(--primary);
+      border-radius: inherit;
+      transition: width 180ms ease-out;
+    }
+
+    .day-chip {
+      min-width: 94px;
+      padding: 8px 12px;
+      color: var(--primary-strong);
+      background: var(--primary-soft);
+      border-radius: 999px;
+      text-align: center;
+      font-size: 0.9rem;
+      font-weight: 800;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(290px, 0.75fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .study-column,
+    .state-panel,
+    .playground,
+    .walkthroughs,
+    .decision-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .study-column { overflow: hidden; }
+
+    .queue-strip {
+      display: flex;
+      gap: 9px;
+      overflow-x: auto;
+      padding: 15px 18px;
+      background: #fbfaff;
+      border-bottom: 1px solid var(--line);
+      scrollbar-width: thin;
+    }
+
+    .queue-item {
+      display: flex;
+      flex: 0 0 auto;
+      min-height: 48px;
+      gap: 9px;
+      align-items: center;
+      padding: 8px 12px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+    }
+
+    .queue-item[aria-current="true"] {
+      color: var(--primary-strong);
+      background: var(--primary-soft);
+      border-color: #a78bfa;
+    }
+
+    .subject-glyph {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      place-items: center;
+      color: #fff;
+      background: var(--primary);
+      border-radius: 9px;
+      font-size: 0.8rem;
+      font-weight: 900;
+    }
+
+    .queue-item small { display: block; color: var(--muted); }
+
+    .queue-overflow {
+      display: flex;
+      min-height: 48px;
+      flex: 0 0 auto;
+      align-items: center;
+      padding: 8px 12px;
+      color: var(--muted);
+      background: #f2f3f7;
+      border-radius: 13px;
+      font-size: 0.86rem;
+    }
+
+    .card-shell { padding: clamp(20px, 4vw, 34px); }
+
+    .card-meta,
+    .badge-row,
+    .card-actions,
+    .feedback-actions,
+    .free-actions,
+    .scenario-tabs,
+    .scenario-steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+    }
+
+    .card-meta { justify-content: space-between; align-items: center; }
+
+    .badge {
+      display: inline-flex;
+      min-height: 30px;
+      align-items: center;
+      padding: 5px 10px;
+      color: var(--primary-strong);
+      background: var(--primary-soft);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .badge[data-tone="warning"] { color: #7c2d12; background: var(--accent-soft); }
+    .badge[data-tone="success"] { color: var(--success); background: var(--success-soft); }
+    .badge[data-tone="danger"] { color: var(--danger); background: var(--danger-soft); }
+
+    .source-button,
+    .text-button {
+      display: inline-flex;
+      min-height: 44px;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 12px;
+      color: var(--primary-strong);
+      background: #fff;
+      border: 1px solid #b9add5;
+      border-radius: 12px;
+      font-weight: 750;
+    }
+
+    .source-button:hover,
+    .text-button:hover { background: #f7f3ff; }
+
+    .source-button svg { width: 18px; height: 18px; }
+
+    .review-card {
+      position: relative;
+      min-height: 350px;
+      margin-top: 18px;
+      padding: clamp(22px, 4vw, 34px);
+      overflow: hidden;
+      background: linear-gradient(145deg, #fff 20%, #faf8ff 100%);
+      border: 1px solid #cfc6e3;
+      border-radius: 22px;
+    }
+
+    .review-card::before {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 7px;
+      height: 100%;
+      content: "";
+      background: var(--subject-color, var(--primary));
+    }
+
+    .card-kicker { color: var(--muted); font-size: 0.86rem; font-weight: 750; }
+
+    .review-card h2 {
+      max-width: 27ch;
+      margin: 12px 0 10px;
+      color: var(--ink);
+      font-size: clamp(1.45rem, 3vw, 2.05rem);
+      line-height: 1.3;
+      letter-spacing: -0.02em;
+    }
+
+    .answer-mode {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .think-space {
+      display: grid;
+      min-height: 76px;
+      margin: 22px 0;
+      place-items: center;
+      color: #6c7280;
+      background: rgba(255,255,255,0.78);
+      border: 1px dashed #b8b6c4;
+      border-radius: 16px;
+      text-align: center;
+    }
+
+    .hint-box,
+    .result-note,
+    .source-drawer,
+    .empty-note {
+      margin-top: 16px;
+      padding: 15px 16px;
+      border-radius: 14px;
+    }
+
+    .hint-box {
+      color: #5c3700;
+      background: var(--accent-soft);
+      border: 1px solid #f3cf73;
+    }
+
+    .hint-box strong,
+    .result-note strong,
+    .source-drawer strong { display: block; margin-bottom: 3px; }
+
+    .result-note { background: #eef6ff; border: 1px solid #bfdbfe; }
+    .result-note[data-tone="success"] { color: var(--success); background: var(--success-soft); border-color: #86efac; }
+    .result-note[data-tone="danger"] { color: #8a1c1c; background: var(--danger-soft); border-color: #fca5a5; }
+    .result-note[data-tone="warning"] { color: #713f12; background: var(--accent-soft); border-color: #f3cf73; }
+
+    .source-drawer {
+      color: var(--ink);
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .source-grid div {
+      padding: 11px 12px;
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 11px;
+    }
+
+    .source-grid span { display: block; color: var(--muted); font-size: 0.76rem; font-weight: 750; }
+
+    .section-label {
+      margin: 22px 0 10px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .action-button {
+      min-height: 48px;
+      padding: 11px 15px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid #b9bfd0;
+      border-radius: 13px;
+      font-weight: 800;
+    }
+
+    .action-button:hover { border-color: var(--primary); background: #fbf9ff; }
+    .action-button[data-kind="primary"] { color: #fff; background: var(--primary); border-color: var(--primary); }
+    .action-button[data-kind="primary"]:hover { background: #5b21b6; }
+    .action-button[data-kind="good"] { color: var(--success); border-color: #72c58b; background: #f0fdf4; }
+    .action-button[data-kind="warn"] { color: #7c2d12; border-color: #e9bb59; background: #fffbeb; }
+    .action-button[data-kind="bad"] { color: var(--danger); border-color: #ee9a9a; background: #fff7f7; }
+
+    .feedback-actions .action-button[aria-pressed="true"] {
+      color: #fff;
+      background: var(--primary-strong);
+      border-color: var(--primary-strong);
+    }
+
+    .state-panel {
+      position: sticky;
+      top: 14px;
+      padding: 22px;
+    }
+
+    .panel-heading {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-heading h2,
+    .playground h2,
+    .walkthroughs h2,
+    .decision-panel h2 { margin: 0; color: var(--primary-strong); font-size: 1.2rem; }
+
+    .live-chip {
+      padding: 4px 8px;
+      color: var(--success);
+      background: var(--success-soft);
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 850;
+    }
+
+    .state-intro { margin: 7px 0 16px; color: var(--muted); font-size: 0.86rem; }
+
+    .state-grid { display: grid; gap: 9px; }
+
+    .state-row {
+      display: grid;
+      grid-template-columns: 108px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #ececf2;
+    }
+
+    .state-row dt { color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+    .state-row dd { margin: 0; font-size: 0.9rem; font-weight: 750; }
+
+    .evidence-dots { display: flex; gap: 8px; margin-top: 6px; }
+
+    .evidence-dot {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      color: var(--muted);
+      background: #f2f3f7;
+      border: 2px solid #c7cad4;
+      border-radius: 50%;
+      font-size: 0.74rem;
+      font-weight: 900;
+    }
+
+    .evidence-dot[data-filled="true"] { color: #fff; background: var(--success); border-color: var(--success); }
+
+    .history {
+      margin: 18px 0 0;
+      padding: 16px 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .history h3 { margin: 0 0 10px; font-size: 0.9rem; }
+    .history ol { max-height: 188px; margin: 0; padding-left: 20px; overflow: auto; color: var(--muted); font-size: 0.8rem; }
+    .history li + li { margin-top: 7px; }
+
+    .playground,
+    .walkthroughs,
+    .decision-panel { margin-top: 18px; padding: clamp(20px, 3vw, 28px); }
+
+    .section-copy { max-width: 760px; margin: 7px 0 18px; color: var(--muted); }
+
+    .control-group {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 14px;
+      align-items: start;
+      padding: 14px 0;
+      border-top: 1px solid #ececf2;
+    }
+
+    .control-group strong { padding-top: 11px; color: var(--ink); font-size: 0.86rem; }
+
+    .small-button {
+      min-height: 44px;
+      padding: 8px 12px;
+      color: var(--primary-strong);
+      background: #fff;
+      border: 1px solid #b9add5;
+      border-radius: 11px;
+      font-size: 0.86rem;
+      font-weight: 750;
+    }
+
+    .small-button:hover { background: #f7f3ff; }
+    .small-button[data-danger="true"] { color: var(--danger); border-color: #efa2a2; }
+
+    .scenario-tabs { margin: 16px 0; }
+
+    .scenario-tab {
+      min-height: 44px;
+      padding: 8px 13px;
+      color: var(--muted);
+      background: #f5f3f8;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-weight: 800;
+    }
+
+    .scenario-tab[aria-selected="true"] {
+      color: var(--primary-strong);
+      background: var(--primary-soft);
+      border-color: #bca7ed;
+    }
+
+    .scenario-body {
+      padding: 18px;
+      background: #faf9fd;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    .scenario-body h3 { margin: 0; font-size: 1rem; }
+    .scenario-body p { margin: 6px 0 15px; color: var(--muted); }
+
+    .step-button {
+      position: relative;
+      min-height: 48px;
+      padding: 10px 13px 10px 42px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid #c7c9d4;
+      border-radius: 12px;
+      text-align: left;
+      font-weight: 750;
+    }
+
+    .step-number {
+      position: absolute;
+      left: 11px;
+      top: 50%;
+      display: grid;
+      width: 23px;
+      height: 23px;
+      place-items: center;
+      color: #fff;
+      background: var(--primary);
+      border-radius: 50%;
+      transform: translateY(-50%);
+      font-size: 0.72rem;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .decision-item {
+      padding: 16px;
+      background: #faf9fd;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .decision-item strong { display: block; color: var(--primary-strong); }
+    .decision-item p { margin: 5px 0 0; color: var(--muted); font-size: 0.86rem; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (max-width: 880px) {
+      .hero { grid-template-columns: 1fr; }
+      .question-box { max-width: none; }
+      .workspace { grid-template-columns: 1fr; }
+      .state-panel { position: static; }
+      .decision-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 600px) {
+      .page { width: min(100% - 20px, 1180px); padding-top: 12px; }
+      .prototype-banner { border-radius: 14px; }
+      .hero { padding: 28px 2px 18px; }
+      .session-bar { grid-template-columns: auto 1fr; }
+      .session-bar .progress-track { grid-column: 1 / -1; grid-row: 2; }
+      .day-chip { grid-column: 2; grid-row: 1; justify-self: end; }
+      .queue-strip { padding-inline: 12px; }
+      .card-shell { padding: 16px 13px 22px; }
+      .review-card { min-height: 320px; padding: 22px 19px; }
+      .source-grid { grid-template-columns: 1fr; }
+      .card-actions .action-button { flex: 1 1 calc(50% - 9px); }
+      .feedback-actions .action-button { flex: 1 1 30%; padding-inline: 8px; }
+      .control-group { grid-template-columns: 1fr; gap: 6px; }
+      .control-group strong { padding-top: 0; }
+      .decision-grid { grid-template-columns: 1fr; }
+      .state-row { grid-template-columns: 96px 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#reviewCard">跳到当前复习卡</a>
+  <main class="page">
+    <div class="prototype-banner" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.7 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/></svg>
+      <div><strong>可抛弃逻辑原型，不是最终界面</strong><p>所有题目和结果均为示例，状态只保存在当前页面内。刷新即可清空。</p></div>
+    </div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Rhea review lab</p>
+        <h1>复习卡怎样帮助孩子真正掌握？</h1>
+        <p class="hero-copy">点击答题结果、提示、时间推进和难度反馈，观察复习队列、证据资格、错题主题状态与下次间隔如何联动。</p>
+      </div>
+      <aside class="question-box">
+        <strong>本原型回答的问题</strong>
+        <p>四学科复习卡是否应该共享一套证据与间隔逻辑，同时保留不同的作答形态、依据查看和提示方式？</p>
+      </aside>
+    </header>
+
+    <section class="session-bar" aria-label="短复习进度">
+      <div class="session-mark" aria-hidden="true">R</div>
+      <div>
+        <div class="session-title" id="sessionTitle">今天短复习 · 约 5 分钟</div>
+        <div class="session-subtitle" id="sessionSubtitle">优先处理待订正和已到期内容；超出的卡片顺延，不惩罚。</div>
+      </div>
+      <div class="day-chip" id="dayChip">模拟第 0 天</div>
+      <div class="progress-track" role="progressbar" aria-label="本次复习完成度" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><div class="progress-fill" id="progressFill"></div></div>
+    </section>
+
+    <div class="workspace">
+      <section class="study-column" aria-label="复习卡模拟器">
+        <nav class="queue-strip" id="queueStrip" aria-label="本次复习队列"></nav>
+        <div class="card-shell">
+          <div class="card-meta">
+            <div class="badge-row" id="badgeRow"></div>
+            <button class="source-button" id="sourceButton" type="button" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h6"/></svg>
+              查看原题与依据
+            </button>
+          </div>
+
+          <article class="review-card" id="reviewCard">
+            <div class="card-kicker" id="cardKicker"></div>
+            <h2 id="cardPrompt"></h2>
+            <p class="answer-mode" id="answerMode"></p>
+            <div class="think-space" id="thinkSpace">在纸上、心里或用适合你的方式作答</div>
+            <div id="hintRegion" aria-live="polite"></div>
+            <div id="resultRegion" aria-live="polite"></div>
+            <div id="sourceRegion"></div>
+          </article>
+
+          <p class="section-label">原型不判断真实答案，请模拟本次批改结果</p>
+          <div class="card-actions" aria-label="模拟批改结果">
+            <button class="action-button" data-kind="good" data-action="outcome" data-value="correct" type="button">独立答对</button>
+            <button class="action-button" data-kind="warn" data-action="outcome" data-value="partial" type="button">部分正确</button>
+            <button class="action-button" data-kind="bad" data-action="outcome" data-value="wrong" type="button">答错了</button>
+            <button class="action-button" data-kind="primary" data-action="next" type="button">下一张卡</button>
+          </div>
+
+          <p class="section-label">孩子的主观感受只调整下一张题的支架，不改变掌握证据</p>
+          <div class="feedback-actions" aria-label="难度反馈">
+            <button class="action-button" data-action="rate" data-value="easy" type="button">太简单</button>
+            <button class="action-button" data-action="rate" data-value="right" type="button">正合适</button>
+            <button class="action-button" data-action="rate" data-value="hard" type="button">有点难</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="state-panel" aria-labelledby="stateTitle">
+        <div class="panel-heading"><h2 id="stateTitle">状态透镜</h2><span class="live-chip">实时</span></div>
+        <p class="state-intro">每次操作后完整刷新，便于检查规则是否符合直觉。</p>
+        <dl class="state-grid" id="stateGrid"></dl>
+        <div class="history">
+          <h3>最近变化</h3>
+          <ol id="historyList" aria-live="polite"></ol>
+        </div>
+      </aside>
+    </div>
+
+    <section class="playground" aria-labelledby="playTitle">
+      <h2 id="playTitle">自由操作</h2>
+      <p class="section-copy">按钮始终可见；当某个动作在当前状态不成立时，状态透镜会明确说明原因。</p>
+      <div class="control-group">
+        <strong>推进时间</strong>
+        <div class="free-actions">
+          <button class="small-button" data-action="advance" data-value="1" type="button">经过 1 天</button>
+          <button class="small-button" data-action="advance" data-value="3" type="button">经过 3 天</button>
+          <button class="small-button" data-action="advance" data-value="7" type="button">经过 7 天</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <strong>分层提示</strong>
+        <div class="free-actions">
+          <button class="small-button" data-action="hint" data-value="1" type="button">提示 1 · 定位信息</button>
+          <button class="small-button" data-action="hint" data-value="2" type="button">提示 2 · 下一步方法</button>
+          <button class="small-button" data-action="hint" data-value="3" type="button">完整分步讲解</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <strong>来源与版本</strong>
+        <div class="free-actions">
+          <button class="small-button" data-action="toggle-source" type="button">展开 / 收起依据</button>
+          <button class="small-button" data-danger="true" data-action="invalidate" type="button">模拟学习依据变化</button>
+          <button class="small-button" data-action="regenerate" type="button">重新生成并检查</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <strong>快速切换学科</strong>
+        <div class="free-actions" id="subjectButtons"></div>
+      </div>
+      <div class="control-group">
+        <strong>恢复初始状态</strong>
+        <div class="free-actions"><button class="small-button" data-action="reset" type="button">重置整个原型</button></div>
+      </div>
+    </section>
+
+    <section class="walkthroughs" aria-labelledby="walkTitle">
+      <h2 id="walkTitle">引导场景</h2>
+      <p class="section-copy">先选场景，再按顺序点击步骤。每次切换场景都会恢复到专门准备的起点。</p>
+      <div class="scenario-tabs" role="tablist" aria-label="逻辑验证场景" id="scenarioTabs"></div>
+      <div class="scenario-body" role="tabpanel" id="scenarioPanel"></div>
+    </section>
+
+    <section class="decision-panel" aria-labelledby="decisionTitle">
+      <h2 id="decisionTitle">请重点判断这 6 个建议</h2>
+      <div class="decision-grid">
+        <div class="decision-item"><strong>短队列</strong><p>每次最多 5 张，待订正优先，其次逾期和今日到期；多余内容顺延。</p></div>
+        <div class="decision-item"><strong>主动回忆优先</strong><p>答案和完整讲解默认收起；查看依据不泄露答案，使用提示会改变证据资格。</p></div>
+        <div class="decision-item"><strong>跨日证据</strong><p>即时订正后需两次跨日独立成功，最后一次无提示，才能进入主题掌握。</p></div>
+        <div class="decision-item"><strong>柔性间隔</strong><p>建议节奏为 1 → 3 → 7 → 14 → 30 天；逾期不会自动取消掌握。</p></div>
+        <div class="decision-item"><strong>难度与掌握分离</strong><p>“太简单/有点难”只改变下一题支架，不能把主观感受变成学习事实。</p></div>
+        <div class="decision-item"><strong>证据可追溯</strong><p>每张 AI 卡说明原题、学习依据、重新生成的变化和检查状态。</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Portable prototype logic: pure data + reducer. No DOM access in this module.
+    const ReviewModel = (() => {
+      const INTERVALS = [1, 3, 7, 14, 30];
+      const SESSION_LIMIT = 5;
+
+      const templates = [
+        {
+          id: "math-division",
+          subject: "数学",
+          glyph: "数",
+          color: "#6d28d9",
+          theme: "用除法解决平均分问题",
+          format: "情境变式 · 列式与计算",
+          prompt: "48 本故事书平均放到 6 个书架，每个书架放几本？",
+          promptV2: "54 张科学卡片平均装进 6 个资料袋，每袋装几张？",
+          answerMode: "请先判断用什么方法，再写出算式和结果。",
+          hints: ["先找出“总数”和“平均分成几份”。", "用总数 ÷ 份数，算出每一份是多少。", "48 ÷ 6 = 8，所以每个书架放 8 本。"],
+          original: "原题：42 支铅笔平均分给 7 位同学，每人几支？学习者曾写成 42 × 7。",
+          basis: "数学学习单元《表内除法》· 教材第 34 页已确认例题",
+          difference: "保留平均分目标，替换数量、物品和应用情境；不是原题副本。",
+          evaluation: "客观结果 + 关键方法均正确"
+        },
+        {
+          id: "chinese-reading",
+          subject: "语文",
+          glyph: "语",
+          color: "#be123c",
+          theme: "从描写中提取原因",
+          format: "要点回忆 · 用自己的话表达",
+          prompt: "“叶片上滚动着水珠，泥土也散发出清新的气味。”这句话说明雨后环境有什么变化？",
+          promptV2: "“石板路亮晶晶的，屋檐还滴着水。”请用自己的话说说刚刚发生了什么。",
+          answerMode: "说出或写出一个判断，并用句子里的信息支持它。",
+          hints: ["圈出能看见或闻到的变化。", "把“水珠”和“泥土气味”与刚下过雨联系起来。", "示例：雨后环境变得湿润、清新；水珠和泥土气味是依据。"],
+          original: "原题：读短文后概括“雨后的校园有什么特点”。学习者只抄写了第一句话。",
+          basis: "语文学习单元《抓住关键描写》· 教师确认的两项评分要点",
+          difference: "更换短句材料，继续评价“结论 + 文本证据”，不要求复述原答案。",
+          evaluation: "评分量规：判断清楚、至少一条文本证据"
+        },
+        {
+          id: "english-past",
+          subject: "英语",
+          glyph: "英",
+          color: "#0369a1",
+          theme: "在时间线索中使用过去式",
+          format: "句型提取 · 完成表达",
+          prompt: "Yesterday, Mia ____ to the library with her dad. (go)",
+          promptV2: "Last Sunday, Leo ____ a kite in the park. (fly)",
+          answerMode: "补全句子，并读一遍检查时间线索。",
+          hints: ["先找到表示过去时间的词。", "Yesterday 表示过去，go 需要使用过去式。", "答案是 went：Yesterday, Mia went to the library with her dad."],
+          original: "原题：Last night, I ___ my homework. (do) 学习者填写 do。",
+          basis: "英语学习单元《Simple Past》· 已确认词表与教师答案",
+          difference: "改变人物、地点和动词，继续评价时间线索与过去式提取。",
+          evaluation: "目标词形与句意均正确"
+        },
+        {
+          id: "science-shadow",
+          subject: "科学",
+          glyph: "科",
+          color: "#047857",
+          theme: "用光源位置解释影子变化",
+          format: "因果判断 · 证据解释",
+          prompt: "手电筒从玩偶正前方移到左侧，影子的方向会怎样变化？为什么？",
+          promptV2: "台灯从杯子右侧移到正上方，影子的位置和长短可能怎样改变？",
+          answerMode: "先说变化，再用“光沿直线传播”解释原因。",
+          hints: ["先画出光源、玩偶和影子的大致位置。", "影子通常出现在物体背向光源的一侧。", "手电筒移到左侧后，影子会偏向右侧，因为物体挡住了从左侧直线传播的光。"],
+          original: "原题：太阳移动时旗杆影子为什么会变化？学习者只写“太阳动了”。",
+          basis: "科学学习单元《光和影》· 教材实验记录第 12 页",
+          difference: "由太阳情境换成可操作光源，继续评价方向判断与因果解释。",
+          evaluation: "表现量规：方向合理、因果依据完整"
+        },
+        {
+          id: "math-fraction",
+          subject: "数学",
+          glyph: "数",
+          color: "#6d28d9",
+          theme: "比较同分母分数",
+          format: "图示变式 · 解释理由",
+          prompt: "一张纸平均分成 8 份，涂了 5 份；另一张涂了 3 份。哪个分数更大？",
+          promptV2: "两条同样长的纸带都分成 10 份，一条涂 7 份，另一条涂 4 份。比较大小。",
+          answerMode: "写出比较结果，并说明分母相同时看什么。",
+          hints: ["两张纸分成的总份数相同。", "同分母分数比较时，看分子表示取了多少份。", "5/8 > 3/8，因为同分母时 5 份比 3 份多。"],
+          original: "原题：比较 2/6 和 5/6。学习者把分母相同误认为两个分数相等。",
+          basis: "数学学习单元《分数的初步认识》· 教材第 61 页",
+          difference: "加入可视化情境，保留同分母比较的核心理由。",
+          evaluation: "比较结果与理由均正确"
+        },
+        {
+          id: "chinese-character",
+          subject: "语文",
+          glyph: "语",
+          color: "#be123c",
+          theme: "根据语境选择形近字",
+          format: "语境辨析 · 记忆提取",
+          prompt: "选择合适的字填空：清晨，山谷里升起了一层薄（雾 / 露）。",
+          promptV2: "选择合适的字填空：小草叶尖挂着晶莹的（雾 / 露）珠。",
+          answerMode: "先想两个字的意思，再结合整句话选择。",
+          hints: ["想一想：哪一个词表示悬浮在空气中的小水滴？", "山谷里“一层”白茫茫的景象通常用“雾”。", "答案是“雾”：山谷里升起了一层薄雾。"],
+          original: "原题：露水 / 雾气辨析。学习者只凭字形选择。",
+          basis: "语文学习单元《结合语境辨析词义》· 已确认词语表",
+          difference: "替换句子情境，继续评价词义与语境的连接。",
+          evaluation: "选择正确且能说明语境依据"
+        }
+      ];
+
+      function makeCard(template, overrides = {}) {
+        return {
+          ...template,
+          status: "待巩固",
+          dueDay: 0,
+          intervalIndex: 0,
+          independentSuccesses: 0,
+          supportingSuccesses: 0,
+          lastIndependentDay: null,
+          hintLevel: 0,
+          valid: true,
+          version: 1,
+          difficulty: "未反馈",
+          nextShape: "保持当前难度",
+          lastOutcome: null,
+          lastEvidence: "尚无本周期证据",
+          ...overrides
+        };
+      }
+
+      function createInitialState(preset = "default") {
+        const base = {
+          nowDay: 0,
+          activeId: "math-division",
+          cards: [
+            makeCard(templates[0], { dueDay: -4 }),
+            makeCard(templates[1], { dueDay: -1 }),
+            makeCard(templates[2]),
+            makeCard(templates[3]),
+            makeCard(templates[4]),
+            makeCard(templates[5])
+          ],
+          completedThisSession: [],
+          sourceOpen: false,
+          message: "待订正优先，其次处理逾期与今日到期卡片。",
+          messageTone: "info",
+          history: ["第 0 天：建立 5 张短复习队列，另有 1 张顺延。"],
+          activeScenario: preset
+        };
+
+        if (preset === "mastery") {
+          base.cards = base.cards.map((card, index) => ({ ...card, dueDay: index === 0 ? 1 : 9 + index }));
+          base.message = "从即时订正后的第 0 天开始，观察两次跨日证据。";
+          base.history = ["第 0 天：即时订正已完成；首次独立复习安排在明天。"];
+        }
+        if (preset === "hint") {
+          base.activeId = "chinese-reading";
+          base.cards = base.cards.map((card) => ({ ...card, dueDay: card.id === "chinese-reading" ? 0 : 8 }));
+          base.message = "这张语文卡需要结论与文本证据；尝试逐级使用提示。";
+          base.history = ["第 0 天：语文要点回忆卡到期。"];
+        }
+        if (preset === "overdue") {
+          base.activeId = "english-past";
+          base.nowDay = 12;
+          base.cards = base.cards.map((card) => card.id === "english-past"
+            ? { ...card, status: "已掌握", dueDay: 5, independentSuccesses: 2, lastIndependentDay: 1, intervalIndex: 2, lastEvidence: "2/2 独立成功证据" }
+            : { ...card, dueDay: 20 });
+          base.message = "这项已掌握内容逾期 7 天，但掌握状态没有被时间自动取消。";
+          base.history = ["第 12 天：已掌握主题复习逾期 7 天，等待新证据。"];
+        }
+        if (preset === "reopen") {
+          base.activeId = "math-fraction";
+          base.cards = base.cards.map((card) => card.id === "math-fraction"
+            ? { ...card, status: "已掌握", dueDay: 0, independentSuccesses: 2, lastIndependentDay: -3, intervalIndex: 2, lastEvidence: "2/2 独立成功证据" }
+            : { ...card, dueDay: 8 });
+          base.message = "主题当前已掌握；模拟一次新的有效错误。";
+          base.history = ["第 0 天：同分母分数主题处于已掌握。"];
+        }
+        if (preset === "source") {
+          base.activeId = "science-shadow";
+          base.cards = base.cards.map((card) => ({ ...card, dueDay: card.id === "science-shadow" ? 0 : 8 }));
+          base.message = "先查看来源链，再模拟学习依据发生变化。";
+          base.history = ["第 0 天：科学因果解释卡已通过生成检查。"];
+        }
+        return base;
+      }
+
+      function updateCard(state, id, updater) {
+        return { ...state, cards: state.cards.map(card => card.id === id ? updater(card) : card) };
+      }
+
+      function log(state, message, tone = "info") {
+        return {
+          ...state,
+          message,
+          messageTone: tone,
+          history: [`第 ${state.nowDay} 天：${message}`, ...state.history].slice(0, 16)
+        };
+      }
+
+      function scheduleAfterSuccess(card, nowDay) {
+        const nextIndex = Math.min(card.intervalIndex + 1, INTERVALS.length - 1);
+        return { nextIndex, days: INTERVALS[nextIndex], dueDay: nowDay + INTERVALS[nextIndex] };
+      }
+
+      function reduce(inputState, action) {
+        let state = structuredClone(inputState);
+        const active = state.cards.find(card => card.id === state.activeId);
+
+        if (action.type === "RESET") return createInitialState("default");
+        if (action.type === "START_SCENARIO") return createInitialState(action.scenario);
+
+        if (action.type === "SELECT_CARD") {
+          if (!state.cards.some(card => card.id === action.id)) return log(state, "找不到这张复习卡，状态未改变。", "danger");
+          state.activeId = action.id;
+          state.sourceOpen = false;
+          return log(state, `切换到“${state.cards.find(card => card.id === action.id).theme}”。`);
+        }
+
+        if (action.type === "ADVANCE_DAYS") {
+          state.nowDay += action.days;
+          state.completedThisSession = [];
+          state.sourceOpen = false;
+          state.cards = state.cards.map(card => ({ ...card, hintLevel: 0, difficulty: "未反馈", lastOutcome: null }));
+          return log(state, `时间推进 ${action.days} 天，新学习会话开始；逾期不会自动改变掌握状态。`);
+        }
+
+        if (action.type === "TOGGLE_SOURCE") {
+          state.sourceOpen = !state.sourceOpen;
+          return log(state, state.sourceOpen ? "展开原题、学习依据与重新生成说明。" : "收起来源信息。");
+        }
+
+        if (action.type === "USE_HINT") {
+          if (!active.valid) return log(state, "卡片已失效，重新生成前不能继续使用提示。", "danger");
+          const level = Math.max(active.hintLevel, action.level);
+          state = updateCard(state, active.id, card => ({ ...card, hintLevel: level }));
+          const effect = level === 1 ? "本次最多形成辅助证据。" : "本次答对只算订正，不形成独立证据。";
+          return log(state, `已使用提示 ${level}；${effect}`, "warning");
+        }
+
+        if (action.type === "RATE_DIFFICULTY") {
+          const labels = { easy: ["太简单", "下一张增加迁移变化"], right: ["正合适", "下一张保持当前支架"], hard: ["有点难", "下一张先提供更小步骤"] };
+          const [difficulty, nextShape] = labels[action.value];
+          state = updateCard(state, active.id, card => ({ ...card, difficulty, nextShape }));
+          return log(state, `记录感受“${difficulty}”；只调整下一张题的支架，不改变掌握或间隔。`);
+        }
+
+        if (action.type === "INVALIDATE") {
+          state = updateCard(state, active.id, card => ({ ...card, valid: false, lastEvidence: "卡片失效，不参与当前学习" }));
+          return log(state, "当前学习依据发生变化；这张 AI 卡及其未确认结果已失效。", "danger");
+        }
+
+        if (action.type === "REGENERATE") {
+          if (active.valid) return log(state, "当前卡片仍然有效，无需重复生成。", "warning");
+          state = updateCard(state, active.id, card => ({ ...card, valid: true, version: card.version + 1, hintLevel: 0, lastOutcome: null, lastEvidence: "新版本尚未作答" }));
+          return log(state, "已依据新版本重新生成，并通过依据覆盖、可解性与答案一致性检查。", "success");
+        }
+
+        if (action.type === "RECORD_OUTCOME") {
+          if (!active.valid) return log(state, "失效卡片不能形成批改结果或学习证据。", "danger");
+
+          if (action.outcome === "correct") {
+            const separated = active.lastIndependentDay === null || state.nowDay - active.lastIndependentDay >= 1;
+            if (active.hintLevel === 0 && separated) {
+              const successes = active.independentSuccesses + 1;
+              const schedule = scheduleAfterSuccess(active, state.nowDay);
+              state = updateCard(state, active.id, card => ({
+                ...card,
+                status: successes >= 2 ? "已掌握" : "待巩固",
+                independentSuccesses: successes,
+                lastIndependentDay: state.nowDay,
+                intervalIndex: schedule.nextIndex,
+                dueDay: schedule.dueDay,
+                lastOutcome: "独立答对",
+                lastEvidence: `${successes}/2 独立成功证据`,
+                hintLevel: 0
+              }));
+              if (!state.completedThisSession.includes(active.id)) state.completedThisSession.push(active.id);
+              return log(state, successes >= 2
+                ? `取得第 ${successes} 条跨日无提示证据，错题主题进入已掌握；${schedule.days} 天后复习。`
+                : `取得第 1 条独立成功证据；还需另一天的一次无提示成功，${schedule.days} 天后复习。`, "success");
+            }
+
+            if (active.hintLevel === 1) {
+              state = updateCard(state, active.id, card => ({ ...card, status: "待巩固", supportingSuccesses: card.supportingSuccesses + 1, dueDay: state.nowDay + 1, lastOutcome: "提示后答对", lastEvidence: "辅助证据，不可最终掌握", hintLevel: 0 }));
+              if (!state.completedThisSession.includes(active.id)) state.completedThisSession.push(active.id);
+              return log(state, "定位提示后答对，记录为辅助证据；明天安排无提示变式。", "warning");
+            }
+
+            state = updateCard(state, active.id, card => ({ ...card, status: "待巩固", dueDay: state.nowDay + 1, lastOutcome: "讲解后订正", lastEvidence: "订正完成，不是独立证据", hintLevel: 0 }));
+            if (!state.completedThisSession.includes(active.id)) state.completedThisSession.push(active.id);
+            return log(state, "方法提示或完整讲解后答对，只完成订正；明天重新独立尝试。", "warning");
+          }
+
+          const wasMastered = active.status === "已掌握";
+          state = updateCard(state, active.id, card => ({
+            ...card,
+            status: "待订正",
+            dueDay: state.nowDay,
+            intervalIndex: 0,
+            independentSuccesses: 0,
+            supportingSuccesses: 0,
+            lastIndependentDay: null,
+            lastOutcome: action.outcome === "partial" ? "部分正确" : "答错",
+            lastEvidence: action.outcome === "partial" ? "存在未达标关键目标" : "新的有效错误证据",
+            hintLevel: 0
+          }));
+          if (!state.completedThisSession.includes(active.id)) state.completedThisSession.push(active.id);
+          return log(state, wasMastered
+            ? "新的有效错误使已掌握主题重开为待订正；历史掌握仍被保留。"
+            : action.outcome === "partial" ? "保留已达标部分，只订正尚未达标的关键目标。" : "进入待订正；完成讲解与即时订正后再开始跨日巩固。", "danger");
+        }
+
+        if (action.type === "NEXT_CARD") {
+          const candidates = deriveQueue(state).filter(card => card.id !== active.id);
+          if (!candidates.length) return log(state, "本次短复习已完成；其余内容将顺延，不需要继续刷题。", "success");
+          state.activeId = candidates[0].id;
+          state.sourceOpen = false;
+          return log(state, `进入下一张“${candidates[0].theme}”。`);
+        }
+
+        return log(state, "当前动作没有定义，状态未改变。", "danger");
+      }
+
+      function deriveQueue(state) {
+        const priority = card => {
+          if (card.status === "待订正") return 0;
+          if (card.dueDay < state.nowDay) return 1;
+          if (card.dueDay === state.nowDay) return 2;
+          return 3;
+        };
+        return state.cards
+          .filter(card => card.dueDay <= state.nowDay && !state.completedThisSession.includes(card.id))
+          .sort((a, b) => priority(a) - priority(b) || a.dueDay - b.dueDay)
+          .slice(0, SESSION_LIMIT);
+      }
+
+      function dueLabel(card, nowDay) {
+        const delta = card.dueDay - nowDay;
+        if (delta < 0) return `逾期 ${Math.abs(delta)} 天`;
+        if (delta === 0) return "今天到期";
+        return `${delta} 天后`;
+      }
+
+      return { createInitialState, reduce, deriveQueue, dueLabel, SESSION_LIMIT };
+    })();
+
+    const scenarios = [
+      {
+        id: "mastery",
+        label: "两次跨日掌握",
+        title: "即时订正不能直接变成掌握",
+        description: "观察两次跨日、无提示的 AI 变式成功如何逐步形成主题掌握。",
+        steps: [
+          ["到第二天开始首次复习", { type: "ADVANCE_DAYS", days: 1 }],
+          ["第一次无提示答对", { type: "RECORD_OUTCOME", outcome: "correct" }],
+          ["按计划经过 3 天", { type: "ADVANCE_DAYS", days: 3 }],
+          ["第二次无提示答对", { type: "RECORD_OUTCOME", outcome: "correct" }]
+        ]
+      },
+      {
+        id: "hint",
+        label: "提示证据降权",
+        title: "答对不一定是独立证据",
+        description: "先用定位提示，再观察方法提示或完整讲解为何只能完成订正。",
+        steps: [
+          ["使用提示 1", { type: "USE_HINT", level: 1 }],
+          ["提示后答对", { type: "RECORD_OUTCOME", outcome: "correct" }],
+          ["到第二天再次复习", { type: "ADVANCE_DAYS", days: 1 }],
+          ["使用提示 2", { type: "USE_HINT", level: 2 }],
+          ["再次答对", { type: "RECORD_OUTCOME", outcome: "correct" }]
+        ]
+      },
+      {
+        id: "overdue",
+        label: "逾期不降级",
+        title: "时间提醒与掌握状态分开",
+        description: "主题虽然逾期，但仍保持已掌握；新证据才会改变状态。",
+        steps: [
+          ["再经过 7 天", { type: "ADVANCE_DAYS", days: 7 }],
+          ["查看状态仍为已掌握", { type: "TOGGLE_SOURCE" }],
+          ["无提示答对", { type: "RECORD_OUTCOME", outcome: "correct" }]
+        ]
+      },
+      {
+        id: "reopen",
+        label: "掌握后重开",
+        title: "新的错误重开当前周期，不抹掉历史",
+        description: "观察已掌握主题再次答错后回到待订正，以及讲解后只进入待巩固。",
+        steps: [
+          ["模拟新的有效错误", { type: "RECORD_OUTCOME", outcome: "wrong" }],
+          ["查看完整分步讲解", { type: "USE_HINT", level: 3 }],
+          ["完成即时订正", { type: "RECORD_OUTCOME", outcome: "correct" }],
+          ["到第二天重新巩固", { type: "ADVANCE_DAYS", days: 1 }]
+        ]
+      },
+      {
+        id: "source",
+        label: "依据变化",
+        title: "来源变化会让旧卡片停止产生证据",
+        description: "旧版本先失效；只有根据新依据重新生成并通过检查后才能继续。",
+        steps: [
+          ["展开原题与学习依据", { type: "TOGGLE_SOURCE" }],
+          ["模拟学习依据变化", { type: "INVALIDATE" }],
+          ["尝试用失效卡答对", { type: "RECORD_OUTCOME", outcome: "correct" }],
+          ["重新生成并检查", { type: "REGENERATE" }],
+          ["使用新版本无提示答对", { type: "RECORD_OUTCOME", outcome: "correct" }]
+        ]
+      }
+    ];
+
+    let state = ReviewModel.createInitialState();
+    let selectedScenario = scenarios[0].id;
+
+    const el = id => document.getElementById(id);
+    const escapeHtml = value => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+
+    function dispatch(action) {
+      state = ReviewModel.reduce(state, action);
+      render();
+    }
+
+    function activeCard() { return state.cards.find(card => card.id === state.activeId); }
+
+    function renderQueue() {
+      const queue = ReviewModel.deriveQueue(state);
+      const dueAll = state.cards.filter(card => card.dueDay <= state.nowDay && !state.completedThisSession.includes(card.id));
+      const display = queue.length ? queue : [activeCard()];
+      el("queueStrip").innerHTML = display.map(card => `
+        <button class="queue-item" type="button" data-select-card="${card.id}" aria-current="${card.id === state.activeId}">
+          <span class="subject-glyph" style="background:${card.color}" aria-hidden="true">${card.glyph}</span>
+          <span><strong>${escapeHtml(card.subject)}</strong><small>${escapeHtml(ReviewModel.dueLabel(card, state.nowDay))}</small></span>
+        </button>`).join("") + (dueAll.length > ReviewModel.SESSION_LIMIT ? `<span class="queue-overflow">另有 ${dueAll.length - ReviewModel.SESSION_LIMIT} 张顺延</span>` : "");
+    }
+
+    function renderCard() {
+      const card = activeCard();
+      const prompt = card.version > 1 ? card.promptV2 : card.prompt;
+      const due = ReviewModel.dueLabel(card, state.nowDay);
+      el("badgeRow").innerHTML = `
+        <span class="badge">${escapeHtml(card.subject)}</span>
+        <span class="badge" data-tone="${card.valid ? "success" : "danger"}">${card.valid ? `AI 重生成 v${card.version} · 已检查` : "卡片已失效"}</span>
+        <span class="badge" data-tone="${due.startsWith("逾期") ? "warning" : "success"}">${escapeHtml(due)}</span>`;
+      el("reviewCard").style.setProperty("--subject-color", card.color);
+      el("cardKicker").textContent = `${card.format} · ${card.theme}`;
+      el("cardPrompt").textContent = prompt;
+      el("answerMode").textContent = card.answerMode;
+      el("thinkSpace").textContent = card.valid ? "在纸上、心里或用适合你的方式作答" : "当前卡片暂停使用，请先根据新依据重新生成";
+
+      el("hintRegion").innerHTML = card.hintLevel ? `<div class="hint-box"><strong>${card.hintLevel === 3 ? "完整讲解" : `提示 ${card.hintLevel}`}</strong>${escapeHtml(card.hints[card.hintLevel - 1])}</div>` : "";
+      el("resultRegion").innerHTML = state.message ? `<div class="result-note" data-tone="${state.messageTone}"><strong>刚刚发生</strong>${escapeHtml(state.message)}</div>` : "";
+      el("sourceButton").setAttribute("aria-expanded", String(state.sourceOpen));
+      el("sourceRegion").innerHTML = state.sourceOpen ? `
+        <div class="source-drawer">
+          <strong>来源链与生成说明</strong>
+          <div class="source-grid">
+            <div><span>原题与表现</span>${escapeHtml(card.original)}</div>
+            <div><span>当前学习依据</span>${escapeHtml(card.basis)}</div>
+            <div><span>这张卡改变了什么</span>${escapeHtml(card.difference)}</div>
+            <div><span>成功评价标准</span>${escapeHtml(card.evaluation)}</div>
+          </div>
+        </div>` : "";
+
+      document.querySelectorAll('[data-action="rate"]').forEach(button => {
+        const labels = { easy: "太简单", right: "正合适", hard: "有点难" };
+        button.setAttribute("aria-pressed", String(labels[button.dataset.value] === card.difficulty));
+      });
+    }
+
+    function renderState() {
+      const card = activeCard();
+      const availability = card.valid ? "可继续学习" : "暂不可用，等待重新生成";
+      const evidence = `${card.independentSuccesses}/2 独立成功；${card.supportingSuccesses} 条辅助`;
+      const rows = [
+        ["错题主题", card.theme],
+        ["主题状态", card.status],
+        ["复习时间", ReviewModel.dueLabel(card, state.nowDay)],
+        ["证据进度", `${evidence}<div class="evidence-dots" aria-label="${card.independentSuccesses} 条，共需 2 条独立成功证据"><span class="evidence-dot" data-filled="${card.independentSuccesses >= 1}">1</span><span class="evidence-dot" data-filled="${card.independentSuccesses >= 2}">2</span></div>`],
+        ["最近证据", card.lastEvidence],
+        ["提示使用", card.hintLevel === 0 ? "无提示" : `提示 ${card.hintLevel}`],
+        ["AI 卡片", `v${card.version} · ${availability}`],
+        ["难度反馈", `${card.difficulty}；${card.nextShape}`],
+        ["评价口径", card.evaluation]
+      ];
+      el("stateGrid").innerHTML = rows.map(([key, value]) => `<div class="state-row"><dt>${escapeHtml(key)}</dt><dd>${key === "证据进度" ? value : escapeHtml(value)}</dd></div>`).join("");
+      el("historyList").innerHTML = state.history.slice(0, 8).map(item => `<li>${escapeHtml(item)}</li>`).join("");
+    }
+
+    function renderSession() {
+      const count = Math.min(state.completedThisSession.length, ReviewModel.SESSION_LIMIT);
+      const progress = (count / ReviewModel.SESSION_LIMIT) * 100;
+      el("dayChip").textContent = `模拟第 ${state.nowDay} 天`;
+      el("progressFill").style.width = `${progress}%`;
+      const track = document.querySelector('[role="progressbar"]');
+      track.setAttribute("aria-valuenow", String(count));
+      el("sessionTitle").textContent = count >= ReviewModel.SESSION_LIMIT ? "今天短复习已完成" : `今天短复习 · ${count}/${ReviewModel.SESSION_LIMIT}`;
+    }
+
+    function renderSubjects() {
+      const firstBySubject = [...new Map(state.cards.map(card => [card.subject, card])).values()];
+      el("subjectButtons").innerHTML = firstBySubject.map(card => `<button class="small-button" type="button" data-select-card="${card.id}">${escapeHtml(card.subject)}卡</button>`).join("");
+    }
+
+    function renderScenarios() {
+      el("scenarioTabs").innerHTML = scenarios.map(scenario => `<button class="scenario-tab" type="button" role="tab" aria-selected="${scenario.id === selectedScenario}" data-scenario="${scenario.id}">${escapeHtml(scenario.label)}</button>`).join("");
+      const scenario = scenarios.find(item => item.id === selectedScenario);
+      el("scenarioPanel").innerHTML = `<h3>${escapeHtml(scenario.title)}</h3><p>${escapeHtml(scenario.description)}</p><div class="scenario-steps">${scenario.steps.map(([label], index) => `<button class="step-button" type="button" data-scenario-step="${index}"><span class="step-number">${index + 1}</span>${escapeHtml(label)}</button>`).join("")}</div>`;
+    }
+
+    function render() {
+      renderQueue();
+      renderCard();
+      renderState();
+      renderSession();
+      renderSubjects();
+      renderScenarios();
+    }
+
+    document.addEventListener("click", event => {
+      const scenarioTab = event.target.closest("[data-scenario]");
+      if (scenarioTab) {
+        selectedScenario = scenarioTab.dataset.scenario;
+        dispatch({ type: "START_SCENARIO", scenario: selectedScenario });
+        return;
+      }
+
+      const stepButton = event.target.closest("[data-scenario-step]");
+      if (stepButton) {
+        const scenario = scenarios.find(item => item.id === selectedScenario);
+        dispatch(scenario.steps[Number(stepButton.dataset.scenarioStep)][1]);
+        return;
+      }
+
+      const cardButton = event.target.closest("[data-select-card]");
+      if (cardButton) {
+        dispatch({ type: "SELECT_CARD", id: cardButton.dataset.selectCard });
+        return;
+      }
+
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === "outcome") dispatch({ type: "RECORD_OUTCOME", outcome: button.dataset.value });
+      if (action === "next") dispatch({ type: "NEXT_CARD" });
+      if (action === "rate") dispatch({ type: "RATE_DIFFICULTY", value: button.dataset.value });
+      if (action === "advance") dispatch({ type: "ADVANCE_DAYS", days: Number(button.dataset.value) });
+      if (action === "hint") dispatch({ type: "USE_HINT", level: Number(button.dataset.value) });
+      if (action === "toggle-source") dispatch({ type: "TOGGLE_SOURCE" });
+      if (action === "invalidate") dispatch({ type: "INVALIDATE" });
+      if (action === "regenerate") dispatch({ type: "REGENERATE" });
+      if (action === "reset") {
+        selectedScenario = scenarios[0].id;
+        dispatch({ type: "RESET" });
+      }
+    });
+
+    el("sourceButton").addEventListener("click", () => dispatch({ type: "TOGGLE_SOURCE" }));
+
+    render();
+  </script>
+</body>
+</html>
