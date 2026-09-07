@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rhea 安全同伴挑战逻辑原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --blue: #1d4ed8;
+      --blue-strong: #173a8f;
+      --blue-soft: #e8f0ff;
+      --gold: #a65b00;
+      --gold-soft: #fff3ce;
+      --pink: #a61e5c;
+      --pink-soft: #fce7f3;
+      --green: #11613c;
+      --green-soft: #dcfce7;
+      --red: #b42318;
+      --red-soft: #fee4e2;
+      --ink: #14213a;
+      --muted: #526077;
+      --line: #d9e0ed;
+      --surface: #ffffff;
+      --canvas: #f4f7fc;
+      --focus: #7c3aed;
+      --shadow: 0 14px 34px rgba(29, 55, 105, 0.09);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 11px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--canvas); }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 9% 0%, rgba(37, 99, 235, 0.12), transparent 30rem),
+        radial-gradient(circle at 95% 15%, rgba(245, 158, 11, 0.11), transparent 24rem),
+        var(--canvas);
+      font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    button { font: inherit; touch-action: manipulation; }
+    button:not(:disabled) { cursor: pointer; }
+    button:not(:disabled):active { filter: brightness(0.94); }
+    button:focus-visible, [role="tab"]:focus-visible, a:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      top: 8px;
+      left: 8px;
+      z-index: 30;
+      padding: 10px 14px;
+      color: #fff;
+      background: var(--blue-strong);
+      border-radius: 10px;
+      transform: translateY(-160%);
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 72px;
+    }
+
+    .prototype-note {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+      border: 1px solid #a9c4ff;
+      border-radius: var(--radius-md);
+    }
+
+    .prototype-note svg { width: 22px; flex: 0 0 22px; margin-top: 2px; }
+    .prototype-note strong { display: block; }
+    .prototype-note p { margin: 2px 0 0; color: #405273; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+      gap: 26px;
+      align-items: end;
+      padding: 38px 4px 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--blue);
+      font-size: 0.82rem;
+      font-weight: 850;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { text-wrap: pretty; }
+
+    h1 {
+      max-width: 18ch;
+      margin: 0;
+      color: var(--blue-strong);
+      font-size: clamp(2rem, 4vw, 3.3rem);
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      text-wrap: balance;
+    }
+
+    .hero-copy { max-width: 720px; margin: 14px 0 0; color: var(--muted); }
+
+    .question-box {
+      padding: 16px 18px;
+      background: rgba(255,255,255,0.84);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+    }
+
+    .question-box strong { color: var(--blue-strong); }
+    .question-box p { margin: 4px 0 0; color: var(--muted); font-size: 0.91rem; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .stage,
+    .state-panel,
+    .controls,
+    .walkthroughs,
+    .decisions {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .stage { overflow: hidden; }
+
+    .safety-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      color: var(--blue-strong);
+      background: #f7faff;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.84rem;
+      font-weight: 800;
+    }
+
+    .safety-items { display: flex; flex-wrap: wrap; gap: 10px; }
+
+    .safety-chip {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      padding: 5px 10px;
+      color: var(--green);
+      background: var(--green-soft);
+      border-radius: 999px;
+    }
+
+    .stage-body { padding: clamp(20px, 4vw, 34px); }
+
+    .status-path {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+
+    .path-step {
+      position: relative;
+      min-height: 66px;
+      padding: 10px 11px;
+      color: var(--muted);
+      background: #f3f5f9;
+      border: 1px solid #e2e6ef;
+      border-radius: 13px;
+      font-size: 0.78rem;
+      font-weight: 750;
+    }
+
+    .path-step span { display: block; color: inherit; font-size: 1rem; font-weight: 900; }
+    .path-step[data-state="done"] { color: var(--green); background: var(--green-soft); border-color: #9bdfb6; }
+    .path-step[data-state="current"] { color: var(--blue-strong); background: var(--blue-soft); border-color: #9bb9fb; }
+
+    .relationship-card {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 14px;
+      align-items: center;
+      padding: 18px;
+      background: linear-gradient(145deg, #fff 20%, #f8faff 100%);
+      border: 1px solid #cbd7ec;
+      border-radius: 20px;
+    }
+
+    .person {
+      display: grid;
+      justify-items: center;
+      gap: 7px;
+      text-align: center;
+    }
+
+    .avatar {
+      display: grid;
+      width: 64px;
+      height: 64px;
+      place-items: center;
+      color: #fff;
+      background: var(--blue);
+      border: 4px solid #fff;
+      border-radius: 22px;
+      box-shadow: 0 4px 0 #b9ccf3;
+      font-size: 1.25rem;
+      font-weight: 900;
+    }
+
+    .person:nth-child(3) .avatar { color: #4a2b00; background: #f8c34f; box-shadow: 0 4px 0 #dfab3c; }
+    .person strong { color: var(--ink); }
+    .person small { color: var(--muted); }
+
+    .link-state {
+      display: grid;
+      min-width: 116px;
+      justify-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+
+    .link-line { width: 72px; height: 4px; background: #cbd5e1; border-radius: 999px; }
+    .link-line[data-active="true"] { background: var(--green); }
+
+    .privacy-note,
+    .event-note,
+    .challenge-empty {
+      margin-top: 14px;
+      padding: 14px 16px;
+      border-radius: 14px;
+    }
+
+    .privacy-note { color: #3f4c62; background: #f5f7fa; border: 1px solid #d8dee8; }
+    .privacy-note strong, .event-note strong { display: block; margin-bottom: 3px; }
+    .event-note { color: var(--blue-strong); background: var(--blue-soft); border: 1px solid #a9c4ff; }
+    .event-note[data-tone="success"] { color: var(--green); background: var(--green-soft); border-color: #9bdfb6; }
+    .event-note[data-tone="warning"] { color: #744200; background: var(--gold-soft); border-color: #ebca76; }
+    .event-note[data-tone="danger"] { color: #8f1d16; background: var(--red-soft); border-color: #f2aaa5; }
+
+    .challenge-card {
+      margin-top: 18px;
+      padding: 20px;
+      background: #fff;
+      border: 1px solid #cbd7ec;
+      border-radius: 20px;
+    }
+
+    .challenge-head {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .challenge-head h2 { margin: 0; color: var(--blue-strong); font-size: 1.24rem; }
+    .challenge-head p { margin: 4px 0 0; color: var(--muted); font-size: 0.88rem; }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+    .badge {
+      display: inline-flex;
+      min-height: 30px;
+      align-items: center;
+      padding: 5px 9px;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 850;
+    }
+
+    .badge[data-tone="gold"] { color: #6f3b00; background: var(--gold-soft); }
+    .badge[data-tone="green"] { color: var(--green); background: var(--green-soft); }
+    .badge[data-tone="red"] { color: var(--red); background: var(--red-soft); }
+
+    .question-package {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin-top: 16px;
+    }
+
+    .package-item {
+      padding: 11px 12px;
+      background: #f7f9fc;
+      border: 1px solid #e0e5ee;
+      border-radius: 12px;
+    }
+
+    .package-item span { display: block; color: var(--muted); font-size: 0.73rem; font-weight: 750; }
+    .package-item strong { font-size: 0.86rem; }
+
+    .players-result {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .player-result {
+      padding: 15px;
+      background: #f9fbff;
+      border: 1px solid #dce4f1;
+      border-radius: 15px;
+    }
+
+    .player-title { display: flex; gap: 9px; align-items: center; justify-content: space-between; }
+    .player-title strong { color: var(--blue-strong); }
+    .player-title span { color: var(--muted); font-size: 0.78rem; }
+
+    .mini-progress { height: 8px; margin: 12px 0 8px; overflow: hidden; background: #e4e8ef; border-radius: 999px; }
+    .mini-progress div { height: 100%; background: var(--blue); border-radius: inherit; }
+
+    .score-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 7px;
+      margin-top: 11px;
+    }
+
+    .score-cell { padding: 8px; text-align: center; background: #fff; border: 1px solid #e1e6ef; border-radius: 10px; }
+    .score-cell span { display: block; color: var(--muted); font-size: 0.68rem; }
+    .score-cell strong { font-size: 0.9rem; }
+
+    .shared-goal {
+      margin-top: 14px;
+      padding: 14px 16px;
+      color: #5b3400;
+      background: var(--gold-soft);
+      border: 1px solid #ebca76;
+      border-radius: 14px;
+    }
+
+    .shared-goal strong { display: block; }
+
+    .goal-track { height: 9px; margin-top: 9px; overflow: hidden; background: #f3d99b; border-radius: 999px; }
+    .goal-track div { height: 100%; background: var(--gold); border-radius: inherit; }
+
+    .preset-reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+    .reaction-button,
+    .action-button,
+    .small-button,
+    .tab-button,
+    .step-button {
+      min-height: 44px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid #b9c3d4;
+      border-radius: 12px;
+      font-weight: 800;
+    }
+
+    .reaction-button { padding: 8px 12px; color: var(--blue-strong); }
+    .reaction-button:hover, .small-button:hover, .step-button:hover { background: #f3f7ff; border-color: #84a7f2; }
+
+    .state-panel { position: sticky; top: 14px; padding: 22px; }
+    .panel-heading { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+    .panel-heading h2, .controls h2, .walkthroughs h2, .decisions h2 { margin: 0; color: var(--blue-strong); font-size: 1.2rem; }
+    .live-chip { padding: 4px 8px; color: var(--green); background: var(--green-soft); border-radius: 999px; font-size: 0.72rem; font-weight: 850; }
+    .state-intro { margin: 7px 0 16px; color: var(--muted); font-size: 0.86rem; }
+    .state-grid { display: grid; gap: 0; }
+    .state-row { display: grid; grid-template-columns: 108px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid #e8ebf1; }
+    .state-row dt { color: var(--muted); font-size: 0.78rem; font-weight: 750; }
+    .state-row dd { margin: 0; font-size: 0.86rem; font-weight: 750; overflow-wrap: anywhere; }
+
+    .history { margin-top: 17px; padding-top: 15px; border-top: 1px solid var(--line); }
+    .history h3 { margin: 0 0 9px; font-size: 0.9rem; }
+    .history ol { max-height: 186px; margin: 0; padding-left: 20px; overflow: auto; color: var(--muted); font-size: 0.78rem; }
+    .history li + li { margin-top: 6px; }
+
+    .controls, .walkthroughs, .decisions { margin-top: 18px; padding: clamp(20px, 3vw, 28px); }
+    .section-copy { max-width: 790px; margin: 7px 0 18px; color: var(--muted); }
+    .control-group { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: start; padding: 14px 0; border-top: 1px solid #e8ebf1; }
+    .control-group > strong { padding-top: 11px; font-size: 0.86rem; }
+    .action-row { display: flex; flex-wrap: wrap; gap: 9px; }
+    .small-button { padding: 8px 12px; }
+    .small-button[data-kind="primary"] { color: #fff; background: var(--blue); border-color: var(--blue); }
+    .small-button[data-kind="safe"] { color: var(--green); background: #f3fff7; border-color: #89cca4; }
+    .small-button[data-kind="warn"] { color: #714000; background: #fffaf0; border-color: #e3bd66; }
+    .small-button[data-kind="danger"] { color: var(--red); background: #fff8f7; border-color: #eda39d; }
+
+    .scenario-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+    .tab-button { padding: 8px 13px; color: var(--muted); background: #f3f5f9; border-color: transparent; border-radius: 999px; }
+    .tab-button[aria-selected="true"] { color: var(--blue-strong); background: var(--blue-soft); border-color: #9bb9fb; }
+    .scenario-panel { padding: 18px; background: #f9fbff; border: 1px solid var(--line); border-radius: 16px; }
+    .scenario-panel h3 { margin: 0; font-size: 1rem; }
+    .scenario-panel p { margin: 6px 0 15px; color: var(--muted); }
+    .scenario-steps { display: flex; flex-wrap: wrap; gap: 9px; }
+    .step-button { position: relative; min-height: 48px; padding: 10px 13px 10px 42px; text-align: left; }
+    .step-number { position: absolute; left: 11px; top: 50%; display: grid; width: 23px; height: 23px; place-items: center; color: #fff; background: var(--blue); border-radius: 50%; transform: translateY(-50%); font-size: 0.72rem; }
+
+    .decision-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+    .decision-item { padding: 16px; background: #f9fbff; border: 1px solid var(--line); border-radius: 14px; }
+    .decision-item strong { display: block; color: var(--blue-strong); }
+    .decision-item p { margin: 5px 0 0; color: var(--muted); font-size: 0.84rem; }
+
+    @media (max-width: 900px) {
+      .hero, .workspace { grid-template-columns: 1fr; }
+      .state-panel { position: static; }
+      .decision-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      .page { width: min(100% - 20px, 1180px); padding-top: 12px; }
+      .hero { padding: 28px 2px 18px; }
+      .stage-body { padding: 15px 13px 22px; }
+      .status-path { grid-template-columns: 1fr 1fr; }
+      .relationship-card { grid-template-columns: 1fr; }
+      .link-state { min-width: 0; }
+      .link-line { width: 4px; height: 28px; }
+      .question-package, .players-result { grid-template-columns: 1fr; }
+      .control-group { grid-template-columns: 1fr; gap: 6px; }
+      .control-group > strong { padding-top: 0; }
+      .decision-grid { grid-template-columns: 1fr; }
+      .state-row { grid-template-columns: 98px 1fr; }
+      .small-button { flex: 1 1 calc(50% - 9px); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#challengeStage">跳到挑战状态</a>
+  <main class="page">
+    <div class="prototype-note" role="note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+      <div><strong>可抛弃逻辑原型，不是最终社交界面</strong><p>所有昵称、分数和邀请均为本页内示例；无网络、无真实儿童数据、刷新即清空。</p></div>
+    </div>
+
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Rhea safe challenge lab</p>
+        <h1>一起挑战，怎样既有趣又不伤人？</h1>
+        <p class="hero-copy">推动邀请、批准、答题、计分、断线、复核和退出状态，检查每一步谁能看到什么、哪些结果可以计分，以及奖励是否鼓励学习而不是制造压力。</p>
+      </div>
+      <aside class="question-box"><strong>本原型回答的问题</strong><p>同伴挑战能否保留“PK”的期待感，同时把身份授权、学习隐私、个人进步和退出权放在胜负之前？</p></aside>
+    </header>
+
+    <div class="workspace">
+      <section class="stage" id="challengeStage" aria-label="同伴挑战状态模拟器">
+        <div class="safety-strip">
+          <span>安全边界始终生效</span>
+          <div class="safety-items">
+            <span class="safety-chip">仅获准伙伴</span>
+            <span class="safety-chip">无自由聊天</span>
+            <span class="safety-chip">无公开排名</span>
+          </div>
+        </div>
+        <div class="stage-body">
+          <div class="status-path" id="statusPath" aria-label="学习伙伴建立进度"></div>
+
+          <article class="relationship-card" aria-label="当前学习伙伴关系">
+            <div class="person"><div class="avatar" aria-hidden="true">禾</div><strong id="ownName">学习者 A</strong><small>自己的学习档案</small></div>
+            <div class="link-state"><div class="link-line" id="linkLine"></div><span id="linkText">尚未建立关系</span></div>
+            <div class="person"><div class="avatar" id="peerAvatar" aria-hidden="true">待</div><strong id="peerName">身份暂不显示</strong><small id="peerMeta">等待双向批准</small></div>
+          </article>
+
+          <div class="privacy-note" id="privacyNote"></div>
+          <div class="event-note" id="eventNote" aria-live="polite"></div>
+
+          <article class="challenge-card" id="challengeCard"></article>
+        </div>
+      </section>
+
+      <aside class="state-panel" aria-labelledby="stateTitle">
+        <div class="panel-heading"><h2 id="stateTitle">安全状态透镜</h2><span class="live-chip">实时</span></div>
+        <p class="state-intro">每个动作后展示完整相关状态；被拒绝的动作也会说明原因。</p>
+        <dl class="state-grid" id="stateGrid"></dl>
+        <div class="history"><h3>最近变化</h3><ol id="historyList" aria-live="polite"></ol></div>
+      </aside>
+    </div>
+
+    <section class="controls" aria-labelledby="controlTitle">
+      <h2 id="controlTitle">自由操作</h2>
+      <p class="section-copy">可以故意乱序点击，检查未批准关系是否会泄露身份或进入挑战。</p>
+      <div class="control-group"><strong>学习伙伴邀请</strong><div class="action-row">
+        <button class="small-button" data-kind="primary" data-action="create-invite" type="button">创建一次性邀请</button>
+        <button class="small-button" data-action="approve-own" type="button">本方监护人批准</button>
+        <button class="small-button" data-action="peer-joins" type="button">同学输入邀请码</button>
+        <button class="small-button" data-action="approve-peer" type="button">对方监护人批准</button>
+        <button class="small-button" data-kind="warn" data-action="cancel-invite" type="button">取消当前邀请</button>
+        <button class="small-button" data-kind="warn" data-action="expire-invite" type="button">模拟邀请过期</button>
+      </div></div>
+      <div class="control-group"><strong>创建与参与挑战</strong><div class="action-row">
+        <button class="small-button" data-kind="primary" data-action="create-challenge" data-value="友谊赛" type="button">发起异步友谊赛</button>
+        <button class="small-button" data-kind="safe" data-action="create-challenge" data-value="共同目标" type="button">发起共同目标</button>
+        <button class="small-button" data-action="accept-challenge" type="button">伙伴接受挑战</button>
+        <button class="small-button" data-kind="warn" data-action="expire-challenge" type="button">模拟挑战到期</button>
+      </div></div>
+      <div class="control-group"><strong>实时可选状态</strong><div class="action-row">
+        <button class="small-button" data-action="go-live" type="button">双方同时在线</button>
+        <button class="small-button" data-action="peer-offline" type="button">伙伴暂时离线</button>
+        <button class="small-button" data-action="reaction" data-value="一起加油" type="button">发送“ 一起加油 ”</button>
+        <button class="small-button" data-action="reaction" data-value="我稍后完成" type="button">发送“ 我稍后完成 ”</button>
+      </div></div>
+      <div class="control-group"><strong>模拟有效作答</strong><div class="action-row">
+        <button class="small-button" data-action="submit-own" type="button">小禾提交 4/5</button>
+        <button class="small-button" data-action="submit-peer" type="button">星星提交 5/5</button>
+        <button class="small-button" data-kind="warn" data-action="flag-review" type="button">标记一道题待复核</button>
+        <button class="small-button" data-kind="safe" data-action="resolve-review" type="button">完成复核</button>
+      </div></div>
+      <div class="control-group"><strong>退出与安全</strong><div class="action-row">
+        <button class="small-button" data-kind="warn" data-action="cancel-challenge" type="button">取消当前挑战</button>
+        <button class="small-button" data-kind="danger" data-action="end-relation" type="button">立即结束伙伴关系</button>
+        <button class="small-button" data-kind="danger" data-action="report" type="button">举报并暂停新共享</button>
+        <button class="small-button" data-action="reset" type="button">重置原型</button>
+      </div></div>
+    </section>
+
+    <section class="walkthroughs" aria-labelledby="walkTitle">
+      <h2 id="walkTitle">引导场景</h2>
+      <p class="section-copy">选择场景会恢复到对应起点；请依次点击编号步骤并观察安全状态透镜。</p>
+      <div class="scenario-tabs" role="tablist" aria-label="同伴挑战验证场景" id="scenarioTabs"></div>
+      <div class="scenario-panel" role="tabpanel" id="scenarioPanel"></div>
+    </section>
+
+    <section class="decisions" aria-labelledby="decisionTitle">
+      <h2 id="decisionTitle">请重点判断这 8 个建议</h2>
+      <div class="decision-grid">
+        <div class="decision-item"><strong>双向监护批准</strong><p>双方批准前不显示昵称、头像、成绩或挑战数据；邀请短时有效且可取消。</p></div>
+        <div class="decision-item"><strong>异步优先</strong><p>挑战默认 48 小时内完成；实时在线不计速度，断线自动回到异步。</p></div>
+        <div class="decision-item"><strong>独立题包</strong><p>相同知识点与难度带、不同题面；V1 仅用可自动确认题目，绝不分享原错题与作答。</p></div>
+        <div class="decision-item"><strong>透明成长分</strong><p>正确质量 60%、个人进步 30%、完成参与 10%；首次无基线只做热身局。</p></div>
+        <div class="decision-item"><strong>XP 不绑定胜负</strong><p>按有效完成、正确表现和个人突破奖励；同题包只计一次并设挑战日上限，不限制继续学习。</p></div>
+        <div class="decision-item"><strong>多种被看见方式</strong><p>展示“成长领先”和双方亮点徽章，不显示失败、落后、连败或永久胜负榜。</p></div>
+        <div class="decision-item"><strong>合作也有目标</strong><p>可选择共同目标；仅允许预设鼓励和状态消息，不开放自由聊天。</p></div>
+        <div class="decision-item"><strong>随时安全退出</strong><p>学习者或任一监护人可立即结束关系；未完成挑战取消且历史去标识。</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Portable state machine for the prototype. It has no DOM dependencies.
+    const ChallengeModel = (() => {
+      const FRIENDLY = "友谊赛";
+      const COOP = "共同目标";
+
+      function participant(name, baseline) {
+        return { name, baseline, submitted: false, correct: 0, total: 5, score: null, xp: 0, badges: [] };
+      }
+
+      function createChallenge() {
+        return {
+          status: "无挑战",
+          mode: null,
+          presence: "异步",
+          deadlineHours: null,
+          questionPackage: "尚未生成",
+          reviewPending: false,
+          resultVisibility: "无结果",
+          warmup: false,
+          own: participant("小禾", 0.6),
+          peer: participant("星星", 1),
+          leader: null,
+          groupGoal: { current: 0, target: 8 },
+          reactions: [],
+          deidentifiedHistory: false
+        };
+      }
+
+      function createInitialState(preset = "invite") {
+        const state = {
+          relation: {
+            status: "未建立",
+            ownGuardian: false,
+            peerJoined: false,
+            peerGuardian: false,
+            identityVisible: false,
+            inviteHoursLeft: null,
+            sharing: "无儿童身份或学习数据共享",
+            invitationsPaused: false
+          },
+          challenge: createChallenge(),
+          message: "创建邀请前，双方之间没有任何儿童身份或学习数据可见。",
+          tone: "info",
+          history: ["初始：没有学习伙伴关系，也没有挑战。"],
+          preset
+        };
+
+        if (["async", "live", "warmup", "coop", "review", "exit"].includes(preset)) {
+          state.relation = {
+            status: "已建立",
+            ownGuardian: true,
+            peerJoined: true,
+            peerGuardian: true,
+            identityVisible: true,
+            inviteHoursLeft: null,
+            sharing: "昵称、头像、当前挑战结果、有限徽章",
+            invitationsPaused: false
+          };
+          state.message = "学习伙伴关系已获双方监护人批准。";
+          state.history = ["伙伴关系：双方监护人均已批准。"];
+        }
+
+        if (["live", "review", "exit"].includes(preset)) {
+          state.challenge.status = "进行中";
+          state.challenge.mode = FRIENDLY;
+          state.challenge.deadlineHours = 48;
+          state.challenge.questionPackage = "5 题 · 同知识点难度带 · 双方独立生成并检查";
+          state.challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
+          state.message = "异步友谊赛正在进行；速度不参与计分。";
+          state.history.unshift("挑战：双方已接受 48 小时异步友谊赛。")
+        }
+
+        if (preset === "live") {
+          state.challenge.presence = "双方在线（实时可选）";
+          state.message = "双方碰巧同时在线，但没有倒计时或速度分。";
+        }
+
+        if (preset === "warmup") {
+          state.challenge.own.baseline = null;
+          state.challenge.peer.baseline = null;
+          state.message = "双方尚无可比较的个人基线，将创建不排名热身局。";
+        }
+
+        if (preset === "coop") {
+          state.message = "已建立伙伴关系，准备发起共同目标。";
+        }
+
+        if (preset === "review") {
+          state.message = "挑战进行中；观察待复核结果为何不能提前计分。";
+        }
+
+        if (preset === "exit") {
+          state.challenge.own.submitted = true;
+          state.challenge.own.correct = 4;
+          state.challenge.status = "等待另一方";
+          state.challenge.resultVisibility = "只显示小禾已完成，不显示分数";
+          state.message = "小禾已完成，星星尚未完成；现在可安全结束关系。";
+        }
+        return state;
+      }
+
+      function log(state, message, tone = "info") {
+        return { ...state, message, tone, history: [message, ...state.history].slice(0, 18) };
+      }
+
+      function calculateScore(player) {
+        const accuracyRatio = player.correct / player.total;
+        const accuracy = Math.round(accuracyRatio * 60);
+        let growth = null;
+        if (player.baseline !== null) {
+          const delta = accuracyRatio - player.baseline;
+          if (delta >= 0.2) growth = 30;
+          else if (delta >= 0.1) growth = 24;
+          else if (delta > 0) growth = 18;
+          else if (delta === 0) growth = 15;
+          else growth = 8;
+        }
+        const completion = player.submitted ? 10 : 0;
+        return { accuracy, growth, completion, total: growth === null ? null : accuracy + growth + completion };
+      }
+
+      function rewards(player) {
+        const ratio = player.correct / player.total;
+        const improved = player.baseline !== null && ratio > player.baseline;
+        const badges = [];
+        if (ratio === 1) badges.push("全对之星");
+        if (improved) badges.push("个人突破");
+        if (player.submitted) badges.push("坚持完成");
+        return { xp: 20 + player.correct * 2 + (improved ? 10 : 0), badges };
+      }
+
+      function finalize(inputState) {
+        let state = structuredClone(inputState);
+        const challenge = state.challenge;
+        if (!challenge.own.submitted || !challenge.peer.submitted) return state;
+        if (challenge.reviewPending) {
+          challenge.status = "结果待复核";
+          challenge.resultVisibility = "成绩与 XP 暂停，等待有效批改结果";
+          return log(state, "双方均已完成，但存在待复核题目；不展示临时排名或发放 XP。", "warning");
+        }
+
+        challenge.warmup = challenge.own.baseline === null || challenge.peer.baseline === null;
+        challenge.own.score = calculateScore(challenge.own);
+        challenge.peer.score = calculateScore(challenge.peer);
+        const ownReward = rewards(challenge.own);
+        const peerReward = rewards(challenge.peer);
+        challenge.own.xp = ownReward.xp;
+        challenge.peer.xp = peerReward.xp;
+        challenge.own.badges = ownReward.badges;
+        challenge.peer.badges = peerReward.badges;
+        challenge.groupGoal.current = challenge.own.correct + challenge.peer.correct;
+        challenge.status = "已完成";
+
+        if (challenge.mode === COOP) {
+          challenge.resultVisibility = "展示共同目标贡献与各自亮点，不比较名次";
+          challenge.leader = null;
+          return log(state, challenge.groupGoal.current >= challenge.groupGoal.target
+            ? "共同目标达成；双方按自己的有效表现获得 XP 和徽章。"
+            : "共同目标尚未达成；可以下次继续，不扣除任何奖励。", "success");
+        }
+
+        if (challenge.warmup) {
+          challenge.resultVisibility = "热身局：展示准确表现与完成奖励，不显示领先者";
+          challenge.leader = null;
+          return log(state, "这是无个人基线的热身局；建立基线但不比较成长分。", "success");
+        }
+
+        challenge.leader = challenge.own.score.total === challenge.peer.score.total
+          ? "并列"
+          : challenge.own.score.total > challenge.peer.score.total ? challenge.own.name : challenge.peer.name;
+        challenge.resultVisibility = "双方可见透明成长分与亮点徽章，不显示错误明细";
+        return log(state, `${challenge.leader === "并列" ? "本轮成长分并列" : `${challenge.leader}本轮成长分领先`}；胜负不增加或扣除 XP。`, "success");
+      }
+
+      function reduce(inputState, action) {
+        let state = structuredClone(inputState);
+        const relation = state.relation;
+        const challenge = state.challenge;
+
+        if (action.type === "RESET") return createInitialState("invite");
+        if (action.type === "START_SCENARIO") return createInitialState(action.preset);
+
+        if (action.type === "CREATE_INVITE") {
+          if (relation.invitationsPaused) return log(state, "举报处理中，新的邀请与共享保持暂停。", "danger");
+          if (relation.status === "已建立") return log(state, "学习伙伴关系已经建立，无需再次邀请。", "warning");
+          relation.status = "邀请待本方批准";
+          relation.inviteHoursLeft = 24;
+          relation.identityVisible = false;
+          relation.sharing = "仅生成无身份信息的一次性邀请码";
+          return log(state, "一次性邀请已创建；本方监护人批准前不能交给同学。")
+        }
+
+        if (action.type === "APPROVE_OWN") {
+          if (relation.status !== "邀请待本方批准") return log(state, "当前没有等待本方监护人批准的邀请。", "warning");
+          relation.ownGuardian = true;
+          relation.status = "等待同学输入邀请码";
+          return log(state, "本方监护人已批准；可以在线下把一次性邀请码交给认识的同学。", "success");
+        }
+
+        if (action.type === "PEER_JOINS") {
+          if (relation.status !== "等待同学输入邀请码") return log(state, "邀请码尚未获本方批准或已经失效，不能加入。", "danger");
+          relation.peerJoined = true;
+          relation.status = "等待对方监护人批准";
+          return log(state, "同学已输入邀请码；双方身份与学习数据仍然隐藏。")
+        }
+
+        if (action.type === "APPROVE_PEER") {
+          if (relation.status !== "等待对方监护人批准") return log(state, "对方尚未通过有效邀请码加入，不能建立关系。", "danger");
+          relation.peerGuardian = true;
+          relation.status = "已建立";
+          relation.identityVisible = true;
+          relation.inviteHoursLeft = null;
+          relation.sharing = "昵称、头像、当前挑战结果、有限徽章";
+          return log(state, "双方监护人均已批准；现在才显示获准昵称和头像。", "success");
+        }
+
+        if (action.type === "EXPIRE_INVITE") {
+          if (!relation.inviteHoursLeft) return log(state, "当前没有可过期的邀请。", "warning");
+          state.relation = { ...createInitialState().relation, status: "邀请已过期" };
+          return log(state, "邀请已过期；未建立关系，也没有暴露儿童身份或学习数据。", "warning");
+        }
+
+        if (action.type === "CANCEL_INVITE") {
+          if (!["邀请待本方批准", "等待同学输入邀请码", "等待对方监护人批准"].includes(relation.status)) return log(state, "当前没有可以取消的邀请；已建立关系请使用“结束伙伴关系”。", "warning");
+          state.relation = { ...createInitialState().relation, status: "邀请已取消" };
+          return log(state, "学习者已取消邀请；邀请码立即失效，双方身份与学习数据仍未共享。", "warning");
+        }
+
+        if (action.type === "CREATE_CHALLENGE") {
+          if (relation.status !== "已建立") return log(state, "只有已获双向监护批准的学习伙伴才能发起挑战。", "danger");
+          if (challenge.status !== "无挑战" && challenge.status !== "已取消" && challenge.status !== "已完成") return log(state, "当前已有未结束挑战，不能重复发起。", "warning");
+          const ownBaseline = challenge.own.baseline;
+          const peerBaseline = challenge.peer.baseline;
+          state.challenge = createChallenge();
+          state.challenge.own.baseline = ownBaseline;
+          state.challenge.peer.baseline = peerBaseline;
+          state.challenge.status = "等待伙伴接受";
+          state.challenge.mode = action.mode;
+          state.challenge.deadlineHours = 24;
+          state.challenge.questionPackage = "等待接受后独立生成";
+          state.challenge.resultVisibility = "只显示挑战模式与知识点范围";
+          return log(state, `已发起${action.mode}；伙伴可接受或忽略，没有拒绝惩罚。`);
+        }
+
+        if (action.type === "ACCEPT_CHALLENGE") {
+          if (challenge.status !== "等待伙伴接受") return log(state, "当前没有等待接受的挑战。", "warning");
+          challenge.status = "进行中";
+          challenge.deadlineHours = 48;
+          challenge.questionPackage = "5 题 · 同知识点难度带 · 双方独立生成并检查";
+          challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
+          challenge.warmup = challenge.own.baseline === null || challenge.peer.baseline === null;
+          return log(state, challenge.warmup
+            ? "挑战已开始；因缺少个人基线，本轮自动成为不排名热身局。"
+            : "48 小时异步挑战已开始；双方题面不同，速度不计分。", "success");
+        }
+
+        if (action.type === "GO_LIVE") {
+          if (challenge.status !== "进行中" && challenge.status !== "等待另一方") return log(state, "只有进行中的挑战才能进入同时在线状态。", "warning");
+          challenge.presence = "双方在线（实时可选）";
+          return log(state, "双方同时在线；仍无倒计时、速度分或自由聊天。", "success");
+        }
+
+        if (action.type === "PEER_OFFLINE") {
+          if (!challenge.mode || ["无挑战", "已取消", "已完成"].includes(challenge.status)) return log(state, "当前没有可转回异步的挑战。", "warning");
+          challenge.presence = "异步";
+          return log(state, "伙伴暂时离线；挑战自动回到异步并保留双方进度。")
+        }
+
+        if (action.type === "REACTION") {
+          if (relation.status !== "已建立" || !["进行中", "等待另一方"].includes(challenge.status)) return log(state, "只有进行中的获准挑战才能发送预设消息。", "danger");
+          const allowed = ["一起加油", "我稍后完成", "再来一轮"];
+          if (!allowed.includes(action.value)) return log(state, "自由文字不会被发送，只能使用预设安全消息。", "danger");
+          challenge.reactions.unshift(action.value);
+          return log(state, `已发送预设消息“${action.value}”；没有开放自由聊天。`);
+        }
+
+        if (action.type === "SUBMIT") {
+          if (!["进行中", "等待另一方"].includes(challenge.status)) return log(state, "挑战尚未开始或已经结束，不能提交挑战结果。", "danger");
+          const key = action.player;
+          if (challenge[key].submitted) return log(state, `${challenge[key].name}已经提交，不能重复刷取分数或 XP。`, "warning");
+          challenge[key].submitted = true;
+          challenge[key].correct = action.correct;
+          if (!challenge.own.submitted || !challenge.peer.submitted) {
+            challenge.status = "等待另一方";
+            challenge.resultVisibility = `只显示${challenge[key].name}已完成，不提前显示分数或对错明细`;
+            return log(state, `${challenge[key].name}已完成；等待伙伴时没有催促倒计时或领先提示。`);
+          }
+          return finalize(state);
+        }
+
+        if (action.type === "FLAG_REVIEW") {
+          if (!["进行中", "等待另一方"].includes(challenge.status)) return log(state, "当前没有可以标记复核的进行中结果。", "warning");
+          challenge.reviewPending = true;
+          challenge.resultVisibility = "受影响题目暂不计分"
+          return log(state, "一道题的依据或批改结果待复核；相关分数与奖励保持暂停。", "warning");
+        }
+
+        if (action.type === "RESOLVE_REVIEW") {
+          if (!challenge.reviewPending) return log(state, "当前没有待复核结果。", "warning");
+          challenge.reviewPending = false;
+          state = log(state, "复核完成并形成有效批改结果，重新计算双方结果。", "success");
+          return finalize(state);
+        }
+
+        if (action.type === "EXPIRE_CHALLENGE") {
+          if (!["等待伙伴接受", "进行中", "等待另一方"].includes(challenge.status)) return log(state, "当前没有可到期的挑战。", "warning");
+          const ownCompleted = challenge.own.submitted;
+          challenge.status = "已取消";
+          challenge.resultVisibility = "不产生胜负；已完成作答仅保留为自己的学习记录";
+          challenge.presence = "异步";
+          return log(state, ownCompleted
+            ? "挑战到期且未形成对局结果；已完成者保留自己的有效学习记录，不获得胜者奖励。"
+            : "挑战到期自动结束；双方都没有排名、连胜或 XP 惩罚。", "warning");
+        }
+
+        if (action.type === "CANCEL_CHALLENGE") {
+          if (["无挑战", "已取消"].includes(challenge.status)) return log(state, "当前没有需要取消的挑战。", "warning");
+          challenge.status = "已取消";
+          challenge.presence = "异步";
+          challenge.resultVisibility = "不产生胜负或惩罚";
+          return log(state, "挑战已取消；不扣 XP、不计连败，也不会影响学习伙伴关系。", "warning");
+        }
+
+        if (action.type === "END_RELATION") {
+          const hadRelation = relation.status === "已建立";
+          relation.status = "已结束";
+          relation.identityVisible = false;
+          relation.sharing = "停止新的邀请与挑战共享";
+          challenge.status = challenge.status === "无挑战" ? "无挑战" : "已取消";
+          challenge.presence = "异步";
+          challenge.resultVisibility = "各自仅保留去标识挑战结果";
+          challenge.deidentifiedHistory = true;
+          return log(state, hadRelation
+            ? "伙伴关系立即结束；未完成挑战取消，对方身份从历史中移除，无任何惩罚。"
+            : "当前没有有效伙伴关系；身份和共享仍保持关闭。", "warning");
+        }
+
+        if (action.type === "REPORT") {
+          relation.status = "举报处理中";
+          relation.identityVisible = false;
+          relation.sharing = "对方已隐藏，停止新的共享";
+          relation.invitationsPaused = true;
+          challenge.status = challenge.status === "无挑战" ? "无挑战" : "已取消";
+          challenge.presence = "异步";
+          challenge.resultVisibility = "结果暂停；不自动认定或处罚任何学习者";
+          return log(state, "已隐藏对方并暂停新邀请；进入人工或属地适用处置，不自动处罚对方。", "danger");
+        }
+
+        return log(state, "当前动作没有定义，状态未改变。", "danger");
+      }
+
+      return { createInitialState, reduce };
+    })();
+
+    const scenarios = [
+      {
+        id: "invite", label: "邀请双批准", title: "批准前，儿童身份始终不可见",
+        description: "按顺序建立关系；也可以先乱序点击“对方监护人批准”，检查系统拒绝。",
+        steps: [
+          ["创建一次性邀请", { type: "CREATE_INVITE" }],
+          ["本方监护人批准", { type: "APPROVE_OWN" }],
+          ["同学输入邀请码", { type: "PEER_JOINS" }],
+          ["对方监护人批准", { type: "APPROVE_PEER" }]
+        ]
+      },
+      {
+        id: "async", label: "异步成长分", title: "双方完成前不显示临时领先",
+        description: "小禾先完成、星星稍后完成；最终分数拆成正确质量、个人进步和完成参与。",
+        steps: [
+          ["发起异步友谊赛", { type: "CREATE_CHALLENGE", mode: "友谊赛" }],
+          ["伙伴接受", { type: "ACCEPT_CHALLENGE" }],
+          ["小禾提交 4/5", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["星星稍后提交 5/5", { type: "SUBMIT", player: "peer", correct: 5 }]
+        ]
+      },
+      {
+        id: "live", label: "实时断线降级", title: "实时只是共同在线，不是竞速模式",
+        description: "发送预设鼓励后让伙伴离线，挑战应无损回到异步并保留进度。",
+        steps: [
+          ["发送预设鼓励", { type: "REACTION", value: "一起加油" }],
+          ["伙伴暂时离线", { type: "PEER_OFFLINE" }],
+          ["小禾继续提交", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["星星以后再提交", { type: "SUBMIT", player: "peer", correct: 5 }]
+        ]
+      },
+      {
+        id: "warmup", label: "首次热身局", title: "没有个人基线时，不制造不公平排名",
+        description: "双方仍能完成题目并获得学习奖励，但本轮只建立基线，不比较成长分。",
+        steps: [
+          ["发起友谊赛", { type: "CREATE_CHALLENGE", mode: "友谊赛" }],
+          ["伙伴接受为热身局", { type: "ACCEPT_CHALLENGE" }],
+          ["小禾提交 4/5", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["星星提交 5/5", { type: "SUBMIT", player: "peer", correct: 5 }]
+        ]
+      },
+      {
+        id: "coop", label: "共同目标", title: "不想比较时，也能一起成长",
+        description: "双方合计完成 8 道有效题即可达成目标，各自仍按自己的学习表现获得奖励。",
+        steps: [
+          ["发起共同目标", { type: "CREATE_CHALLENGE", mode: "共同目标" }],
+          ["伙伴接受", { type: "ACCEPT_CHALLENGE" }],
+          ["小禾完成 4/5", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["星星完成 5/5", { type: "SUBMIT", player: "peer", correct: 5 }]
+        ]
+      },
+      {
+        id: "review", label: "结果待复核", title: "不确定结果不能先计分再悄悄修改",
+        description: "先标记复核，再让双方完成；成绩和 XP 应保持暂停，直到复核结束。",
+        steps: [
+          ["小禾提交", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["标记一道题待复核", { type: "FLAG_REVIEW" }],
+          ["星星提交", { type: "SUBMIT", player: "peer", correct: 5 }],
+          ["完成复核并重算", { type: "RESOLVE_REVIEW" }]
+        ]
+      },
+      {
+        id: "exit", label: "随时退出", title: "退出不需要等对方同意",
+        description: "一方已经作答也不阻塞退出；未完成挑战取消，历史移除对方身份。",
+        steps: [
+          ["立即结束伙伴关系", { type: "END_RELATION" }],
+          ["尝试再次发起挑战", { type: "CREATE_CHALLENGE", mode: "友谊赛" }]
+        ]
+      }
+    ];
+
+    let state = ChallengeModel.createInitialState("invite");
+    let selectedScenario = "invite";
+    const el = id => document.getElementById(id);
+    const escapeHtml = value => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
+
+    function dispatch(action) {
+      state = ChallengeModel.reduce(state, action);
+      render();
+    }
+
+    function relationProgress() {
+      const relation = state.relation;
+      if (relation.status === "已建立") return 4;
+      if (relation.peerJoined) return 3;
+      if (relation.ownGuardian) return 2;
+      if (["邀请待本方批准", "等待同学输入邀请码"].includes(relation.status)) return 1;
+      return 0;
+    }
+
+    function renderRelationship() {
+      const progress = relationProgress();
+      const steps = ["创建邀请", "本方批准", "同学加入", "对方批准"];
+      el("statusPath").innerHTML = steps.map((label, index) => {
+        const number = index + 1;
+        const status = progress > number ? "done" : progress === number ? "current" : progress === 4 ? "done" : "pending";
+        return `<div class="path-step" data-state="${status}"><span>${number}</span>${escapeHtml(label)}</div>`;
+      }).join("");
+      el("linkLine").dataset.active = String(state.relation.status === "已建立");
+      el("linkText").textContent = state.relation.status;
+      el("ownName").textContent = state.relation.identityVisible ? "小禾" : "学习者 A";
+      el("peerAvatar").textContent = state.relation.identityVisible ? "星" : "待";
+      el("peerName").textContent = state.relation.identityVisible ? "星星" : "身份暂不显示";
+      el("peerMeta").textContent = state.relation.identityVisible ? "获准学习伙伴" : "等待双向批准";
+      el("privacyNote").innerHTML = `<strong>当前共享范围</strong>${escapeHtml(state.relation.sharing)}。始终不共享真实姓名、学校、位置、照片、错题库、原始作答、笔迹或错因。`;
+      el("eventNote").dataset.tone = state.tone;
+      el("eventNote").innerHTML = `<strong>刚刚发生</strong>${escapeHtml(state.message)}`;
+    }
+
+    function scoreMarkup(player, visible, warmup) {
+      const progress = player.submitted ? (player.correct / player.total) * 100 : 0;
+      const score = player.score;
+      const details = visible && score ? `
+        <div class="score-grid">
+          <div class="score-cell"><span>正确质量 60%</span><strong>${score.accuracy}</strong></div>
+          <div class="score-cell"><span>个人进步 30%</span><strong>${score.growth === null ? "建立基线" : score.growth}</strong></div>
+          <div class="score-cell"><span>完成参与 10%</span><strong>${score.completion}</strong></div>
+        </div>
+        <div class="badge-row" style="margin-top:10px">${player.badges.map(badge => `<span class="badge" data-tone="gold">${escapeHtml(badge)}</span>`).join("")}<span class="badge" data-tone="green">+${player.xp} XP</span></div>` : "";
+      return `<div class="player-result">
+        <div class="player-title"><strong>${escapeHtml(player.name)}</strong><span>${player.submitted ? `${player.correct}/${player.total} 已完成` : "等待完成"}</span></div>
+        <div class="mini-progress" role="progressbar" aria-label="${escapeHtml(player.name)}挑战完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${player.submitted ? 100 : 0}"><div style="width:${player.submitted ? 100 : 0}%"></div></div>
+        ${details}
+        ${warmup && visible ? '<p style="margin:10px 0 0;color:var(--muted);font-size:.8rem">热身局不比较成长分。</p>' : ""}
+      </div>`;
+    }
+
+    function renderChallenge() {
+      const challenge = state.challenge;
+      if (challenge.status === "无挑战") {
+        el("challengeCard").innerHTML = `<div class="challenge-head"><div><h2>还没有挑战</h2><p>建立获准伙伴关系后，可选择友谊赛或共同目标。</p></div><span class="badge">异步优先</span></div><div class="challenge-empty privacy-note">挑战不是公开社交：没有陌生人匹配、自由聊天、学校榜单或速度排名。</div>`;
+        return;
+      }
+      const resultVisible = challenge.status === "已完成";
+      const groupProgress = Math.min(100, (challenge.groupGoal.current / challenge.groupGoal.target) * 100);
+      el("challengeCard").innerHTML = `
+        <div class="challenge-head">
+          <div><h2>${escapeHtml(challenge.mode || "挑战等待中")}</h2><p>${escapeHtml(challenge.resultVisibility)}</p></div>
+          <div class="badge-row">
+            <span class="badge">${escapeHtml(challenge.status)}</span>
+            <span class="badge" data-tone="green">${escapeHtml(challenge.presence)}</span>
+            ${challenge.warmup ? '<span class="badge" data-tone="gold">不排名热身局</span>' : ""}
+          </div>
+        </div>
+        <div class="question-package">
+          <div class="package-item"><span>题目范围</span><strong>相同主要知识点</strong></div>
+          <div class="package-item"><span>双方题面</span><strong>独立生成，不互相泄题</strong></div>
+          <div class="package-item"><span>批改资格</span><strong>${challenge.reviewPending ? "存在待复核，暂停计分" : "仅有效批改结果计分"}</strong></div>
+        </div>
+        <div class="players-result">
+          ${scoreMarkup(challenge.own, resultVisible, challenge.warmup)}
+          ${scoreMarkup(challenge.peer, resultVisible, challenge.warmup)}
+        </div>
+        ${challenge.mode === "共同目标" ? `<div class="shared-goal"><strong>共同目标：合计完成 ${challenge.groupGoal.target} 道有效题</strong>当前贡献 ${challenge.groupGoal.current}/${challenge.groupGoal.target}<div class="goal-track" role="progressbar" aria-label="共同目标进度" aria-valuemin="0" aria-valuemax="${challenge.groupGoal.target}" aria-valuenow="${challenge.groupGoal.current}"><div style="width:${groupProgress}%"></div></div></div>` : ""}
+        ${resultVisible && challenge.mode === "友谊赛" && !challenge.warmup ? `<div class="shared-goal"><strong>${challenge.leader === "并列" ? "本轮成长分并列" : `${escapeHtml(challenge.leader)}本轮成长分领先`}</strong>双方都保留自己的亮点徽章与学习奖励；领先者没有额外 XP。</div>` : ""}
+        <div class="preset-reactions" aria-label="仅限预设安全消息">
+          <button class="reaction-button" type="button" data-action="reaction" data-value="一起加油">一起加油</button>
+          <button class="reaction-button" type="button" data-action="reaction" data-value="我稍后完成">我稍后完成</button>
+          <button class="reaction-button" type="button" data-action="reaction" data-value="再来一轮">再来一轮</button>
+        </div>`;
+    }
+
+    function renderState() {
+      const relation = state.relation;
+      const challenge = state.challenge;
+      const scorePolicy = challenge.mode === "友谊赛" ? "正确质量 60 + 个人进步 30 + 完成参与 10" : challenge.mode === "共同目标" ? "只累计共同贡献，不排名" : "尚未选择";
+      const rewards = challenge.status === "已完成" ? `小禾 +${challenge.own.xp}；星星 +${challenge.peer.xp}` : challenge.reviewPending ? "暂停，等待复核" : "尚未结算";
+      const rows = [
+        ["伙伴关系", relation.status],
+        ["本方批准", relation.ownGuardian ? "已批准" : "未批准"],
+        ["对方批准", relation.peerGuardian ? "已批准" : "未批准"],
+        ["身份可见", relation.identityVisible ? "仅显示获准昵称与头像" : "不可见"],
+        ["邀请有效期", relation.inviteHoursLeft ? `剩余 ${relation.inviteHoursLeft} 小时` : "无有效邀请"],
+        ["挑战状态", challenge.status],
+        ["挑战模式", challenge.mode || "未选择"],
+        ["在线状态", challenge.presence],
+        ["完成期限", challenge.deadlineHours ? `${challenge.deadlineHours} 小时` : "无"],
+        ["题包", challenge.questionPackage],
+        ["题目资格", "V1 仅限自动确认的客观题或完整可验证过程题"],
+        ["计分规则", scorePolicy],
+        ["结果可见", challenge.resultVisibility],
+        ["奖励", rewards],
+        ["防刷规则", "同一题包仅一次 XP；挑战 XP 有每日上限，学习不限"],
+        ["自由聊天", "始终关闭；仅预设消息"],
+        ["历史处理", challenge.deidentifiedHistory ? "仅保留去标识挑战结果" : "关系结束后去标识"]
+      ];
+      el("stateGrid").innerHTML = rows.map(([key, value]) => `<div class="state-row"><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+      el("historyList").innerHTML = state.history.slice(0, 9).map(item => `<li>${escapeHtml(item)}</li>`).join("");
+    }
+
+    function renderScenarios() {
+      el("scenarioTabs").innerHTML = scenarios.map(scenario => `<button class="tab-button" type="button" role="tab" aria-selected="${scenario.id === selectedScenario}" data-scenario="${scenario.id}">${escapeHtml(scenario.label)}</button>`).join("");
+      const scenario = scenarios.find(item => item.id === selectedScenario);
+      el("scenarioPanel").innerHTML = `<h3>${escapeHtml(scenario.title)}</h3><p>${escapeHtml(scenario.description)}</p><div class="scenario-steps">${scenario.steps.map(([label], index) => `<button class="step-button" type="button" data-step="${index}"><span class="step-number">${index + 1}</span>${escapeHtml(label)}</button>`).join("")}</div>`;
+    }
+
+    function render() {
+      renderRelationship();
+      renderChallenge();
+      renderState();
+      renderScenarios();
+    }
+
+    document.addEventListener("click", event => {
+      const scenarioButton = event.target.closest("[data-scenario]");
+      if (scenarioButton) {
+        selectedScenario = scenarioButton.dataset.scenario;
+        dispatch({ type: "START_SCENARIO", preset: selectedScenario });
+        return;
+      }
+      const stepButton = event.target.closest("[data-step]");
+      if (stepButton) {
+        const scenario = scenarios.find(item => item.id === selectedScenario);
+        dispatch(scenario.steps[Number(stepButton.dataset.step)][1]);
+        return;
+      }
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === "create-invite") dispatch({ type: "CREATE_INVITE" });
+      if (action === "approve-own") dispatch({ type: "APPROVE_OWN" });
+      if (action === "peer-joins") dispatch({ type: "PEER_JOINS" });
+      if (action === "approve-peer") dispatch({ type: "APPROVE_PEER" });
+      if (action === "cancel-invite") dispatch({ type: "CANCEL_INVITE" });
+      if (action === "expire-invite") dispatch({ type: "EXPIRE_INVITE" });
+      if (action === "create-challenge") dispatch({ type: "CREATE_CHALLENGE", mode: button.dataset.value });
+      if (action === "accept-challenge") dispatch({ type: "ACCEPT_CHALLENGE" });
+      if (action === "go-live") dispatch({ type: "GO_LIVE" });
+      if (action === "peer-offline") dispatch({ type: "PEER_OFFLINE" });
+      if (action === "reaction") dispatch({ type: "REACTION", value: button.dataset.value });
+      if (action === "submit-own") dispatch({ type: "SUBMIT", player: "own", correct: 4 });
+      if (action === "submit-peer") dispatch({ type: "SUBMIT", player: "peer", correct: 5 });
+      if (action === "flag-review") dispatch({ type: "FLAG_REVIEW" });
+      if (action === "resolve-review") dispatch({ type: "RESOLVE_REVIEW" });
+      if (action === "expire-challenge") dispatch({ type: "EXPIRE_CHALLENGE" });
+      if (action === "cancel-challenge") dispatch({ type: "CANCEL_CHALLENGE" });
+      if (action === "end-relation") dispatch({ type: "END_RELATION" });
+      if (action === "report") dispatch({ type: "REPORT" });
+      if (action === "reset") {
+        selectedScenario = "invite";
+        dispatch({ type: "RESET" });
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>
