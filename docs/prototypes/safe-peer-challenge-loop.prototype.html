@@ -457,16 +457,16 @@
   <main class="page">
     <div class="prototype-note" role="note">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
-      <div><strong>可抛弃逻辑原型，不是最终社交界面</strong><p>所有昵称、分数和邀请均为本页内示例；无网络、无真实儿童数据、刷新即清空。</p></div>
+      <div><strong>可抛弃逻辑原型，不是最终社交界面</strong><p>所有年级、系统昵称、分数、邀请码与举报均为本页内示例；无网络、无真实儿童数据、刷新即清空。</p></div>
     </div>
 
     <header class="hero">
       <div>
         <p class="eyebrow">Rhea safe challenge lab</p>
         <h1>一起挑战，怎样既有趣又不伤人？</h1>
-        <p class="hero-copy">推动邀请、批准、答题、计分、断线、复核和退出状态，检查每一步谁能看到什么、哪些结果可以计分，以及奖励是否鼓励学习而不是制造压力。</p>
+        <p class="hero-copy">推动一次授权、邀请码、全网同年级匹配、答题、计分、断线、举报和退出状态，检查陌生人挑战能否保持匿名隔离，并且不把安全责任交给孩子。</p>
       </div>
-      <aside class="question-box"><strong>本原型回答的问题</strong><p>同伴挑战能否保留“PK”的期待感，同时把身份授权、学习隐私、个人进步和退出权放在胜负之前？</p></aside>
+      <aside class="question-box"><strong>本原型回答的问题</strong><p>取消逐次监护批准后，邀请码与仅按年级的全网随机匹配，能否通过一次授权、临时匿名配对和主动风控形成安全挑战循环？</p></aside>
     </header>
 
     <div class="workspace">
@@ -474,18 +474,19 @@
         <div class="safety-strip">
           <span>安全边界始终生效</span>
           <div class="safety-items">
-            <span class="safety-chip">仅获准伙伴</span>
+            <span class="safety-chip">全网仅按年级</span>
+            <span class="safety-chip">临时匿名配对</span>
             <span class="safety-chip">无自由聊天</span>
-            <span class="safety-chip">无公开排名</span>
+            <span class="safety-chip">无社交发现</span>
           </div>
         </div>
         <div class="stage-body">
-          <div class="status-path" id="statusPath" aria-label="学习伙伴建立进度"></div>
+          <div class="status-path" id="statusPath" aria-label="挑战准入与配对进度"></div>
 
-          <article class="relationship-card" aria-label="当前学习伙伴关系">
+          <article class="relationship-card" aria-label="当前挑战对象">
             <div class="person"><div class="avatar" aria-hidden="true">禾</div><strong id="ownName">学习者 A</strong><small>自己的学习档案</small></div>
             <div class="link-state"><div class="link-line" id="linkLine"></div><span id="linkText">尚未建立关系</span></div>
-            <div class="person"><div class="avatar" id="peerAvatar" aria-hidden="true">待</div><strong id="peerName">身份暂不显示</strong><small id="peerMeta">等待双向批准</small></div>
+            <div class="person"><div class="avatar" id="peerAvatar" aria-hidden="true">待</div><strong id="peerName">尚未配对</strong><small id="peerMeta">邀请码或全网同年级匹配</small></div>
           </article>
 
           <div class="privacy-note" id="privacyNote"></div>
@@ -505,19 +506,26 @@
 
     <section class="controls" aria-labelledby="controlTitle">
       <h2 id="controlTitle">自由操作</h2>
-      <p class="section-copy">可以故意乱序点击，检查未批准关系是否会泄露身份或进入挑战。</p>
-      <div class="control-group"><strong>学习伙伴邀请</strong><div class="action-row">
+      <p class="section-copy">可以故意乱序点击，检查未授权档案能否进入匹配、随机对手是否会变成长期关系，以及举报后是否还会再次配对。</p>
+      <div class="control-group"><strong>挑战准入</strong><div class="action-row">
+        <button class="small-button" data-kind="primary" data-action="enable-access" type="button">监护人开启并设置三年级</button>
+        <button class="small-button" data-kind="danger" data-action="revoke-access" type="button">撤回挑战授权</button>
+      </div></div>
+      <div class="control-group"><strong>邀请码学习伙伴</strong><div class="action-row">
         <button class="small-button" data-kind="primary" data-action="create-invite" type="button">创建一次性邀请</button>
-        <button class="small-button" data-action="approve-own" type="button">本方监护人批准</button>
         <button class="small-button" data-action="peer-joins" type="button">同学输入邀请码</button>
-        <button class="small-button" data-action="approve-peer" type="button">对方监护人批准</button>
         <button class="small-button" data-kind="warn" data-action="cancel-invite" type="button">取消当前邀请</button>
         <button class="small-button" data-kind="warn" data-action="expire-invite" type="button">模拟邀请过期</button>
+      </div></div>
+      <div class="control-group"><strong>全网同年级匹配</strong><div class="action-row">
+        <button class="small-button" data-kind="primary" data-action="join-random" type="button">加入三年级随机匹配</button>
+        <button class="small-button" data-kind="safe" data-action="find-random" type="button">模拟找到匿名对手</button>
+        <button class="small-button" data-kind="warn" data-action="leave-random" type="button">退出匹配队列</button>
       </div></div>
       <div class="control-group"><strong>创建与参与挑战</strong><div class="action-row">
         <button class="small-button" data-kind="primary" data-action="create-challenge" data-value="友谊赛" type="button">发起异步友谊赛</button>
         <button class="small-button" data-kind="safe" data-action="create-challenge" data-value="共同目标" type="button">发起共同目标</button>
-        <button class="small-button" data-action="accept-challenge" type="button">伙伴接受挑战</button>
+        <button class="small-button" data-action="accept-challenge" type="button">学习伙伴接受挑战</button>
         <button class="small-button" data-kind="warn" data-action="expire-challenge" type="button">模拟挑战到期</button>
       </div></div>
       <div class="control-group"><strong>实时可选状态</strong><div class="action-row">
@@ -534,8 +542,9 @@
       </div></div>
       <div class="control-group"><strong>退出与安全</strong><div class="action-row">
         <button class="small-button" data-kind="warn" data-action="cancel-challenge" type="button">取消当前挑战</button>
-        <button class="small-button" data-kind="danger" data-action="end-relation" type="button">立即结束伙伴关系</button>
-        <button class="small-button" data-kind="danger" data-action="report" type="button">举报并暂停新共享</button>
+        <button class="small-button" data-kind="danger" data-action="end-relation" type="button">退出配对或结束伙伴关系</button>
+        <button class="small-button" data-kind="danger" data-action="report" type="button">举报、结束并永久避配</button>
+        <button class="small-button" data-kind="danger" data-action="escalate-report" type="button">模拟严重或重复风险</button>
         <button class="small-button" data-action="reset" type="button">重置原型</button>
       </div></div>
     </section>
@@ -548,16 +557,16 @@
     </section>
 
     <section class="decisions" aria-labelledby="decisionTitle">
-      <h2 id="decisionTitle">请重点判断这 8 个建议</h2>
+      <h2 id="decisionTitle">本轮已确认的 8 条规则</h2>
       <div class="decision-grid">
-        <div class="decision-item"><strong>双向监护批准</strong><p>双方批准前不显示昵称、头像、成绩或挑战数据；邀请短时有效且可取消。</p></div>
-        <div class="decision-item"><strong>异步优先</strong><p>挑战默认 48 小时内完成；实时在线不计速度，断线自动回到异步。</p></div>
-        <div class="decision-item"><strong>独立题包</strong><p>相同知识点与难度带、不同题面；V1 仅用可自动确认题目，绝不分享原错题与作答。</p></div>
+        <div class="decision-item"><strong>一次授权，不逐次批准</strong><p>监护人开启功能并设置年级后，孩子可自行使用邀请码和随机匹配；授权可随时撤回。</p></div>
+        <div class="decision-item"><strong>邀请码建立伙伴</strong><p>双方挑战授权有效时，同学输入短时一次性邀请码后直接建立长期学习伙伴关系。</p></div>
+        <div class="decision-item"><strong>全网只按年级</strong><p>随机池不使用地区、学校、能力、成绩或历史表现；年级只能由监护人在档案中设置。</p></div>
+        <div class="decision-item"><strong>随机配对不变好友</strong><p>随机对手只存在一场挑战；使用系统昵称头像，结束后自动解除并去标识。</p></div>
+        <div class="decision-item"><strong>独立等难度题包</strong><p>同科目、同年级、同难度但题面不同；绝不分享原错题、图片、笔迹与个人作答。</p></div>
         <div class="decision-item"><strong>透明成长分</strong><p>正确质量 60%、个人进步 30%、完成参与 10%；首次无基线只做热身局。</p></div>
-        <div class="decision-item"><strong>XP 不绑定胜负</strong><p>按有效完成、正确表现和个人突破奖励；同题包只计一次并设挑战日上限，不限制继续学习。</p></div>
-        <div class="decision-item"><strong>多种被看见方式</strong><p>展示“成长领先”和双方亮点徽章，不显示失败、落后、连败或永久胜负榜。</p></div>
-        <div class="decision-item"><strong>合作也有目标</strong><p>可选择共同目标；仅允许预设鼓励和状态消息，不开放自由聊天。</p></div>
-        <div class="decision-item"><strong>随时安全退出</strong><p>学习者或任一监护人可立即结束关系；未完成挑战取消且历史去标识。</p></div>
+        <div class="decision-item"><strong>匿名隔离，不做社交</strong><p>不能搜索、关注、加好友、指定重赛或自由聊天；不暴露学校、地区、身份和历史。</p></div>
+        <div class="decision-item"><strong>举报立即切断</strong><p>立即结束挑战并永久避配；严重或重复风险触发限流冻结、监护人通知与人工复核。</p></div>
       </div>
     </section>
   </main>
@@ -576,6 +585,9 @@
         return {
           status: "无挑战",
           mode: null,
+          subject: "数学",
+          grade: null,
+          opponentSource: "无",
           presence: "异步",
           deadlineHours: null,
           questionPackage: "尚未生成",
@@ -583,7 +595,7 @@
           resultVisibility: "无结果",
           warmup: false,
           own: participant("小禾", 0.6),
-          peer: participant("星星", 1),
+          peer: participant("挑战对象", 1),
           leader: null,
           groupGoal: { current: 0, target: 8 },
           reactions: [],
@@ -591,45 +603,78 @@
         };
       }
 
-      function createInitialState(preset = "invite") {
+      function createInitialState(preset = "authorization") {
         const state = {
+          access: {
+            status: "待监护人开启",
+            guardianAuthorization: false,
+            grade: null,
+            gradeSource: "未设置",
+            childCanEditGrade: false
+          },
           relation: {
             status: "未建立",
-            ownGuardian: false,
+            kind: "无",
             peerJoined: false,
-            peerGuardian: false,
+            peerEligibility: "未校验",
             identityVisible: false,
             inviteHoursLeft: null,
             sharing: "无儿童身份或学习数据共享",
-            invitationsPaused: false
+            matchingScope: "未进入匹配",
+            inRandomQueue: false,
+            blockedOpponentCount: 0
+          },
+          safety: {
+            reportStatus: "无举报",
+            blockedPair: false,
+            guardianNotice: "未触发",
+            review: "无",
+            accountControl: "正常"
           },
           challenge: createChallenge(),
-          message: "创建邀请前，双方之间没有任何儿童身份或学习数据可见。",
+          message: "同伴挑战默认关闭；监护人开启并设置年级后，孩子不再需要逐次申请批准。",
           tone: "info",
-          history: ["初始：没有学习伙伴关系，也没有挑战。"],
+          history: ["初始：挑战授权关闭，没有邀请码、匹配或挑战。"],
           preset
         };
+
+        if (["invite", "random", "async", "live", "warmup", "coop", "review", "report", "revoke", "exit"].includes(preset)) {
+          state.access = {
+            status: "已开启",
+            guardianAuthorization: true,
+            grade: "三年级",
+            gradeSource: "监护人学习档案",
+            childCanEditGrade: false
+          };
+          state.message = "监护人已一次开启同伴挑战并设置三年级；后续无需逐次批准。";
+          state.history = ["准入：挑战授权有效，年级由监护人设置为三年级。"];
+        }
 
         if (["async", "live", "warmup", "coop", "review", "exit"].includes(preset)) {
           state.relation = {
             status: "已建立",
-            ownGuardian: true,
+            kind: "邀请码学习伙伴",
             peerJoined: true,
-            peerGuardian: true,
+            peerEligibility: "挑战授权有效 · 监护人设置三年级",
             identityVisible: true,
             inviteHoursLeft: null,
             sharing: "昵称、头像、当前挑战结果、有限徽章",
-            invitationsPaused: false
+            matchingScope: "一次性邀请码",
+            inRandomQueue: false,
+            blockedOpponentCount: 0
           };
-          state.message = "学习伙伴关系已获双方监护人批准。";
-          state.history = ["伙伴关系：双方监护人均已批准。"];
+          state.challenge.peer.name = "星星";
+          state.message = "同学使用一次性邀请码后已直接建立学习伙伴关系。";
+          state.history = ["伙伴关系：双方挑战授权有效，邀请码使用后直接建立。"];
         }
 
         if (["live", "review", "exit"].includes(preset)) {
           state.challenge.status = "进行中";
           state.challenge.mode = FRIENDLY;
+          state.challenge.grade = "三年级";
+          state.challenge.opponentSource = "邀请码学习伙伴";
           state.challenge.deadlineHours = 48;
-          state.challenge.questionPackage = "5 题 · 同知识点难度带 · 双方独立生成并检查";
+          state.challenge.questionPackage = "数学 5 题 · 三年级同难度带 · 双方独立生成并检查";
           state.challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
           state.message = "异步友谊赛正在进行；速度不参与计分。";
           state.history.unshift("挑战：双方已接受 48 小时异步友谊赛。")
@@ -650,6 +695,31 @@
           state.message = "已建立伙伴关系，准备发起共同目标。";
         }
 
+        if (preset === "random" || preset === "report") {
+          state.relation = {
+            status: "临时配对",
+            kind: "全网同年级随机配对",
+            peerJoined: true,
+            peerEligibility: "挑战授权有效 · 监护人设置三年级",
+            identityVisible: true,
+            inviteHoursLeft: null,
+            sharing: "系统昵称、系统头像、本场完成进度、结算亮点",
+            matchingScope: "全网 · 仅三年级",
+            inRandomQueue: false,
+            blockedOpponentCount: 0
+          };
+          state.challenge.status = "进行中";
+          state.challenge.mode = FRIENDLY;
+          state.challenge.grade = "三年级";
+          state.challenge.opponentSource = "全网同年级随机匹配";
+          state.challenge.deadlineHours = 48;
+          state.challenge.questionPackage = "数学 5 题 · 三年级同难度带 · 双方独立生成并检查";
+          state.challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
+          state.challenge.peer.name = "云朵 27";
+          state.message = "已从全网三年级池找到匿名对手；本次配对不会产生好友或学习伙伴关系。";
+          state.history.unshift("随机匹配：只按三年级分池，建立一场临时匿名挑战。")
+        }
+
         if (preset === "review") {
           state.message = "挑战进行中；观察待复核结果为何不能提前计分。";
         }
@@ -660,6 +730,14 @@
           state.challenge.status = "等待另一方";
           state.challenge.resultVisibility = "只显示小禾已完成，不显示分数";
           state.message = "小禾已完成，星星尚未完成；现在可安全结束关系。";
+        }
+
+        if (preset === "revoke") {
+          state.relation.status = "匹配中";
+          state.relation.kind = "全网同年级随机配对";
+          state.relation.matchingScope = "全网 · 仅三年级";
+          state.relation.inRandomQueue = true;
+          state.message = "正在全网三年级池排队；现在可测试撤回授权。";
         }
         return state;
       }
@@ -734,7 +812,17 @@
           ? "并列"
           : challenge.own.score.total > challenge.peer.score.total ? challenge.own.name : challenge.peer.name;
         challenge.resultVisibility = "双方可见透明成长分与亮点徽章，不显示错误明细";
-        return log(state, `${challenge.leader === "并列" ? "本轮成长分并列" : `${challenge.leader}本轮成长分领先`}；胜负不增加或扣除 XP。`, "success");
+        const resultMessage = `${challenge.leader === "并列" ? "本轮成长分并列" : `${challenge.leader}本轮成长分领先`}；胜负不增加或扣除 XP。`;
+        if (state.relation.kind === "全网同年级随机配对") {
+          state.relation.status = "临时配对已结束";
+          state.relation.peerEligibility = "配对已结束";
+          state.relation.identityVisible = false;
+          state.relation.sharing = "本场共享已停止，双方只保留去标识结果";
+          state.challenge.peer.name = "同年级对手";
+          state.challenge.deidentifiedHistory = true;
+          return log(state, `${resultMessage} 临时配对已自动解除，对手身份已去标识。`, "success");
+        }
+        return log(state, resultMessage, "success");
       }
 
       function reduce(inputState, action) {
@@ -742,41 +830,61 @@
         const relation = state.relation;
         const challenge = state.challenge;
 
-        if (action.type === "RESET") return createInitialState("invite");
+        if (action.type === "RESET") return createInitialState("authorization");
         if (action.type === "START_SCENARIO") return createInitialState(action.preset);
 
+        if (action.type === "ENABLE_ACCESS") {
+          if (state.access.guardianAuthorization) return log(state, "挑战授权已经有效，无需重复开启。", "warning");
+          state.access.status = "已开启";
+          state.access.guardianAuthorization = true;
+          state.access.grade = "三年级";
+          state.access.gradeSource = "监护人学习档案";
+          return log(state, "监护人已一次开启同伴挑战并设置三年级；孩子之后无需为邀请或每局挑战逐次申请批准。", "success");
+        }
+
+        if (action.type === "REVOKE_ACCESS") {
+          if (!state.access.guardianAuthorization) return log(state, "挑战授权当前已经关闭。", "warning");
+          state.access.status = "已撤回";
+          state.access.guardianAuthorization = false;
+          state.relation.status = "授权撤回，配对结束";
+          state.relation.kind = "无";
+          state.relation.peerEligibility = "授权撤回";
+          state.relation.identityVisible = false;
+          state.relation.inviteHoursLeft = null;
+          state.relation.inRandomQueue = false;
+          state.relation.sharing = "停止新的邀请、匹配与挑战共享";
+          if (!["无挑战", "已完成", "已取消"].includes(state.challenge.status)) {
+            state.challenge.status = "已取消";
+            state.challenge.resultVisibility = "授权撤回；不产生胜负、连胜或 XP 惩罚";
+            state.challenge.deidentifiedHistory = true;
+          }
+          return log(state, "挑战授权已撤回；邀请码立即失效、退出匹配队列、进行中挑战无损结束。", "danger");
+        }
+
         if (action.type === "CREATE_INVITE") {
-          if (relation.invitationsPaused) return log(state, "举报处理中，新的邀请与共享保持暂停。", "danger");
+          if (!state.access.guardianAuthorization) return log(state, "挑战功能尚未由监护人开启，不能创建学习伙伴邀请码。", "danger");
           if (relation.status === "已建立") return log(state, "学习伙伴关系已经建立，无需再次邀请。", "warning");
-          relation.status = "邀请待本方批准";
+          if (relation.inRandomQueue || relation.status === "临时配对") return log(state, "请先退出随机匹配或结束当前临时挑战，再创建邀请码。", "warning");
+          relation.status = "邀请码有效";
+          relation.kind = "学习伙伴邀请";
           relation.inviteHoursLeft = 24;
           relation.identityVisible = false;
           relation.sharing = "仅生成无身份信息的一次性邀请码";
-          return log(state, "一次性邀请已创建；本方监护人批准前不能交给同学。")
-        }
-
-        if (action.type === "APPROVE_OWN") {
-          if (relation.status !== "邀请待本方批准") return log(state, "当前没有等待本方监护人批准的邀请。", "warning");
-          relation.ownGuardian = true;
-          relation.status = "等待同学输入邀请码";
-          return log(state, "本方监护人已批准；可以在线下把一次性邀请码交给认识的同学。", "success");
+          relation.matchingScope = "短时一次性邀请码";
+          return log(state, "一次性邀请码已创建，可直接交给同学；本次邀请不再需要监护人逐次批准。", "success")
         }
 
         if (action.type === "PEER_JOINS") {
-          if (relation.status !== "等待同学输入邀请码") return log(state, "邀请码尚未获本方批准或已经失效，不能加入。", "danger");
+          if (relation.status !== "邀请码有效") return log(state, "当前没有有效邀请码，或邀请码已经被使用。", "danger");
           relation.peerJoined = true;
-          relation.status = "等待对方监护人批准";
-          return log(state, "同学已输入邀请码；双方身份与学习数据仍然隐藏。")
-        }
-
-        if (action.type === "APPROVE_PEER") {
-          if (relation.status !== "等待对方监护人批准") return log(state, "对方尚未通过有效邀请码加入，不能建立关系。", "danger");
-          relation.peerGuardian = true;
+          relation.peerEligibility = "挑战授权有效 · 监护人设置三年级";
           relation.status = "已建立";
+          relation.kind = "邀请码学习伙伴";
           relation.identityVisible = true;
           relation.inviteHoursLeft = null;
           relation.sharing = "昵称、头像、当前挑战结果、有限徽章";
-          return log(state, "双方监护人均已批准；现在才显示获准昵称和头像。", "success");
+          relation.matchingScope = "一次性邀请码";
+          return log(state, "系统确认双方挑战授权均有效；邀请码使用后直接建立学习伙伴关系，不再等待逐次批准。", "success");
         }
 
         if (action.type === "EXPIRE_INVITE") {
@@ -786,21 +894,67 @@
         }
 
         if (action.type === "CANCEL_INVITE") {
-          if (!["邀请待本方批准", "等待同学输入邀请码", "等待对方监护人批准"].includes(relation.status)) return log(state, "当前没有可以取消的邀请；已建立关系请使用“结束伙伴关系”。", "warning");
+          if (relation.status !== "邀请码有效") return log(state, "当前没有可以取消的有效邀请；已建立关系请使用“结束伙伴关系”。", "warning");
           state.relation = { ...createInitialState().relation, status: "邀请已取消" };
           return log(state, "学习者已取消邀请；邀请码立即失效，双方身份与学习数据仍未共享。", "warning");
         }
 
+        if (action.type === "JOIN_RANDOM_QUEUE") {
+          if (!state.access.guardianAuthorization) return log(state, "挑战功能尚未由监护人开启，不能加入全网随机匹配。", "danger");
+          if (!state.access.grade) return log(state, "学习档案没有由监护人设置的年级，不能进入随机匹配。", "danger");
+          if (relation.status === "临时配对") return log(state, "当前已有临时挑战对象，不能重复匹配。", "warning");
+          if (relation.status === "邀请码有效") return log(state, "当前有尚未使用的邀请码，请先取消或等待使用。", "warning");
+          relation.status = "匹配中";
+          relation.kind = "全网同年级随机配对";
+          relation.identityVisible = false;
+          relation.inRandomQueue = true;
+          relation.matchingScope = `全网 · 仅${state.access.grade}`;
+          relation.sharing = "排队期间不向其他学习者展示任何档案信息";
+          return log(state, `已加入全网${state.access.grade}匹配池；地区、学校、能力、成绩和历史均不参与匹配。`);
+        }
+
+        if (action.type === "FIND_RANDOM_MATCH") {
+          if (!relation.inRandomQueue || relation.status !== "匹配中") return log(state, "请先加入全网同年级匹配队列。", "warning");
+          relation.status = "临时配对";
+          relation.kind = "全网同年级随机配对";
+          relation.peerJoined = true;
+          relation.peerEligibility = `挑战授权有效 · 监护人设置${state.access.grade}`;
+          relation.identityVisible = true;
+          relation.inRandomQueue = false;
+          relation.sharing = "系统昵称、系统头像、本场完成进度、结算亮点";
+          state.challenge = createChallenge();
+          state.challenge.status = "进行中";
+          state.challenge.mode = FRIENDLY;
+          state.challenge.grade = state.access.grade;
+          state.challenge.opponentSource = "全网同年级随机匹配";
+          state.challenge.deadlineHours = 48;
+          state.challenge.questionPackage = `数学 5 题 · ${state.access.grade}同难度带 · 双方独立生成并检查`;
+          state.challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
+          const peerAlias = relation.blockedOpponentCount > 0 ? "松果 08" : "云朵 27";
+          state.challenge.peer.name = peerAlias;
+          return log(state, `已找到匿名同年级对手“${peerAlias}”并直接开始异步挑战；已避开举报名单，配对只存在本场。`, "success");
+        }
+
+        if (action.type === "LEAVE_RANDOM_QUEUE") {
+          if (!relation.inRandomQueue || relation.status !== "匹配中") return log(state, "当前不在随机匹配队列中。", "warning");
+          state.relation = { ...createInitialState().relation, status: "已退出匹配" };
+          return log(state, "已退出匹配队列；没有对手、结果、奖励或惩罚。", "warning");
+        }
+
         if (action.type === "CREATE_CHALLENGE") {
-          if (relation.status !== "已建立") return log(state, "只有已获双向监护批准的学习伙伴才能发起挑战。", "danger");
+          if (!state.access.guardianAuthorization) return log(state, "挑战授权未开启，不能发起挑战。", "danger");
+          if (relation.status !== "已建立" || relation.kind !== "邀请码学习伙伴") return log(state, "只有通过邀请码建立的学习伙伴才能收到主动挑战；随机对手在匹配成功后直接开始一场临时挑战。", "danger");
           if (challenge.status !== "无挑战" && challenge.status !== "已取消" && challenge.status !== "已完成") return log(state, "当前已有未结束挑战，不能重复发起。", "warning");
           const ownBaseline = challenge.own.baseline;
           const peerBaseline = challenge.peer.baseline;
           state.challenge = createChallenge();
           state.challenge.own.baseline = ownBaseline;
           state.challenge.peer.baseline = peerBaseline;
+          state.challenge.peer.name = "星星";
           state.challenge.status = "等待伙伴接受";
           state.challenge.mode = action.mode;
+          state.challenge.grade = state.access.grade;
+          state.challenge.opponentSource = "邀请码学习伙伴";
           state.challenge.deadlineHours = 24;
           state.challenge.questionPackage = "等待接受后独立生成";
           state.challenge.resultVisibility = "只显示挑战模式与知识点范围";
@@ -811,7 +965,7 @@
           if (challenge.status !== "等待伙伴接受") return log(state, "当前没有等待接受的挑战。", "warning");
           challenge.status = "进行中";
           challenge.deadlineHours = 48;
-          challenge.questionPackage = "5 题 · 同知识点难度带 · 双方独立生成并检查";
+          challenge.questionPackage = `数学 5 题 · ${challenge.grade || state.access.grade}同难度带 · 双方独立生成并检查`;
           challenge.resultVisibility = "仅显示完成进度，成绩等待双方完成";
           challenge.warmup = challenge.own.baseline === null || challenge.peer.baseline === null;
           return log(state, challenge.warmup
@@ -832,9 +986,13 @@
         }
 
         if (action.type === "REACTION") {
-          if (relation.status !== "已建立" || !["进行中", "等待另一方"].includes(challenge.status)) return log(state, "只有进行中的获准挑战才能发送预设消息。", "danger");
-          const allowed = ["一起加油", "我稍后完成", "再来一轮"];
-          if (!allowed.includes(action.value)) return log(state, "自由文字不会被发送，只能使用预设安全消息。", "danger");
+          if (!["已建立", "临时配对"].includes(relation.status) || !["进行中", "等待另一方"].includes(challenge.status)) return log(state, "只有进行中的挑战才能发送预设消息。", "danger");
+          const allowed = relation.kind === "全网同年级随机配对"
+            ? ["一起加油", "我稍后完成"]
+            : ["一起加油", "我稍后完成", "再来一轮"];
+          if (!allowed.includes(action.value)) return log(state, relation.kind === "全网同年级随机配对"
+            ? "随机对手不能收到指定重赛请求；下一局必须重新进入同年级池随机配对。"
+            : "自由文字不会被发送，只能使用预设安全消息。", "danger");
           challenge.reactions.unshift(action.value);
           return log(state, `已发送预设消息“${action.value}”；没有开放自由聊天。`);
         }
@@ -873,6 +1031,13 @@
           challenge.status = "已取消";
           challenge.resultVisibility = "不产生胜负；已完成作答仅保留为自己的学习记录";
           challenge.presence = "异步";
+          if (relation.kind === "全网同年级随机配对") {
+            relation.status = "临时配对已结束";
+            relation.peerEligibility = "配对已结束";
+            relation.identityVisible = false;
+            relation.sharing = "本场共享已停止，双方只保留去标识结果";
+            challenge.deidentifiedHistory = true;
+          }
           return log(state, ownCompleted
             ? "挑战到期且未形成对局结果；已完成者保留自己的有效学习记录，不获得胜者奖励。"
             : "挑战到期自动结束；双方都没有排名、连胜或 XP 惩罚。", "warning");
@@ -883,32 +1048,63 @@
           challenge.status = "已取消";
           challenge.presence = "异步";
           challenge.resultVisibility = "不产生胜负或惩罚";
+          if (relation.kind === "全网同年级随机配对") {
+            relation.status = "临时配对已结束";
+            relation.peerEligibility = "配对已结束";
+            relation.identityVisible = false;
+            relation.sharing = "本场共享已停止，双方只保留去标识结果";
+            challenge.deidentifiedHistory = true;
+            return log(state, "随机挑战已取消并自动解除临时配对；不扣 XP、不计连败，也不产生好友关系。", "warning");
+          }
           return log(state, "挑战已取消；不扣 XP、不计连败，也不会影响学习伙伴关系。", "warning");
         }
 
         if (action.type === "END_RELATION") {
           const hadRelation = relation.status === "已建立";
+          const hadTemporaryPair = relation.kind === "全网同年级随机配对" && ["匹配中", "临时配对"].includes(relation.status);
           relation.status = "已结束";
+          relation.kind = "无";
+          relation.peerEligibility = "关系或配对已结束";
           relation.identityVisible = false;
+          relation.inRandomQueue = false;
           relation.sharing = "停止新的邀请与挑战共享";
           challenge.status = challenge.status === "无挑战" ? "无挑战" : "已取消";
           challenge.presence = "异步";
           challenge.resultVisibility = "各自仅保留去标识挑战结果";
           challenge.deidentifiedHistory = true;
-          return log(state, hadRelation
-            ? "伙伴关系立即结束；未完成挑战取消，对方身份从历史中移除，无任何惩罚。"
-            : "当前没有有效伙伴关系；身份和共享仍保持关闭。", "warning");
+          return log(state, hadTemporaryPair
+            ? "已立即退出随机配对；未完成挑战取消，对手身份从历史中移除，无任何惩罚。"
+            : hadRelation
+              ? "伙伴关系立即结束；未完成挑战取消，对方身份从历史中移除，无任何惩罚。"
+              : "当前没有有效伙伴关系或临时配对；身份和共享仍保持关闭。", "warning");
         }
 
         if (action.type === "REPORT") {
+          if (!["已建立", "临时配对"].includes(relation.status)) return log(state, "当前没有可以举报的挑战对象。", "warning");
           relation.status = "举报处理中";
+          relation.peerEligibility = "已校验，现进入举报处置";
           relation.identityVisible = false;
+          relation.inRandomQueue = false;
           relation.sharing = "对方已隐藏，停止新的共享";
-          relation.invitationsPaused = true;
+          relation.blockedOpponentCount += 1;
+          state.safety.reportStatus = "待人工复核";
+          state.safety.blockedPair = true;
+          state.safety.review = "风险限流中";
+          state.safety.accountControl = "对方进入风险限流";
           challenge.status = challenge.status === "无挑战" ? "无挑战" : "已取消";
           challenge.presence = "异步";
-          challenge.resultVisibility = "结果暂停；不自动认定或处罚任何学习者";
-          return log(state, "已隐藏对方并暂停新邀请；进入人工或属地适用处置，不自动处罚对方。", "danger");
+          challenge.resultVisibility = "结果停止；双方永久不再配对";
+          challenge.deidentifiedHistory = true;
+          return log(state, "举报已提交：本场立即结束、隐藏对方并永久避配；该对手进入风险限流和人工复核。", "danger");
+        }
+
+        if (action.type === "ESCALATE_REPORT") {
+          if (state.safety.reportStatus !== "待人工复核") return log(state, "请先提交一条有效举报，再模拟严重或重复风险升级。", "warning");
+          state.safety.reportStatus = "优先处置";
+          state.safety.guardianNotice = "已通知双方监护人";
+          state.safety.review = "人工优先复核";
+          state.safety.accountControl = "对方账号与设备临时冻结";
+          return log(state, "检测到严重或重复风险：已通知监护人，对方账号与设备临时冻结并进入人工优先复核。", "danger");
         }
 
         return log(state, "当前动作没有定义，状态未改变。", "danger");
@@ -919,13 +1115,32 @@
 
     const scenarios = [
       {
-        id: "invite", label: "邀请双批准", title: "批准前，儿童身份始终不可见",
-        description: "按顺序建立关系；也可以先乱序点击“对方监护人批准”，检查系统拒绝。",
+        id: "authorization", label: "一次授权门槛", title: "关闭时不能进入全网匹配",
+        description: "先故意尝试匹配，再由监护人一次开启并设置年级；后续不再逐局批准。",
         steps: [
-          ["创建一次性邀请", { type: "CREATE_INVITE" }],
-          ["本方监护人批准", { type: "APPROVE_OWN" }],
+          ["未授权先尝试匹配", { type: "JOIN_RANDOM_QUEUE" }],
+          ["监护人开启并设置三年级", { type: "ENABLE_ACCESS" }],
+          ["加入三年级全网池", { type: "JOIN_RANDOM_QUEUE" }],
+          ["找到匿名对手", { type: "FIND_RANDOM_MATCH" }]
+        ]
+      },
+      {
+        id: "invite", label: "邀请码直连", title: "邀请码不再等待逐次监护批准",
+        description: "双方挑战授权都有效时，同学输入短时一次性邀请码后直接成为长期学习伙伴。",
+        steps: [
+          ["创建一次性邀请码", { type: "CREATE_INVITE" }],
           ["同学输入邀请码", { type: "PEER_JOINS" }],
-          ["对方监护人批准", { type: "APPROVE_PEER" }]
+          ["发起异步友谊赛", { type: "CREATE_CHALLENGE", mode: "友谊赛" }],
+          ["学习伙伴接受", { type: "ACCEPT_CHALLENGE" }]
+        ]
+      },
+      {
+        id: "random", label: "随机自动解除", title: "随机对手只存在一场挑战",
+        description: "先尝试指定重赛，再完成挑战；系统应拒绝重赛请求，并在结算后自动解除临时配对。",
+        steps: [
+          ["小禾提交 4/5", { type: "SUBMIT", player: "own", correct: 4 }],
+          ["尝试指定再来一轮", { type: "REACTION", value: "再来一轮" }],
+          ["云朵 27 提交 5/5", { type: "SUBMIT", player: "peer", correct: 5 }]
         ]
       },
       {
@@ -949,18 +1164,8 @@
         ]
       },
       {
-        id: "warmup", label: "首次热身局", title: "没有个人基线时，不制造不公平排名",
-        description: "双方仍能完成题目并获得学习奖励，但本轮只建立基线，不比较成长分。",
-        steps: [
-          ["发起友谊赛", { type: "CREATE_CHALLENGE", mode: "友谊赛" }],
-          ["伙伴接受为热身局", { type: "ACCEPT_CHALLENGE" }],
-          ["小禾提交 4/5", { type: "SUBMIT", player: "own", correct: 4 }],
-          ["星星提交 5/5", { type: "SUBMIT", player: "peer", correct: 5 }]
-        ]
-      },
-      {
-        id: "coop", label: "共同目标", title: "不想比较时，也能一起成长",
-        description: "双方合计完成 8 道有效题即可达成目标，各自仍按自己的学习表现获得奖励。",
+        id: "coop", label: "共同目标", title: "学习伙伴也可以不比较名次",
+        description: "邀请码学习伙伴合计完成 8 道有效题即可达成目标，各自按自己的学习表现获得奖励。",
         steps: [
           ["发起共同目标", { type: "CREATE_CHALLENGE", mode: "共同目标" }],
           ["伙伴接受", { type: "ACCEPT_CHALLENGE" }],
@@ -970,7 +1175,7 @@
       },
       {
         id: "review", label: "结果待复核", title: "不确定结果不能先计分再悄悄修改",
-        description: "先标记复核，再让双方完成；成绩和 XP 应保持暂停，直到复核结束。",
+        description: "先标记复核，再让双方完成；成绩和 XP 保持暂停，直到复核结束。",
         steps: [
           ["小禾提交", { type: "SUBMIT", player: "own", correct: 4 }],
           ["标记一道题待复核", { type: "FLAG_REVIEW" }],
@@ -979,17 +1184,27 @@
         ]
       },
       {
-        id: "exit", label: "随时退出", title: "退出不需要等对方同意",
-        description: "一方已经作答也不阻塞退出；未完成挑战取消，历史移除对方身份。",
+        id: "report", label: "举报与永久避配", title: "举报立即切断，再按风险分级处置",
+        description: "一般举报立即结束挑战并永久避配；严重或重复风险再通知监护人、冻结并人工优先复核。",
         steps: [
-          ["立即结束伙伴关系", { type: "END_RELATION" }],
-          ["尝试再次发起挑战", { type: "CREATE_CHALLENGE", mode: "友谊赛" }]
+          ["举报当前匿名对手", { type: "REPORT" }],
+          ["模拟严重或重复风险", { type: "ESCALATE_REPORT" }],
+          ["重新加入同年级池", { type: "JOIN_RANDOM_QUEUE" }],
+          ["找到不同匿名对手", { type: "FIND_RANDOM_MATCH" }]
+        ]
+      },
+      {
+        id: "revoke", label: "撤回授权", title: "监护人可随时关闭整个挑战能力",
+        description: "撤回后立即退出队列、使邀请码失效并无损结束进行中的挑战。",
+        steps: [
+          ["撤回挑战授权", { type: "REVOKE_ACCESS" }],
+          ["再次尝试全网匹配", { type: "JOIN_RANDOM_QUEUE" }]
         ]
       }
     ];
 
-    let state = ChallengeModel.createInitialState("invite");
-    let selectedScenario = "invite";
+    let state = ChallengeModel.createInitialState("authorization");
+    let selectedScenario = "authorization";
     const el = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
 
@@ -1000,28 +1215,35 @@
 
     function relationProgress() {
       const relation = state.relation;
-      if (relation.status === "已建立") return 4;
-      if (relation.peerJoined) return 3;
-      if (relation.ownGuardian) return 2;
-      if (["邀请待本方批准", "等待同学输入邀请码"].includes(relation.status)) return 1;
+      if (["已建立", "临时配对", "临时配对已结束", "举报处理中"].includes(relation.status)) return 4;
+      if (["邀请码有效", "匹配中"].includes(relation.status)) return 3;
+      if (state.access.grade) return 2;
+      if (state.access.guardianAuthorization) return 1;
       return 0;
     }
 
     function renderRelationship() {
       const progress = relationProgress();
-      const steps = ["创建邀请", "本方批准", "同学加入", "对方批准"];
+      const steps = ["功能授权", "监护人设年级", "选择配对入口", "建立挑战对象"];
       el("statusPath").innerHTML = steps.map((label, index) => {
         const number = index + 1;
         const status = progress > number ? "done" : progress === number ? "current" : progress === 4 ? "done" : "pending";
         return `<div class="path-step" data-state="${status}"><span>${number}</span>${escapeHtml(label)}</div>`;
       }).join("");
-      el("linkLine").dataset.active = String(state.relation.status === "已建立");
+      const randomPeer = state.relation.kind === "全网同年级随机配对";
+      const activeTarget = ["已建立", "临时配对"].includes(state.relation.status);
+      const randomAlias = state.challenge.peer.name === "挑战对象" ? "系统匿名对手" : state.challenge.peer.name;
+      el("linkLine").dataset.active = String(activeTarget);
       el("linkText").textContent = state.relation.status;
-      el("ownName").textContent = state.relation.identityVisible ? "小禾" : "学习者 A";
-      el("peerAvatar").textContent = state.relation.identityVisible ? "星" : "待";
-      el("peerName").textContent = state.relation.identityVisible ? "星星" : "身份暂不显示";
-      el("peerMeta").textContent = state.relation.identityVisible ? "获准学习伙伴" : "等待双向批准";
-      el("privacyNote").innerHTML = `<strong>当前共享范围</strong>${escapeHtml(state.relation.sharing)}。始终不共享真实姓名、学校、位置、照片、错题库、原始作答、笔迹或错因。`;
+      el("ownName").textContent = state.access.guardianAuthorization ? "小禾" : "学习者 A";
+      el("peerAvatar").textContent = state.relation.identityVisible ? (randomPeer ? randomAlias.slice(0, 1) : "星") : "待";
+      el("peerName").textContent = state.relation.identityVisible
+        ? (randomPeer ? randomAlias : "星星")
+        : state.relation.status === "临时配对已结束" ? "同年级对手已去标识" : "尚未配对";
+      el("peerMeta").textContent = state.relation.identityVisible
+        ? (randomPeer ? "系统身份 · 三年级临时对手" : "邀请码学习伙伴")
+        : state.relation.status === "匹配中" ? "正在全网同年级池寻找" : "邀请码或全网同年级匹配";
+      el("privacyNote").innerHTML = `<strong>当前共享范围</strong>${escapeHtml(state.relation.sharing)}。始终不共享真实姓名、学校、地区、位置、照片、错题库、原始作答、笔迹或错因；随机对手不可被搜索、关注、加好友或指定重赛。`;
       el("eventNote").dataset.tone = state.tone;
       el("eventNote").innerHTML = `<strong>刚刚发生</strong>${escapeHtml(state.message)}`;
     }
@@ -1047,7 +1269,8 @@
     function renderChallenge() {
       const challenge = state.challenge;
       if (challenge.status === "无挑战") {
-        el("challengeCard").innerHTML = `<div class="challenge-head"><div><h2>还没有挑战</h2><p>建立获准伙伴关系后，可选择友谊赛或共同目标。</p></div><span class="badge">异步优先</span></div><div class="challenge-empty privacy-note">挑战不是公开社交：没有陌生人匹配、自由聊天、学校榜单或速度排名。</div>`;
+        const queueing = state.relation.status === "匹配中";
+        el("challengeCard").innerHTML = `<div class="challenge-head"><div><h2>${queueing ? `正在寻找${escapeHtml(state.access.grade)}匿名对手` : "还没有挑战"}</h2><p>${queueing ? "匹配只使用年级，不使用学校、地区、能力、成绩或历史。" : "可以用邀请码挑战学习伙伴，或加入全网同年级随机匹配。"}</p></div><span class="badge">异步优先</span></div><div class="challenge-empty privacy-note">全网匹配不是公开社交：只建立一场临时匿名配对，没有自由聊天、个人主页、好友、指定重赛、公开榜单或速度排名。</div>`;
         return;
       }
       const resultVisible = challenge.status === "已完成";
@@ -1062,7 +1285,8 @@
           </div>
         </div>
         <div class="question-package">
-          <div class="package-item"><span>题目范围</span><strong>相同主要知识点</strong></div>
+          <div class="package-item"><span>挑战对象来源</span><strong>${escapeHtml(challenge.opponentSource)}</strong></div>
+          <div class="package-item"><span>题目范围</span><strong>${escapeHtml(challenge.subject)} · ${escapeHtml(challenge.grade || "年级待确认")} · 同难度</strong></div>
           <div class="package-item"><span>双方题面</span><strong>独立生成，不互相泄题</strong></div>
           <div class="package-item"><span>批改资格</span><strong>${challenge.reviewPending ? "存在待复核，暂停计分" : "仅有效批改结果计分"}</strong></div>
         </div>
@@ -1075,23 +1299,32 @@
         <div class="preset-reactions" aria-label="仅限预设安全消息">
           <button class="reaction-button" type="button" data-action="reaction" data-value="一起加油">一起加油</button>
           <button class="reaction-button" type="button" data-action="reaction" data-value="我稍后完成">我稍后完成</button>
-          <button class="reaction-button" type="button" data-action="reaction" data-value="再来一轮">再来一轮</button>
+          ${state.relation.kind === "全网同年级随机配对" ? "" : '<button class="reaction-button" type="button" data-action="reaction" data-value="再来一轮">再来一轮</button>'}
         </div>`;
     }
 
     function renderState() {
+      const access = state.access;
       const relation = state.relation;
+      const safety = state.safety;
       const challenge = state.challenge;
       const scorePolicy = challenge.mode === "友谊赛" ? "正确质量 60 + 个人进步 30 + 完成参与 10" : challenge.mode === "共同目标" ? "只累计共同贡献，不排名" : "尚未选择";
-      const rewards = challenge.status === "已完成" ? `小禾 +${challenge.own.xp}；星星 +${challenge.peer.xp}` : challenge.reviewPending ? "暂停，等待复核" : "尚未结算";
+      const rewards = challenge.status === "已完成" ? `小禾 +${challenge.own.xp}；${challenge.peer.name} +${challenge.peer.xp}` : challenge.reviewPending ? "暂停，等待复核" : "尚未结算";
       const rows = [
-        ["伙伴关系", relation.status],
-        ["本方批准", relation.ownGuardian ? "已批准" : "未批准"],
-        ["对方批准", relation.peerGuardian ? "已批准" : "未批准"],
-        ["身份可见", relation.identityVisible ? "仅显示获准昵称与头像" : "不可见"],
+        ["挑战授权", access.status],
+        ["匹配年级", access.grade || "未设置"],
+        ["年级来源", access.gradeSource],
+        ["孩子改年级", access.childCanEditGrade ? "允许" : "不允许"],
+        ["当前对象", relation.status],
+        ["关系类型", relation.kind],
+        ["匹配范围", relation.matchingScope],
+        ["对方准入", relation.peerEligibility],
+        ["身份可见", relation.identityVisible ? (relation.kind === "全网同年级随机配对" ? "仅系统昵称与头像" : "仅伙伴昵称与头像") : "不可见或已去标识"],
         ["邀请有效期", relation.inviteHoursLeft ? `剩余 ${relation.inviteHoursLeft} 小时` : "无有效邀请"],
+        ["永久避配", `${relation.blockedOpponentCount} 个对手`],
         ["挑战状态", challenge.status],
         ["挑战模式", challenge.mode || "未选择"],
+        ["对象来源", challenge.opponentSource],
         ["在线状态", challenge.presence],
         ["完成期限", challenge.deadlineHours ? `${challenge.deadlineHours} 小时` : "无"],
         ["题包", challenge.questionPackage],
@@ -1100,8 +1333,11 @@
         ["结果可见", challenge.resultVisibility],
         ["奖励", rewards],
         ["防刷规则", "同一题包仅一次 XP；挑战 XP 有每日上限，学习不限"],
-        ["自由聊天", "始终关闭；仅预设消息"],
-        ["历史处理", challenge.deidentifiedHistory ? "仅保留去标识挑战结果" : "关系结束后去标识"]
+        ["社交能力", "搜索、关注、加好友、自由聊天和随机指定重赛均关闭"],
+        ["举报状态", safety.reportStatus],
+        ["监护人通知", safety.guardianNotice],
+        ["风险处置", `${safety.review}；${safety.accountControl}`],
+        ["历史处理", challenge.deidentifiedHistory ? "仅保留去标识挑战结果" : "关系或临时配对结束后去标识"]
       ];
       el("stateGrid").innerHTML = rows.map(([key, value]) => `<div class="state-row"><dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
       el("historyList").innerHTML = state.history.slice(0, 9).map(item => `<li>${escapeHtml(item)}</li>`).join("");
@@ -1136,12 +1372,15 @@
       const button = event.target.closest("[data-action]");
       if (!button) return;
       const action = button.dataset.action;
+      if (action === "enable-access") dispatch({ type: "ENABLE_ACCESS" });
+      if (action === "revoke-access") dispatch({ type: "REVOKE_ACCESS" });
       if (action === "create-invite") dispatch({ type: "CREATE_INVITE" });
-      if (action === "approve-own") dispatch({ type: "APPROVE_OWN" });
       if (action === "peer-joins") dispatch({ type: "PEER_JOINS" });
-      if (action === "approve-peer") dispatch({ type: "APPROVE_PEER" });
       if (action === "cancel-invite") dispatch({ type: "CANCEL_INVITE" });
       if (action === "expire-invite") dispatch({ type: "EXPIRE_INVITE" });
+      if (action === "join-random") dispatch({ type: "JOIN_RANDOM_QUEUE" });
+      if (action === "find-random") dispatch({ type: "FIND_RANDOM_MATCH" });
+      if (action === "leave-random") dispatch({ type: "LEAVE_RANDOM_QUEUE" });
       if (action === "create-challenge") dispatch({ type: "CREATE_CHALLENGE", mode: button.dataset.value });
       if (action === "accept-challenge") dispatch({ type: "ACCEPT_CHALLENGE" });
       if (action === "go-live") dispatch({ type: "GO_LIVE" });
@@ -1155,8 +1394,9 @@
       if (action === "cancel-challenge") dispatch({ type: "CANCEL_CHALLENGE" });
       if (action === "end-relation") dispatch({ type: "END_RELATION" });
       if (action === "report") dispatch({ type: "REPORT" });
+      if (action === "escalate-report") dispatch({ type: "ESCALATE_REPORT" });
       if (action === "reset") {
-        selectedScenario = "invite";
+        selectedScenario = "authorization";
         dispatch({ type: "RESET" });
       }
     });
