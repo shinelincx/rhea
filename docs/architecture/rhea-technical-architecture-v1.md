@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 | --- | --- |
 | 文档状态 | 推荐技术基线，可进入工程拆解与 ADR 签署 |
-| 版本 | V1.0 |
+| 版本 | V1.1 |
 | 日期 | 2026-09-08 |
 | 产品基线 | [《Rhea 小学生 AI 学习助手产品需求方案 V1》](../requirements/rhea-ai-learning-assistant-prd-v1.md) |
 | 适用阶段 | 邀请制家庭试用至 MVP 学习成功验证 |
@@ -12,7 +12,7 @@
 
 ## 1. 架构结论
 
-Rhea V1 采用 **TypeScript 模块化单体 + 独立异步工作进程 + PostgreSQL 权威数据源**。移动端使用 React Native/Expo；AI、OCR、对象存储、身份提供方和通知提供方全部位于可替换的适配器 seam 后面。
+Rhea V1 采用 **TypeScript 模块化单体 + 独立异步工作进程 + PostgreSQL 权威数据源**。移动端使用 React Native/Expo，但不执行 OCR、生成式 AI、批改或学习状态计算；OCR/AI 请求只由后端工作进程经受控适配器发起。对象存储、身份提供方和通知提供方同样位于可替换的适配器 seam 后面。
 
 核心原则是：
 
@@ -21,12 +21,13 @@ Rhea V1 采用 **TypeScript 模块化单体 + 独立异步工作进程 + Postgre
 3. **模块先于微服务**：V1 在一个部署单元内保持清晰模块 seam，减少分布式事务和运维成本；只有独立扩缩容、故障隔离或属地隔离成为真实需求时才拆分部署。
 4. **三类数据区物理隔离**：普通学习数据、安全升级记录、去标识指标数据使用独立数据库/凭据/加密范围，避免安全记录进入学习推荐和产品分析。
 5. **任何派生结果均可追溯和失效**：AI 内容、批改、卡片与证据绑定不可变来源快照；上游版本变化时读取立即失败关闭，后台再完成级联失效。
+6. **OCR/AI 后端统一处理**：设备只负责采集、页面整理、加密暂存、上传和结果展示；文件安全、质量、隐私预处理、识别、模型调用、检查、取消和数据生命周期均由后端执行。
 
 ### 1.1 推荐技术栈
 
 | 层级 | 推荐基线 | 选择理由 |
 | --- | --- | --- |
-| 学习者/监护人移动端 | React Native + Expo + Expo Router + TypeScript | 一套代码覆盖 iOS/Android，支持相机、文件、音频、深链和五项一级导航；React Native 新架构已成为默认方向 |
+| 学习者/监护人移动端 | React Native + Expo + Expo Router + TypeScript | 一套代码覆盖 iOS/Android，支持相机、文件、音频、深链和五项一级导航；保持薄客户端，不集成 OCR/AI 运行时或提供方 SDK |
 | 应用接口进程 | Node.js LTS + NestJS + REST/JSON + SSE | 与移动端共享类型语言；NestJS 模块机制适合明确模块 seam；SSE 用于 OCR/AI 状态进度 |
 | 异步工作进程 | NestJS Worker + BullMQ + Redis | 将 OCR、AI、报告、删除等慢任务移出请求路径，支持持久任务、重试和独立扩缩容 |
 | 权威数据 | 当前受支持 PostgreSQL 主版本 | 强事务、约束、版本化记录、RLS 和复杂学习关系适配度高 |
@@ -43,7 +44,7 @@ Rhea V1 采用 **TypeScript 模块化单体 + 独立异步工作进程 + Postgre
 - 不使用 LLM 直接更新数据库、判定最终掌握或接受开放题评价。
 - 不把向量数据库或 AI 生成内容当作学习依据的权威存储。
 - 不将 Redis 作为授权、批改、掌握或挑战结果的唯一真相。
-- 不在移动端直接调用 OCR/LLM 提供方或保存提供方密钥。
+- 不在移动端执行 OCR/生成式 AI，也不直接调用 OCR/LLM 提供方、保存提供方密钥或接受模型结果为学习事实。
 - 不把原始儿童照片、录音、完整作答或对话写入普通日志和产品分析。
 - 不用软删除无限期代替依法删除。
 
@@ -55,6 +56,7 @@ Rhea V1 采用 **TypeScript 模块化单体 + 独立异步工作进程 + Postgre
 | 可追溯 | 所有 AI 内容、批改、人工接受、来源、量规、策略和模型版本可定位 |
 | 隐私隔离 | 家庭空间默认拒绝跨租户访问；安全数据和指标数据不被普通学习路径读取 |
 | 可恢复 | AI/OCR 失败可重试或正确放弃；队列重复投递不重复改变领域状态；可回退到已签署能力版本 |
+| 可撤回 | 用户取消或 AI 授权撤回后，任务立即停止发布；外部提供方的晚到结果不得进入学习状态、错题、报告或指标 |
 | 可测试 | 以模块接口为测试面；外部提供方用测试适配器，PostgreSQL 用真实迁移的临时实例 |
 | 可演进 | 模块内聚、接口小、数据所有权明确；只有真实部署需求出现时才沿既有 seam 拆分 |
 | 可运营 | 质量卡、功能开关、影子运行、分阶段开放、删除台账和审计均为一等能力 |
@@ -95,7 +97,7 @@ flowchart LR
 
 | 信任区 | 内容 | 规则 |
 | --- | --- | --- |
-| 设备区 | 会话令牌、待上传照片、草稿、学习者 PIN 状态 | 令牌放系统安全存储；大文件不放 SecureStore；上传完成后按策略清理本地临时副本 |
+| 设备区 | 会话令牌、加密的待上传照片草稿、页序/裁剪草稿、学习者 PIN 状态 | 令牌放系统安全存储；大文件放应用沙箱并独立加密，不放 SecureStore；设备不执行 OCR/AI，上传完成、登出、撤回或删除后按策略清理本地副本 |
 | 边缘区 | WAF、限流、上传会话、TLS 终止 | 不解读学习事实；拒绝超限、异常内容类型和重放 |
 | 学习区 | 家庭、资料、题目、批改、错题、复习、挑战 | 以家庭空间/学习档案强制租户隔离，普通应用角色不得绕过 RLS |
 | 安全区 | 安全升级和举报调查所需最小记录 | 独立凭据、KMS key、访问工作流和审计；普通学习模块不能查询 |
@@ -154,7 +156,7 @@ V1 代码位于一个 monorepo，应用接口进程和工作进程复用同一�
 | --- | --- | --- | --- |
 | FamilyAccess | `authorize`、`manageProfile`、`changeConsent`、`issueLearnerSession` | 监护关系、学习者会话、共享设备、重新验证、授权撤回、支持访问 | 家庭空间、监护关系、学习档案、授权、设备、会话、访问审计 |
 | LearningContent | `organizeMaterial`、`confirmContent`、`selectLearningBasis` | 学科/路径/单元/知识点、资料版本、当前学习依据、题组结构、来源快照 | 资料、资料版本、学习依据、课程结构、学习活动、题组、题目 |
-| Submission | `createUpload`、`submitPages`、`applyRecognitionCandidate` | 预签名上传、质量检查、页序、OCR 候选、不确定片段、确认阻塞 | 学习提交、页面、识别任务、识别候选 |
+| Submission | `createUpload`、`submitPages`、`cancelProcessing`、`applyRecognitionCandidate` | 预签名上传、任务状态机、文件安全/质量/隐私预处理、OCR 候选、不确定片段、确认阻塞、取消与晚到结果隔离 | 学习提交、页面、处理任务、识别候选 |
 | Assessment | `evaluate`、`acceptSuggestion`、`dispute` | 评价方式选择、客观规则、开放题量规、建议评价、人工接受、结果失效 | 作答、建议评价、维度证据、批改结果、批改质疑 |
 | GeneratedLearning | `requestContent`、`revealHint`、`recordGenerationReview` | 任务风险、提示模板、模型路由、生成题包、检查、版本、来源链、答案泄露控制 | 生成请求、AI 内容版本、生成题包、检查、提示使用、来源链 |
 | LearningProgress | `recordLearningOutcome`、`getReviewSession`、`archiveTheme` | 错题归集、错因、证据资格、掌握周期、复习间隔、重开、短复习排序 | 错题、错题主题、巩固任务、复习卡、复习计划、学习证据、掌握历史 |
@@ -237,8 +239,8 @@ interface ModelGatewayPort {
 | --- | --- | --- | --- |
 | IdentityProviderPort | 托管 OIDC/身份提供方 | 内存身份适配器 | 监护人认证、重新验证时间、会话撤销；学习者不直接成为外部 IdP 账号 |
 | ObjectStorePort | S3 兼容存储 | 本地临时存储适配器 | 预签名、对象校验、KMS key、生命周期、删除证明 |
-| RecognitionPort | OCR/文档结构提供方 | 固定 fixture 适配器 | 区域路由、页面/片段坐标、置信区间、提供方版本、超时与取消 |
-| ModelGatewayPort | LLM/多模态提供方 | 固定/故障/对抗适配器 | 结构化输出、零训练/保留配置、超时、成本、模型版本、请求追踪 |
+| RecognitionPort | 经签署的主 OCR/文档结构提供方 | 固定 fixture 适配器 | 仅后端调用；区域路由、最小输入、页面/片段坐标、置信区间、提供方版本、超时、取消和晚到结果标识 |
+| ModelGatewayPort | 经签署的 LLM/多模态提供方 | 固定/故障/对抗适配器 | 仅后端调用；结构化输出、最小输入、零训练/保留配置、超时、成本、模型版本、请求追踪和晚到结果标识 |
 | QueuePort | BullMQ/Redis | 同步内存任务适配器 | 至少一次投递、可重试、死信、幂等键、可取消能力 |
 | NotificationPort | 推送/邮件提供方 | 捕获消息适配器 | 通用锁屏文案、授权检查、去重、区域路由 |
 | RegionPolicyPort | 已签署属地包配置库 | 场景配置适配器 | 功能启用、求助资源、留存、人工值守、通知限制及版本 |
@@ -254,7 +256,7 @@ PostgreSQL 仓储是模块内部 seam。测试运行真实迁移的临时 Postgr
 | Learning PostgreSQL | 家庭、资料、题目、批改、错题、证据、复习、挑战、报告投影、outbox | 应用接口和领域/AI 工作进程的最小权限角色 |
 | Safety PostgreSQL | 安全升级、举报调查身份映射、处置与访问审计 | SafetyEscalation 和经授权运营角色 |
 | Metrics store | 去标识学习成效事件、交互诊断事件、指标版本和聚合 | 指标写入进程与只读分析角色 |
-| `ingest-temporary` | 待确认原始照片、PDF、短录音 | Submission/识别工作进程；短生命周期 |
+| `ingest-temporary` | 待确认原始照片、PDF、短录音 | Submission/识别工作进程；私有、短生命周期，内容确认后删除整页原图 |
 | `learning-materials` | 监护人明确保存的资料与必要最小裁剪 | LearningContent；家庭空间隔离 |
 | `generated-assets` | 必要的生成式非敏感附件 | GeneratedLearning；版本和来源链绑定 |
 | `safety-evidence` | 安全个案所需最小证据 | SafetyEscalation；独立 KMS key 和生命周期 |
@@ -358,22 +360,30 @@ sequenceDiagram
 sequenceDiagram
     participant M as 移动端
     participant API as Submission
-    participant O as 对象存储
+    participant O as Rhea 私有对象存储
     participant W as AI Worker
+    participant Q as QualityControl
+    participant R as RecognitionPort
     participant C as LearningContent
     participant A as Assessment
     participant P as LearningProgress
 
     M->>API: 创建上传会话（授权/内容类型/大小）
     API-->>M: 短时预签名 URL + upload_id
-    M->>O: 直接分片上传页面
+    M->>O: 上传页面（离线时仅保留加密草稿）
     M->>API: 提交页序和对象 hash
-    API->>API: 文件解码、恶意内容、重复与质量门
+    API->>API: 创建 processing_job，返回 202 + job_id
     API->>W: RecognitionRequested
-    W->>W: OCR + 题组/题目/作答候选
+    W->>W: 文件安全检查、质量检查、隐私预处理
+    W->>Q: authorizeCapability(OCR, 切片, 版本)
+    Q-->>W: 已签署适配器/能力版本
+    W->>R: 发送最小必要页面输入
+    R-->>W: OCR/结构候选
+    W->>W: Schema/来源/状态与取消检查
     W->>C: applyRecognitionCandidate(来源版本)
     C-->>M: 逐处内容确认任务
     M->>C: 确认/修正内容与页序
+    C->>O: 删除整页原图或迁移监护人明确保存的资料
     C->>A: ContentConfirmed
     A->>A: 选择自动/建议/暂无法评价
     A-->>M: 批改结果或待复核状态
@@ -383,10 +393,13 @@ sequenceDiagram
 
 实现要求：
 
-- 客户端可先做拍摄质量预检，但服务端仍需独立校验。
+- 客户端只做相机预览、旋转/裁剪、页序、删除/重拍、文件/网络检查和上传进度；不做 OCR、AI 推断、自动质量判定、批改或学习状态计算。
+- 无网络时仅在应用沙箱保存独立加密的上传草稿；恢复网络后继续上传，离线期间不产生识别、批改或 AI 结果。
 - 对象 key 不包含姓名、学校、学科成绩等可读信息。
 - OCR 候选绝不直接成为已确认题目。
-- 整页图确认后进入可配置生命周期；监护人保存为学习资料时迁移至独立桶和策略。
+- 处理任务状态为 `security_check → quality_check → recognizing → awaiting_confirmation → grading → completed`，并支持 `canceled`、`failed`、`unavailable` 终态；客户端可凭任务 ID 通过 SSE 或轮询恢复进度。
+- 内容确认后删除整页原图，仅保留结构化内容、来源摘要/hash 和确有必要的最小题目裁剪；监护人明确保存为学习资料是例外，迁移至独立桶和策略。争议证据不足时请求重新拍摄，不延长默认原图保留。
+- 用户取消或 AI 授权撤回会立即把任务标为 `canceled` 并阻止发布；外部提供方的晚到结果进入隔离丢弃流程，不得写入题目、批改、错题、报告、学习指标或产品指标，并按生命周期删除。
 - 每一步均可恢复，重试不能创建重复题目、批改或错题。
 
 ### 9.2 客观题与开放题评价
@@ -488,7 +501,14 @@ sequenceDiagram
 
 ## 10. AI 与 OCR 架构
 
-### 10.1 AI 任务管道
+### 10.1 后端统一处理边界
+
+- `RecognitionPort` 与 `ModelGatewayPort` 只能由后端工作进程调用；移动端构建产物不得包含提供方密钥、直连端点或 OCR/AI 提供方 SDK。
+- 后端在调用 OCR 前完成文件安全、解码、重编码、质量与隐私预处理。MVP 每项能力只启用一个经签署的主生产适配器；只有预先完成质量、区域、保留和安全签署的适配器/能力版本才能作为回退。
+- 生成式 AI 默认只接收已确认的结构化文本、当前学习依据和完成任务所需的最小题目裁剪；整页原图不直接传给生成式模型。确需多模态的能力必须单独签署用途和最小输入。
+- 每次外部调用在开始、发送前、接收后和发布前重新校验任务状态、授权版本、能力版本和来源版本。取消、授权撤回或版本失效后，晚到结果只能审计为已丢弃，不能进入任何领域状态或指标。
+
+### 10.2 AI 任务管道
 
 ```mermaid
 flowchart LR
@@ -504,7 +524,7 @@ flowchart LR
     Q -->|失败| U[暂不可用]
 ```
 
-### 10.2 `ModelTask` 必需字段
+### 10.3 `ModelTask` 必需字段
 
 - `purpose`：识别结构、讲解、错因建议、复习卡、变式题、小测、开放题建议评价等。
 - `risk_level` 与评测切片：学科、年龄适配层级、输入质量、学习依据状态。
@@ -513,13 +533,13 @@ flowchart LR
 - prompt/template、策略、模型、适配器和区域版本。
 - `family_space_id`/`learning_profile_id` 仅用于内部授权和追踪；能去除时不发送给模型提供方。
 
-### 10.3 输出保存
+### 10.4 输出保存
 
 保存：结构化输出、提供方/模型版本、模板版本、输入来源引用、生成检查、使用量、延迟、停止原因、外部 trace id 和发布状态。
 
 不保存：模型内部 chain-of-thought、提供方密钥、无关家庭上下文、未授权的原始设备数据。需要解释时生成面向用户的依据摘要和步骤，不展示隐藏推理。
 
-### 10.4 生成检查的确定性层
+### 10.5 生成检查的确定性层
 
 | 检查 | 实现建议 |
 | --- | --- |
@@ -534,13 +554,13 @@ flowchart LR
 
 失败后最多按任务策略进行有限再生成；再次失败即正确放弃。重试不能降低风险规则或切换到未经签署的模型版本。
 
-### 10.5 供应商策略
+### 10.6 供应商策略
 
-- OCR 与模型分别抽象，不要求同一提供方。
+- OCR 与模型分别抽象，不要求同一提供方；所有调用均从后端发起。
 - 提供方必须支持合同层面的不训练/最小保留、区域选择、删除与事件通报要求。
 - 任务路由以质量卡和适用切片为准，不按最低价格自动切换高风险任务。
-- 任一适配器超时、限流或质量遏制时，模块返回明确处理中/待确认/暂不可用，不静默改用未批准模型。
-- 每个能力至少有生产适配器和固定测试适配器；第二生产提供方只有在真实韧性或属地需求出现时接入。
+- 任一适配器超时、限流或质量遏制时，只能切换到已预先签署且适用于当前切片的提供方/能力版本；没有合格回退时返回明确处理中/待确认/暂不可用，不静默改用未批准模型。
+- MVP 每个能力采用一个主生产适配器和固定测试适配器；第二生产适配器只有在真实韧性或属地需求出现且完成签署后接入。
 
 ## 11. 身份、授权与会话
 
@@ -556,6 +576,7 @@ flowchart LR
 - 学习者 PIN 主要防止共享设备误入其他档案；它不代替服务器授权和设备注册。
 - 会话 claims 至少包含 actor 类型、家庭空间、学习档案、授权版本、设备、到期时间和会话 ID。
 - 访问 token 只保存在内存；可续期凭据放系统安全存储。照片、PDF 和音频等大数据不放安全键值存储。
+- 离线上传草稿保存在应用私有沙箱并单独加密，只包含恢复上传所需的页面与元数据；不得包含 OCR/AI 结果或权威学习状态。
 
 ### 11.3 授权判定
 
@@ -568,7 +589,7 @@ flowchart LR
 - 传输使用 TLS；数据库、对象、备份和队列使用托管 KMS 加密，安全区使用独立 key。
 - 不在对象 key、队列名、URL、日志 tag 或 trace attribute 中写儿童姓名、学校、题目文本或答案。
 - 预签名上传/下载 URL 短时有效、限制内容类型和大小，服务端校验实际文件类型和 hash。
-- 移动端本地缓存按学习档案命名空间隔离；登出、撤回、上传成功和删除请求触发清理。
+- 移动端本地缓存按学习档案命名空间隔离并加密；登出、授权撤回、上传成功、取消和删除请求触发清理。
 - 生产数据不复制到开发环境；质量复核样本进入独立、授权、去标识且限期的样本库。
 
 ### 12.2 主要威胁与控制
@@ -581,6 +602,7 @@ flowchart LR
 | 恶意/伪装文件 | 大小/类型限制、真实 MIME 解码、恶意内容扫描、图像重编码、PDF 隔离解析 |
 | 猜测对象 URL | 不透明公开 ID、短时签名 URL、对象级授权、无可读路径 |
 | 队列重复或重放 | 幂等键、唯一约束、聚合版本、任务输入 hash、条件状态转换 |
+| 取消后的晚到 OCR/AI 结果 | 外部调用前后校验任务/授权版本、发布条件写入、隔离丢弃状态、禁止进入领域表和指标管道 |
 | 挑战刷分 | 挑战题一次有效提交、服务器计分、题包版本签名、每日 XP 上限、异常诊断但不儿童画像 |
 | 随机对手身份泄露 | 系统身份、无搜索/主页/聊天、赛后断开映射、隔离举报记录 |
 | 支持人员滥用 | 监护人发起、范围/时长限制、Just-in-time 角色、不可变访问审计、到期自动撤权 |
@@ -603,7 +625,7 @@ flowchart LR
 - `/v1` REST/JSON，用领域资源和明确命令表达写操作。
 - 所有可重试写操作要求 `Idempotency-Key`。
 - 修改版本化资源使用 `If-Match`/`expectedVersion`，冲突返回当前版本和可恢复动作。
-- 长任务创建后返回 `202 Accepted`、任务公开 ID 和当前状态；移动端通过 SSE 获取进度，也可轮询恢复。
+- 长任务创建后返回 `202 Accepted`、任务公开 ID 和当前状态；移动端通过 SSE 获取进度，也可轮询恢复或提交取消。OCR/批改任务公开阶段统一为安全检查、质量检查、识别、待内容确认、批改和完成。
 - 列表使用稳定 cursor 分页，不使用深 offset。
 - 错误统一包含稳定 code、适龄/监护人文案、是否可重试和下一动作，不向客户端暴露内部堆栈或提供方错误。
 
@@ -612,7 +634,7 @@ flowchart LR
 | 接口组 | 示例 |
 | --- | --- |
 | 家庭与会话 | `/families`、`/learning-profiles`、`/consents`、`/learner-sessions` |
-| 上传与内容 | `/upload-sessions`、`/submissions`、`/content-confirmations`、`/learning-bases` |
+| 上传与内容 | `/upload-sessions`、`/submissions`、`/processing-jobs/{id}`、`/processing-jobs/{id}/cancel`、`/content-confirmations`、`/learning-bases` |
 | 作答与批改 | `/answers`、`/assessments`、`/assessment-acceptances`、`/grading-disputes` |
 | 错题与复习 | `/error-themes`、`/corrections`、`/review-sessions`、`/review-answers` |
 | AI 学习 | `/generated-content-requests`、`/hints`、`/source-chains` |
@@ -708,6 +730,7 @@ OpenTelemetry Collector 在输出到后端前再次执行字段清洗。安全�
 - 每个 AI/OCR 能力有按版本、学科、年龄、风险和输入切片的功能开关。
 - 关键错误信号可自动进入质量遏制，但恢复必须经过回归、重新签署和影子运行。
 - 队列设置最大重试、指数退避、死信和人工重放；重放仍通过模块幂等接口。
+- 工作进程在外部调用前后及领域发布前检查任务、授权、能力和来源版本；取消或撤回后的晚到响应只记录无内容诊断码，随后隔离删除。
 - 模型预算按家庭、任务和能力设置，不因预算耗尽阻断已有原始资料、手动确认、订正或完整讲解查看。
 - 告警只在真实值守窗口内声称有人响应；没有值守时通过安全降级保护用户。
 
@@ -737,9 +760,9 @@ OpenTelemetry Collector 在输出到后端前再次执行字段清洗。安全�
 | --- | --- | --- |
 | 纯策略测试 | 模块内部纯函数 | 掌握、间隔、成长分、授权、年龄适配和状态前置条件 |
 | 模块接口测试 | 模块公开接口 + 临时 PostgreSQL | 事务、约束、RLS、历史、幂等、并发、outbox 和失效 |
-| 适配器契约测试 | 各 port 的生产/测试适配器 | 超时、取消、结构化输出、区域/保留配置、错误映射 |
+| 适配器契约测试 | 各 port 的生产/测试适配器 | 超时、取消、晚到结果、结构化输出、区域/保留配置、已批准回退和错误映射 |
 | 工作流集成测试 | API + Worker + PostgreSQL + Redis + 本地对象存储 | 重试、重复投递、进程崩溃、恢复和最终投影 |
-| 移动端 E2E | 真机/模拟器 | 相机、文件、共享设备、重新验证、五项导航、无障碍基础 |
+| 移动端 E2E | 真机/模拟器 | 相机、页面整理、加密离线草稿、断网续传、取消、共享设备、重新验证、五项导航、无障碍基础；构建产物不含提供方密钥或 OCR/AI SDK |
 | AI 离线评测 | 质量评测单元和切片 | 识别、结构、评价、教学、生成题包、阻止/失效 |
 | 安全/隐私测试 | 黑盒 + 配置审计 | 跨租户、越权、上传、提示注入、日志、删除、支持访问、随机身份 |
 | 负载/韧性测试 | 基线容量 + 故障注入 | 队列峰值、提供方超时、数据库故障、重复事件、回退 |
@@ -750,7 +773,8 @@ OpenTelemetry Collector 在输出到后端前再次执行字段清洗。安全�
 - 未接受建议评价永远不能产生错题、正式证据或报告分数。
 - 两条证据不足、间隔不足、无 AI 变式或最终有提示时永远不能掌握。
 - 上游版本变化后任何旧派生内容都不能重新变为当前有效。
-- 授权撤回后任何延迟任务都不能发布新 AI 内容或新挑战结果。
+- 取消或授权撤回后任何延迟 OCR/AI 结果都不能发布内容、批改、错题、报告、学习指标或产品指标。
+- 未经签署的 OCR/AI 提供方或能力版本永远不能成为静默回退目标。
 - 重复命令、重复事件和重复队列任务最多产生一次领域状态变化。
 - 随机匹配不能使用年级以外的学习者属性决定候选顺序。
 - 报告/安全记录不能进入普通学习指标或 AI 上下文。
@@ -827,7 +851,7 @@ rhea/
 
 ### Slice 1：客观题拍照闭环
 
-- 多页上传、质量门、OCR 候选、内容确认、当前学习依据、客观评价、批改质疑和单题讲解。
+- 多页上传、加密离线草稿与续传、后端文件安全/质量/隐私预处理、任务状态恢复/取消、OCR 候选、内容确认、原图清理、当前学习依据、客观评价、批改质疑和单题讲解。
 - 退出门槛：多页数学验收场景、正确放弃和上游失效 100% 通过。
 
 ### Slice 2：四学科建议评价
@@ -854,6 +878,7 @@ rhea/
 
 | 决定 | 收益 | 代价/约束 |
 | --- | --- | --- |
+| OCR/AI 全部后端统一处理 | 密钥、供应商、质量、授权、取消和数据生命周期可统一治理；客户端行为一致 | 识别依赖网络并增加上传延迟、后端成本与容量压力；离线仅能保存加密草稿 |
 | 模块化单体而非微服务 | 强事务、部署简单、较少跨网络故障 | 需要模块数据所有权和依赖规则的持续检查 |
 | React Native/Expo | 移动端复用、相机/文件/音频生态成熟 | 原生依赖升级需兼容性验证；高风险原生能力需 Development Build/真机测试 |
 | TypeScript 全栈 | DTO/事件/策略类型复用，降低多语言协调 | 复杂数学/文档算法可能需要受控外部进程或库适配器 |
@@ -864,20 +889,24 @@ rhea/
 | 来源图 + epoch 失效 | 派生内容可追溯且读取立即失败关闭 | 写入和读取都必须携带版本，不能用“覆盖当前行”的简单 CRUD |
 | 供应商适配器 | 模型/OCR 可按质量与属地替换 | 只实现真实需要的适配器，避免过早抽象所有供应商差异 |
 
-## 21. ADR 待签署清单
+## 21. ADR 状态与待签署清单
 
-工程启动时应把以下决定转成短 ADR，并记录被否决方案：
+已签署：
 
-1. ADR-0001：V1 采用 TypeScript 模块化单体与独立工作进程。
-2. ADR-0002：PostgreSQL 是学习事实唯一权威源，Redis 仅作可重建队列/缓存/匹配池。
-3. ADR-0003：LLM 只能产生候选，领域模块确定授权、评价接受、证据和掌握。
-4. ADR-0004：当前学习依据快照、来源图和 invalidation epoch 的失效模型。
-5. ADR-0005：家庭空间 RLS、学习者会话和监护人重新验证模型。
-6. ADR-0006：学习、安全、指标三数据区及加密/访问角色。
-7. ADR-0007：随机挑战的系统身份、赛后去标识和 HMAC 永久避配。
-8. ADR-0008：outbox、至少一次任务和所有工作进程幂等策略。
-9. ADR-0009：AI 质量卡、能力版本、影子运行与质量遏制。
-10. ADR-0010：隐私删除编排、对象生命周期和删除证明。
+1. [ADR-0001：OCR 与 AI 处理统一由 Rhea 后端执行](../adr/0001-centralize-ocr-and-ai-processing.md)。
+
+工程启动时还应把以下决定转成短 ADR，并记录被否决方案：
+
+2. ADR-0002：V1 采用 TypeScript 模块化单体与独立工作进程。
+3. ADR-0003：PostgreSQL 是学习事实唯一权威源，Redis 仅作可重建队列/缓存/匹配池。
+4. ADR-0004：LLM 只能产生候选，领域模块确定授权、评价接受、证据和掌握。
+5. ADR-0005：当前学习依据快照、来源图和 invalidation epoch 的失效模型。
+6. ADR-0006：家庭空间 RLS、学习者会话和监护人重新验证模型。
+7. ADR-0007：学习、安全、指标三数据区及加密/访问角色。
+8. ADR-0008：随机挑战的系统身份、赛后去标识和 HMAC 永久避配。
+9. ADR-0009：outbox、至少一次任务和所有工作进程幂等策略。
+10. ADR-0010：AI 质量卡、能力版本、影子运行与质量遏制。
+11. ADR-0011：隐私删除编排、对象生命周期和删除证明。
 
 ## 22. 产品需求追溯
 
@@ -901,6 +930,10 @@ rhea/
 - [React Native：About the New Architecture](https://reactnative.dev/architecture/landing-page)
 - [Expo：Navigation in Expo and React Native apps](https://docs.expo.dev/develop/app-navigation/)
 - [Expo：SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/)
+- [Expo：Environment variables and client-side visibility](https://docs.expo.dev/guides/environment-variables/)
+- [Apple Vision：Recognizing text in images](https://developer.apple.com/documentation/vision/recognizing-text-in-images)
+- [Google ML Kit：Text recognition v2](https://developers.google.com/ml-kit/vision/text-recognition/v2/android)
+- [Google Cloud：API key best practices](https://docs.cloud.google.com/docs/authentication/api-keys-best-practices)
 - [NestJS：Modules](https://docs.nestjs.com/modules)
 - [NestJS：Queues / BullMQ](https://docs.nestjs.com/techniques/queues)
 - [PostgreSQL：Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
