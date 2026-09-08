@@ -1,0 +1,1422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light">
+  <title>Rhea 移动端 MVP 信息架构原型</title>
+  <style>
+    :root {
+      --canvas: #f4f7fc;
+      --surface: #ffffff;
+      --surface-soft: #f8faff;
+      --ink: #14213a;
+      --muted: #526077;
+      --line: #d9e0ed;
+      --blue: #1d4ed8;
+      --blue-strong: #173a8f;
+      --blue-soft: #e8f0ff;
+      --gold: #a65b00;
+      --gold-soft: #fff3ce;
+      --green: #11613c;
+      --green-soft: #dcfce7;
+      --red: #b42318;
+      --red-soft: #fff0ee;
+      --focus: #7c3aed;
+      --shadow: 0 12px 36px rgba(23, 58, 143, 0.09);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 11px;
+      font-family: "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--canvas);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--canvas); }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100vh;
+      background: var(--canvas);
+    }
+
+    button, input, textarea { font: inherit; }
+
+    button, a, input, textarea { -webkit-tap-highlight-color: transparent; }
+
+    button {
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:active { opacity: 0.78; }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.56;
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 99;
+      top: 10px;
+      left: 10px;
+      transform: translateY(-180%);
+      padding: 10px 14px;
+      border-radius: 10px;
+      color: #fff;
+      background: var(--focus);
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    .app-shell {
+      width: min(100%, 720px);
+      min-height: 100vh;
+      margin: 0 auto;
+      background: var(--canvas);
+    }
+
+    .prototype-note {
+      padding: calc(10px + env(safe-area-inset-top)) 18px 10px;
+      border-bottom: 1px solid #cad5e8;
+      color: #31415f;
+      background: #edf3ff;
+      font-size: 12px;
+      line-height: 1.55;
+      text-align: center;
+    }
+
+    .app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border-radius: 13px;
+      color: #fff;
+      background: var(--blue-strong);
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .brand-copy strong,
+    .brand-copy span { display: block; }
+
+    .brand-copy strong { font-size: 15px; }
+
+    .brand-copy span {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .header-action,
+    .text-action {
+      min-height: 44px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--blue-strong);
+      background: var(--surface);
+      font-weight: 700;
+    }
+
+    main {
+      padding: 4px 16px calc(188px + env(safe-area-inset-bottom));
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      margin-bottom: 8px;
+      font-size: clamp(25px, 7vw, 34px);
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+    }
+
+    h2 {
+      margin-bottom: 12px;
+      font-size: 19px;
+      line-height: 1.35;
+    }
+
+    h3 {
+      margin-bottom: 7px;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+
+    p { line-height: 1.65; }
+
+    .lede {
+      margin-bottom: 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .eyebrow {
+      margin-bottom: 7px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .section { margin-top: 22px; }
+
+    .section-heading {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 10px;
+    }
+
+    .section-heading h2 { margin: 0; }
+
+    .section-heading span {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .card-flat { box-shadow: none; }
+
+    .stack { display: grid; gap: 12px; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .primary,
+    .secondary,
+    .quiet,
+    .danger {
+      display: inline-flex;
+      min-height: 48px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border-radius: 13px;
+      font-weight: 800;
+      text-align: center;
+      text-decoration: none;
+    }
+
+    .primary {
+      border: 1px solid var(--blue);
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .primary:hover { background: var(--blue-strong); }
+
+    .secondary {
+      border: 1px solid #aebee5;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+    }
+
+    .quiet {
+      border: 1px solid var(--line);
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .danger {
+      border: 1px solid #f2b7b0;
+      color: var(--red);
+      background: var(--red-soft);
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .button-row > * { flex: 1 1 150px; }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .status-cell {
+      min-height: 74px;
+      padding: 12px 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      text-align: center;
+    }
+
+    .status-cell strong,
+    .status-cell span { display: block; }
+
+    .status-cell strong { font-size: 19px; }
+
+    .status-cell span {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .hero-card {
+      padding: 20px;
+      border-color: #b7c8ef;
+      background: linear-gradient(145deg, #fff 0%, #edf3ff 100%);
+    }
+
+    .hero-card h2 { font-size: 23px; }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin: 14px 0 18px;
+    }
+
+    .pill {
+      display: inline-flex;
+      min-height: 30px;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .pill.gold { color: var(--gold); background: var(--gold-soft); }
+    .pill.green { color: var(--green); background: var(--green-soft); }
+    .pill.red { color: var(--red); background: var(--red-soft); }
+
+    .journey {
+      position: relative;
+      display: grid;
+      gap: 11px;
+      padding-left: 19px;
+    }
+
+    .journey::before {
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      left: 6px;
+      width: 2px;
+      background: #c4d1e9;
+      content: "";
+    }
+
+    .journey-item {
+      position: relative;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 82px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }
+
+    .journey-item::before {
+      position: absolute;
+      left: -18px;
+      width: 10px;
+      height: 10px;
+      border: 3px solid var(--canvas);
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 1px #9db2dc;
+      content: "";
+    }
+
+    .journey-item p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .journey-item button {
+      min-height: 44px;
+      padding: 9px 12px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--blue-strong);
+      background: var(--surface-soft);
+      font-weight: 800;
+    }
+
+    .mini-card {
+      min-height: 132px;
+      padding: 15px;
+    }
+
+    .mini-card p { margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+
+    .mini-card button {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--blue-strong);
+      background: var(--surface-soft);
+      font-weight: 800;
+    }
+
+    .capture-stage {
+      padding: 24px 18px;
+      border: 2px solid #aac0ee;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .capture-stage .capture-label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--blue-strong);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .capture-stage h2 { margin-bottom: 9px; font-size: 27px; }
+    .capture-stage p { max-width: 38em; margin: 0 auto 18px; color: var(--muted); }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(128px, 1fr));
+      gap: 9px;
+      overflow-x: auto;
+      padding: 2px 2px 10px;
+      scroll-snap-type: x proximity;
+    }
+
+    .pipeline-step {
+      min-height: 118px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      scroll-snap-align: start;
+    }
+
+    .pipeline-step strong,
+    .pipeline-step span { display: block; }
+
+    .pipeline-step strong { margin: 8px 0 5px; }
+    .pipeline-step span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .step-index {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 9px;
+      color: #fff;
+      background: var(--blue-strong);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .subject-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 1px 8px;
+    }
+
+    .subject-tab {
+      min-width: 76px;
+      min-height: 44px;
+      padding: 9px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--ink);
+      background: var(--surface);
+      font-weight: 800;
+    }
+
+    .subject-tab[aria-selected="true"] {
+      border-color: var(--blue);
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .workspace-card {
+      display: grid;
+      gap: 16px;
+      padding: 18px;
+    }
+
+    .workspace-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .workspace-header p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .task-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .task-tile {
+      min-height: 116px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: var(--surface-soft);
+    }
+
+    .task-tile span { color: var(--muted); font-size: 12px; }
+    .task-tile strong { display: block; margin: 8px 0 10px; }
+
+    .task-tile button {
+      min-height: 42px;
+      padding: 8px 10px;
+      border: 1px solid #b7c8ef;
+      border-radius: 10px;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .page-header {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      align-items: start;
+      margin: 8px 0 20px;
+    }
+
+    .back-button {
+      min-width: 52px;
+      min-height: 44px;
+      padding: 9px 11px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--blue-strong);
+      background: var(--surface);
+      font-weight: 800;
+    }
+
+    .page-header h1 { margin: 0; font-size: 25px; }
+    .page-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .instruction-card { padding: 18px; }
+
+    .instruction-list {
+      margin: 0;
+      padding-left: 21px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .photo-area {
+      display: grid;
+      min-height: 240px;
+      place-items: center;
+      padding: 24px;
+      border: 2px dashed #9db2dc;
+      border-radius: var(--radius-md);
+      color: var(--muted);
+      background: #f8fbff;
+      text-align: center;
+    }
+
+    .photo-area strong { display: block; margin-bottom: 8px; color: var(--ink); }
+
+    .field { display: grid; gap: 7px; }
+    .field label { font-size: 13px; font-weight: 800; }
+
+    .field input,
+    .field textarea {
+      width: 100%;
+      min-height: 48px;
+      padding: 12px;
+      border: 1px solid #b9c4d8;
+      border-radius: 11px;
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    .field textarea { min-height: 110px; resize: vertical; line-height: 1.6; }
+
+    .confidence {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 13px;
+      border-radius: 12px;
+      color: var(--green);
+      background: var(--green-soft);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .solution-step {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .solution-step:last-child { border-bottom: 0; }
+
+    .solution-step b {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border-radius: 10px;
+      color: #fff;
+      background: var(--blue-strong);
+    }
+
+    .solution-step p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+
+    .callout {
+      padding: 15px;
+      border-left: 4px solid var(--gold);
+      border-radius: 0 12px 12px 0;
+      color: #6c4300;
+      background: var(--gold-soft);
+    }
+
+    .callout strong { display: block; margin-bottom: 5px; }
+    .callout p { margin: 0; font-size: 13px; }
+
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .filter-button {
+      min-height: 42px;
+      padding: 8px 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--ink);
+      background: var(--surface);
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .filter-button[aria-pressed="true"] {
+      border-color: var(--blue);
+      color: #fff;
+      background: var(--blue);
+    }
+
+    .mistake-item {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 16px;
+    }
+
+    .mistake-item p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+
+    .count-badge {
+      display: grid;
+      min-width: 42px;
+      min-height: 42px;
+      place-items: center;
+      border-radius: 12px;
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+      font-weight: 800;
+    }
+
+    .review-card {
+      min-height: 310px;
+      padding: 22px;
+      border: 1px solid #b7c8ef;
+      border-radius: var(--radius-lg);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .review-card .question {
+      margin: 25px 0;
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1.55;
+    }
+
+    .answer-panel {
+      padding: 15px;
+      border-radius: 12px;
+      color: var(--green);
+      background: var(--green-soft);
+    }
+
+    .answer-panel[hidden] { display: none; }
+
+    .progress-track {
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dde6f4;
+    }
+
+    .progress-fill {
+      width: 20%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+      transition: width 180ms ease;
+    }
+
+    .choice-group { display: grid; gap: 9px; }
+
+    .challenge-card { padding: 18px; }
+
+    .challenge-card .rule-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .rule-chip {
+      padding: 10px;
+      border-radius: 11px;
+      color: #31415f;
+      background: var(--surface-soft);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .match-status {
+      display: none;
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 12px;
+      color: var(--green);
+      background: var(--green-soft);
+      line-height: 1.6;
+    }
+
+    .match-status.is-visible { display: block; }
+
+    .guardian-lock {
+      padding: 22px;
+      text-align: center;
+    }
+
+    .guardian-lock p { color: var(--muted); }
+
+    .guardian-dashboard[hidden] { display: none; }
+
+    .metric-card {
+      min-height: 118px;
+      padding: 15px;
+    }
+
+    .metric-card strong { display: block; font-size: 26px; }
+    .metric-card span { color: var(--muted); font-size: 12px; }
+
+    .report-row {
+      display: grid;
+      grid-template-columns: 94px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .report-row:last-child { border-bottom: 0; }
+
+    .report-bar {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dfe7f4;
+    }
+
+    .report-bar span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+    }
+
+    .bottom-nav {
+      position: fixed;
+      z-index: 20;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      display: flex;
+      justify-content: center;
+      padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(12px);
+    }
+
+    .nav-inner {
+      display: grid;
+      width: min(100%, 720px);
+      grid-template-columns: repeat(var(--nav-count), minmax(0, 1fr));
+      gap: 5px;
+    }
+
+    .nav-button {
+      min-height: 51px;
+      padding: 7px 4px;
+      border: 0;
+      border-radius: 11px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .nav-button[aria-current="page"] {
+      color: var(--blue-strong);
+      background: var(--blue-soft);
+    }
+
+    .variant-switcher {
+      position: fixed;
+      z-index: 30;
+      right: 50%;
+      bottom: calc(77px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: 44px minmax(126px, 1fr) 44px;
+      align-items: center;
+      overflow: hidden;
+      border: 1px solid #b9c7dd;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: 0 12px 30px rgba(20, 33, 58, 0.18);
+      transform: translateX(50%);
+    }
+
+    .variant-switcher button {
+      min-height: 44px;
+      border: 0;
+      color: var(--blue-strong);
+      background: transparent;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .variant-label {
+      padding: 0 8px;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .toast {
+      position: fixed;
+      z-index: 40;
+      top: calc(16px + env(safe-area-inset-top));
+      left: 50%;
+      max-width: calc(100% - 32px);
+      padding: 12px 16px;
+      border-radius: 12px;
+      color: #fff;
+      background: var(--ink);
+      box-shadow: var(--shadow);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, -12px);
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+
+    .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    @media (min-width: 620px) {
+      main { padding-right: 24px; padding-left: 24px; }
+      .app-header { padding-right: 26px; padding-left: 26px; }
+      .hero-card { padding: 25px; }
+      .workspace-card { grid-template-columns: 0.8fr 1.2fr; align-items: start; }
+      .workspace-header { display: block; }
+    }
+
+    @media (max-width: 370px) {
+      .grid-2,
+      .task-grid { grid-template-columns: 1fr; }
+      .status-row { grid-template-columns: 1fr; }
+      .status-cell { min-height: 60px; text-align: left; }
+      .status-cell strong, .status-cell span { display: inline; }
+      .status-cell span { margin-left: 7px; }
+      .challenge-card .rule-list { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <div class="app-shell">
+    <div class="prototype-note">可抛弃移动端信息架构原型，不是最终视觉设计；不联网、不保存真实儿童数据，刷新后重置。</div>
+    <header class="app-header" aria-label="应用页头">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">R</span>
+        <span class="brand-copy"><strong>Rhea 学习助手</strong><span>小禾 · 三年级</span></span>
+      </div>
+      <button class="header-action" type="button" data-view="guardian">监护人</button>
+    </header>
+    <main id="main-content" tabindex="-1"></main>
+  </div>
+
+  <div class="variant-switcher" aria-label="原型方案切换">
+    <button type="button" data-variant-direction="-1" aria-label="上一套方案">‹</button>
+    <span class="variant-label" id="variant-label">方案 A · 今日路线</span>
+    <button type="button" data-variant-direction="1" aria-label="下一套方案">›</button>
+  </div>
+  <nav class="bottom-nav" aria-label="主要导航"><div class="nav-inner" id="nav-inner"></div></nav>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="sr-only" id="live-region" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const variants = {
+        A: { name: "今日路线", description: "按一天的学习节奏推进" },
+        B: { name: "拍照先行", description: "先处理眼前的一道题" },
+        C: { name: "学科工作台", description: "按学科管理任务与成长" }
+      };
+
+      const navByVariant = {
+        A: [
+          ["home", "今日"], ["review", "复习"], ["mistakes", "错题"], ["challenge", "挑战"], ["guardian", "我的"]
+        ],
+        B: [
+          ["home", "首页"], ["mistakes", "错题"], ["capture", "拍照"], ["challenge", "挑战"], ["guardian", "我的"]
+        ],
+        C: [
+          ["home", "学习"], ["mistakes", "资料库"], ["challenge", "挑战"], ["guardian", "我的"]
+        ]
+      };
+
+      const subjects = {
+        "数学": { lesson: "分数的初步认识", pending: "2 道待确认", mistake: "分数应用 · 3 道", review: "2 张复习卡" },
+        "语文": { lesson: "第 7 课阅读概括", pending: "没有待确认", mistake: "段意概括 · 1 道", review: "1 张复习卡" },
+        "英语": { lesson: "一般现在时", pending: "没有待确认", mistake: "动词变化 · 2 道", review: "2 张复习卡" },
+        "科学": { lesson: "水的三种状态", pending: "没有待确认", mistake: "本周暂无", review: "已完成" }
+      };
+
+      const state = {
+        subject: "数学",
+        reviewIndex: 1,
+        answerVisible: false,
+        guardianUnlocked: false,
+        mistakeFilter: "全部"
+      };
+
+      const main = document.querySelector("#main-content");
+      const navInner = document.querySelector("#nav-inner");
+      const variantLabel = document.querySelector("#variant-label");
+      const toast = document.querySelector("#toast");
+      const liveRegion = document.querySelector("#live-region");
+      let toastTimer;
+
+      function params() {
+        return new URLSearchParams(window.location.search);
+      }
+
+      function currentVariant() {
+        const value = params().get("variant") || "A";
+        return variants[value] ? value : "A";
+      }
+
+      function currentView() {
+        return params().get("view") || "home";
+      }
+
+      function updateUrl(next, replace = false) {
+        const url = new URL(window.location.href);
+        Object.entries(next).forEach(([key, value]) => {
+          if (value === null || value === "home" && key === "view") url.searchParams.delete(key);
+          else url.searchParams.set(key, value);
+        });
+        const method = replace ? "replaceState" : "pushState";
+        window.history[method]({}, "", url);
+        render();
+      }
+
+      function navigate(view) {
+        if (view === currentView()) return;
+        updateUrl({ view });
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function setVariant(direction) {
+        const keys = Object.keys(variants);
+        const index = keys.indexOf(currentVariant());
+        const next = keys[(index + direction + keys.length) % keys.length];
+        updateUrl({ variant: next }, true);
+        announce(`已切换到方案 ${next}：${variants[next].name}`);
+      }
+
+      function announce(message) {
+        liveRegion.textContent = "";
+        window.setTimeout(() => { liveRegion.textContent = message; }, 20);
+      }
+
+      function showToast(message) {
+        window.clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add("is-visible");
+        toastTimer = window.setTimeout(() => toast.classList.remove("is-visible"), 2400);
+        announce(message);
+      }
+
+      function pageHeader(title, subtitle) {
+        return `
+          <div class="page-header">
+            <button class="back-button" type="button" data-back>返回</button>
+            <div><h1>${title}</h1><p>${subtitle}</p></div>
+          </div>`;
+      }
+
+      function renderHomeA() {
+        return `
+          <section aria-labelledby="home-title">
+            <p class="eyebrow">9月8日 · 周二</p>
+            <h1 id="home-title">小禾，今天先完成一小步</h1>
+            <p class="lede">系统已经把待确认、错题复习和同伴挑战排成一条清楚的今日路线。</p>
+            <div class="status-row" aria-label="今日学习概览">
+              <div class="status-cell"><strong>2</strong><span>道待确认</span></div>
+              <div class="status-cell"><strong>5</strong><span>张复习卡</span></div>
+              <div class="status-cell"><strong>8 分钟</strong><span>预计完成</span></div>
+            </div>
+            <article class="card hero-card">
+              <span class="pill gold">建议先做</span>
+              <h2>把今天的数学练习拍下来</h2>
+              <p>AI 会先识别题目和你的答案，等你确认无误后再批改、讲解并归入错题库。</p>
+              <div class="hero-meta"><span class="pill">数学</span><span class="pill">约 3 分钟</span><span class="pill green">完成后生成复习卡</span></div>
+              <button class="primary" type="button" data-view="capture">开始拍照学习</button>
+            </article>
+          </section>
+
+          <section class="section" aria-labelledby="route-title">
+            <div class="section-heading"><h2 id="route-title">今日路线</h2><span>完成 0 / 3</span></div>
+            <div class="journey">
+              <article class="journey-item"><div><strong>1. 确认刚识别的题目</strong><p>2 道 · 确认题目和答案后才会批改</p></div><button type="button" data-view="confirm">去确认</button></article>
+              <article class="journey-item"><div><strong>2. 完成今日复习</strong><p>5 张 AI 重写卡片 · 约 8 分钟</p></div><button type="button" data-view="review">去复习</button></article>
+              <article class="journey-item"><div><strong>3. 和同年级伙伴挑战</strong><p>邀请码伙伴正在等候，也可全网随机匹配</p></div><button type="button" data-view="challenge">去挑战</button></article>
+            </div>
+          </section>
+
+          <section class="section" aria-labelledby="growth-title">
+            <div class="section-heading"><h2 id="growth-title">我的成长</h2><span>自动整理</span></div>
+            <div class="grid-2">
+              <article class="card mini-card"><h3>错题库</h3><p>数学 3 · 英语 2 · 语文 1</p><button type="button" data-view="mistakes">查看错题</button></article>
+              <article class="card mini-card"><h3>学习报告</h3><p>本周坚持 4 天，数学复习正确率提升 12%</p><button type="button" data-view="guardian">监护人查看</button></article>
+            </div>
+          </section>`;
+      }
+
+      function renderHomeB() {
+        return `
+          <section aria-labelledby="home-title">
+            <p class="eyebrow">方案 B · 拍照先行</p>
+            <h1 id="home-title">遇到不会的题，就从拍照开始</h1>
+            <p class="lede">首页只突出眼前任务；所有整理、讲解与复习都从一次可信的拍照确认开始。</p>
+            <article class="capture-stage">
+              <span class="capture-label">今天还没有新练习</span>
+              <h2>拍下作业或试卷</h2>
+              <p>支持语文、数学、英语、科学。上传后先由你核对识别内容，再进入 AI 批改。</p>
+              <button class="primary" type="button" data-view="capture">拍照上传</button>
+            </article>
+          </section>
+
+          <section class="section" aria-labelledby="pipeline-title">
+            <div class="section-heading"><h2 id="pipeline-title">一张照片会去哪里</h2><span>左右滑动查看</span></div>
+            <div class="pipeline" aria-label="拍照学习处理流程">
+              <article class="pipeline-step"><span class="step-index">1</span><strong>识别</strong><span>找出题目、作答与学科</span></article>
+              <article class="pipeline-step"><span class="step-index">2</span><strong>确认</strong><span>你核对内容，避免误判</span></article>
+              <article class="pipeline-step"><span class="step-index">3</span><strong>讲解</strong><span>按年级生成步骤与提示</span></article>
+              <article class="pipeline-step"><span class="step-index">4</span><strong>巩固</strong><span>错题入库并重写复习卡</span></article>
+            </div>
+          </section>
+
+          <section class="section" aria-labelledby="inbox-title">
+            <div class="section-heading"><h2 id="inbox-title">学习收件箱</h2><span>3 项</span></div>
+            <div class="stack">
+              <article class="card mistake-item"><div><span class="pill red">待处理</span><h3>2 道题等待你确认</h3><p>数学 · 今天 17:20 上传</p></div><button class="text-action" type="button" data-view="confirm">处理</button></article>
+              <article class="card mistake-item"><div><span class="pill">今日复习</span><h3>5 张 AI 重写卡片</h3><p>来自最近的 3 个薄弱知识点</p></div><button class="text-action" type="button" data-view="review">开始</button></article>
+              <article class="card mistake-item"><div><span class="pill gold">同伴挑战</span><h3>伙伴“小松”邀请你答题</h3><p>三年级数学 · 8 分钟</p></div><button class="text-action" type="button" data-view="challenge">查看</button></article>
+            </div>
+          </section>`;
+      }
+
+      function renderHomeC() {
+        const current = subjects[state.subject];
+        return `
+          <section aria-labelledby="home-title">
+            <p class="eyebrow">方案 C · 学科工作台</p>
+            <h1 id="home-title">今天想从哪一科开始？</h1>
+            <p class="lede">每个学科有自己的课程进度、错题、待确认内容和复习卡，适合建立长期学科心智。</p>
+            <div class="button-row">
+              <button class="primary" type="button" data-view="capture">拍照录入练习</button>
+              <button class="secondary" type="button" data-view="review">继续今日复习</button>
+            </div>
+          </section>
+
+          <section class="section" aria-labelledby="subjects-title">
+            <div class="section-heading"><h2 id="subjects-title">学科工作台</h2><span>4 个学科</span></div>
+            <div class="subject-tabs" role="tablist" aria-label="选择学科">
+              ${Object.keys(subjects).map(name => `<button class="subject-tab" type="button" role="tab" aria-selected="${name === state.subject}" data-subject="${name}">${name}</button>`).join("")}
+            </div>
+            <article class="card workspace-card" role="tabpanel" aria-label="${state.subject}学习任务">
+              <div class="workspace-header">
+                <div><span class="pill">${state.subject}</span><h2>${current.lesson}</h2><p>根据课程、错题和复习节奏自动整理</p></div>
+                <button class="text-action" type="button" data-view="capture">添加练习</button>
+              </div>
+              <div class="task-grid">
+                <article class="task-tile"><span>当前课程</span><strong>${current.lesson}</strong><button type="button" data-action="lesson">整理教程</button></article>
+                <article class="task-tile"><span>待确认</span><strong>${current.pending}</strong><button type="button" data-view="confirm">查看识别</button></article>
+                <article class="task-tile"><span>薄弱知识点</span><strong>${current.mistake}</strong><button type="button" data-view="mistakes">打开错题库</button></article>
+                <article class="task-tile"><span>今日巩固</span><strong>${current.review}</strong><button type="button" data-view="review">开始复习</button></article>
+              </div>
+            </article>
+          </section>
+
+          <section class="section" aria-labelledby="shared-title">
+            <div class="section-heading"><h2 id="shared-title">共同成长</h2><span>安全挑战</span></div>
+            <article class="card challenge-card"><h3>和三年级同伴完成一场知识挑战</h3><p class="lede">可输入伙伴邀请码，或只按年级进行全网临时随机匹配。</p><button class="secondary" type="button" data-view="challenge">进入挑战区</button></article>
+          </section>`;
+      }
+
+      function renderCapture() {
+        return `${pageHeader("拍照学习", "先上传，后确认；AI 不会跳过你的核对直接入库")}
+          <section class="stack" aria-labelledby="capture-guide-title">
+            <article class="card instruction-card">
+              <h2 id="capture-guide-title">把整道题和你的作答拍清楚</h2>
+              <ol class="instruction-list"><li>保持页面平整、光线充足</li><li>一道或一页都可以，别遮住题号</li><li>识别后还可以手动修改</li></ol>
+            </article>
+            <div class="photo-area" aria-label="照片预览区"><div><strong>练习照片预览区</strong><span>原型不读取真实相册或摄像头</span></div></div>
+            <div class="field"><label for="mock-file">选择练习照片（原型演示）</label><input id="mock-file" type="file" accept="image/*" aria-describedby="file-help"><span id="file-help" class="lede">无需选择真实照片，也可直接模拟上传。</span></div>
+            <button class="primary" type="button" data-action="upload">模拟上传并识别</button>
+          </section>`;
+      }
+
+      function renderConfirm() {
+        return `${pageHeader("确认识别内容", "只有确认后才会批改、讲解和归入错题库")}
+          <section class="stack" aria-labelledby="confirm-title">
+            <div class="confidence"><span>识别可信度较高</span><span>92%</span></div>
+            <article class="card instruction-card">
+              <h2 id="confirm-title">第 2 题 · 数学</h2>
+              <div class="stack">
+                <div class="field"><label for="recognized-question">题目</label><textarea id="recognized-question">一根彩带用去 3/8，还剩下几分之几？</textarea></div>
+                <div class="field"><label for="recognized-answer">小禾的答案</label><input id="recognized-answer" value="还剩 3/5" inputmode="text"></div>
+              </div>
+            </article>
+            <div class="callout"><strong>为什么要确认？</strong><p>照片可能有反光、遮挡或字迹连笔。由学习者确认，能避免 AI 因识别错误给出错误批改。</p></div>
+            <div class="button-row"><button class="quiet" type="button" data-action="save-edit">保存修改</button><button class="primary" type="button" data-action="confirm">内容正确，开始批改</button></div>
+          </section>`;
+      }
+
+      function renderExplain() {
+        return `${pageHeader("批改与分步讲解", "讲解基于已确认内容，并按三年级理解方式重新生成")}
+          <section class="stack" aria-labelledby="result-title">
+            <article class="card instruction-card">
+              <span class="pill red">本题需订正</span>
+              <h2 id="result-title">正确答案：还剩 5/8</h2>
+              <p class="lede">你把“用去的部分”和“剩下的部分”相加关系弄反了。</p>
+              <div class="solution-step"><b>1</b><div><strong>先找到整体</strong><p>整根彩带看作 1，也可以写成 8/8。</p></div></div>
+              <div class="solution-step"><b>2</b><div><strong>减去用掉的部分</strong><p>剩下的部分 = 8/8 − 3/8。</p></div></div>
+              <div class="solution-step"><b>3</b><div><strong>得到结果</strong><p>分母不变，分子相减：8 − 3 = 5，所以还剩 5/8。</p></div></div>
+            </article>
+            <div class="callout"><strong>AI 重写的记忆提示</strong><p>“还剩多少”通常用整体减去已经使用的部分；同分母分数相减时，分母不变。</p></div>
+            <div class="button-row"><button class="quiet" type="button" data-view="mistakes">查看自动归集</button><button class="primary" type="button" data-action="finish-grading">收下讲解，去复习</button></div>
+          </section>`;
+      }
+
+      function renderMistakes() {
+        const items = [
+          ["数学", "分数应用", 3, "整体与部分关系"],
+          ["英语", "一般现在时", 2, "第三人称单数变化"],
+          ["语文", "阅读概括", 1, "提炼段落中心意思"]
+        ].filter(item => state.mistakeFilter === "全部" || item[0] === state.mistakeFilter);
+        return `${pageHeader("错题库", "按知识点自动归集，原题不会直接成为复习卡")}
+          <section aria-labelledby="mistake-title">
+            <div class="section-heading"><h2 id="mistake-title">6 道待巩固错题</h2><span>最近 30 天</span></div>
+            <div class="filter-row" aria-label="按学科筛选">
+              ${["全部", "数学", "语文", "英语", "科学"].map(name => `<button class="filter-button" type="button" aria-pressed="${name === state.mistakeFilter}" data-filter="${name}">${name}</button>`).join("")}
+            </div>
+            <div class="stack" aria-live="polite">
+              ${items.length ? items.map(item => `<article class="card mistake-item"><div><span class="pill">${item[0]}</span><h3>${item[1]}</h3><p>${item[3]} · AI 已重写复习内容</p></div><span class="count-badge" aria-label="${item[2]} 道">${item[2]}</span></article>`).join("") : `<article class="card instruction-card"><h3>这个学科暂时没有错题</h3><p class="lede">完成新练习后，错题会在确认和批改后自动归集。</p></article>`}
+            </div>
+            <div class="section"><button class="primary" type="button" data-view="review">用这些错题生成今日复习</button></div>
+          </section>`;
+      }
+
+      function renderReview() {
+        const cards = [
+          { subject: "数学", prompt: "一根绳子用去 2/7，剩下几分之几？先说出你的计算方法。", answer: "把整体写成 7/7，再计算 7/7 − 2/7 = 5/7。" },
+          { subject: "英语", prompt: "请补全句子：She ___ to school every day.（go）", answer: "答案是 goes。主语是第三人称单数 she，一般现在时动词要变化。" },
+          { subject: "语文", prompt: "读完一段话后，怎样用一句话概括主要意思？", answer: "先找谁或什么，再找发生了什么，最后删去不影响主干的细节。" },
+          { subject: "数学", prompt: "为什么同分母分数相减时分母不变？", answer: "因为每一份的大小没有改变，只是份数减少了。" },
+          { subject: "英语", prompt: "把 I play football 改成 he 作主语。", answer: "He plays football. 第三人称单数时 play 变为 plays。" }
+        ];
+        const card = cards[state.reviewIndex - 1];
+        return `${pageHeader("今日复习", "5 张约 8 分钟；内容由 AI 根据错因重新生成")}
+          <section class="stack" aria-labelledby="review-title">
+            <div><div class="section-heading"><h2 id="review-title">第 ${state.reviewIndex} / 5 张</h2><span>${card.subject}</span></div><div class="progress-track" aria-label="复习进度"><div class="progress-fill" style="width:${state.reviewIndex * 20}%"></div></div></div>
+            <article class="review-card">
+              <span class="pill">${card.subject} · 变式复习</span>
+              <p class="question">${card.prompt}</p>
+              <div class="answer-panel" ${state.answerVisible ? "" : "hidden"}><strong>参考思路</strong><p>${card.answer}</p></div>
+            </article>
+            ${state.answerVisible ? `<div class="choice-group" aria-label="自评掌握程度"><button class="quiet" type="button" data-action="rate" data-rating="again">还不熟，再练一次</button><button class="secondary" type="button" data-action="rate" data-rating="hard">有点难</button><button class="primary" type="button" data-action="rate" data-rating="good">掌握了</button></div>` : `<button class="primary" type="button" data-action="reveal">看参考思路</button>`}
+            <p class="lede">复习结果只用于安排下一次间隔，不会公开给同学。</p>
+          </section>`;
+      }
+
+      function renderChallenge() {
+        return `${pageHeader("同伴挑战", "共同成长，不展示排名羞辱；陌生人仅临时匹配一场")}
+          <section class="stack" aria-labelledby="challenge-title">
+            <article class="card challenge-card">
+              <span class="pill gold">伙伴邀请</span>
+              <h2 id="challenge-title">小松正在等待</h2>
+              <p class="lede">三年级数学 · 分数基础 · 双方各做 5 道独立生成的同难度题</p>
+              <button class="primary" type="button" data-action="accept-invite">接受挑战</button>
+            </article>
+
+            <article class="card challenge-card">
+              <h2>通过邀请码添加学习伙伴</h2>
+              <div class="field"><label for="invite-code">6 位邀请码</label><input id="invite-code" maxlength="6" autocomplete="off" placeholder="例如 RH3A8K"></div>
+              <div class="section"><button class="secondary" type="button" data-action="join-code">确认邀请码</button></div>
+              <p class="lede">邀请码会建立持续的学习伙伴关系；没有私聊、动态或公开个人资料。</p>
+            </article>
+
+            <article class="card challenge-card">
+              <span class="pill">全网随机匹配</span>
+              <h2>匹配一位三年级临时对手</h2>
+              <p class="lede">只按监护人设置的年级匹配。使用代号，仅完成一场挑战，不可搜索、关注、私聊或指定再次匹配。</p>
+              <button class="secondary" type="button" data-action="random-match">开始随机匹配</button>
+              <div class="match-status" id="match-status" role="status">已匹配到“星芽 27” · 三年级。题目独立生成，难度一致；本场结束后自动解除配对。</div>
+              <div class="rule-list" aria-label="挑战安全规则"><span class="rule-chip">相同年级、学科与难度</span><span class="rule-chip">双方题目独立生成</span><span class="rule-chip">无自由聊天和个人主页</span><span class="rule-chip">举报即结束并永久避配</span></div>
+            </article>
+            <button class="danger" type="button" data-action="report">举报并立即结束当前匹配</button>
+          </section>`;
+      }
+
+      function renderGuardian() {
+        return `${pageHeader("监护人模式", "入口可达但不占据孩子主页；敏感信息需要重新验证")}
+          <section class="stack" aria-labelledby="guardian-title">
+            <article class="card guardian-lock" ${state.guardianUnlocked ? "hidden" : ""}>
+              <h2 id="guardian-title">请由监护人完成验证</h2>
+              <p>原型以一次轻量确认模拟设备验证。正式产品应使用监护人 PIN 或设备生物验证。</p>
+              <button class="primary" type="button" data-action="unlock-guardian">模拟验证并进入</button>
+            </article>
+            <div class="guardian-dashboard" ${state.guardianUnlocked ? "" : "hidden"}>
+              <p class="eyebrow">小禾 · 本周学习报告</p>
+              <h2>进步清楚，提醒不过量</h2>
+              <p class="lede">优先展示需要家长行动的事项，再展示趋势；不公开同伴身份和具体挑战排名。</p>
+              <div class="grid-2">
+                <article class="card metric-card"><strong>4 天</strong><span>本周主动学习</span></article>
+                <article class="card metric-card"><strong>+12%</strong><span>数学复习正确率</span></article>
+              </div>
+              <section class="section" aria-labelledby="pending-title"><div class="section-heading"><h2 id="pending-title">待确认事项</h2><span>2 项</span></div><article class="card instruction-card"><h3>两道数学题识别内容待小禾确认</h3><p class="lede">AI 尚未批改，也没有归入错题库。</p><button class="secondary" type="button" data-view="confirm">查看详情</button></article></section>
+              <section class="section" aria-labelledby="report-title"><div class="section-heading"><h2 id="report-title">四科学习概览</h2><span>近 7 天</span></div><article class="card instruction-card"><div class="report-row"><span>数学</span><span class="report-bar"><span style="width:78%"></span></span><b>78%</b></div><div class="report-row"><span>语文</span><span class="report-bar"><span style="width:66%"></span></span><b>66%</b></div><div class="report-row"><span>英语</span><span class="report-bar"><span style="width:72%"></span></span><b>72%</b></div><div class="report-row"><span>科学</span><span class="report-bar"><span style="width:52%"></span></span><b>52%</b></div></article></section>
+              <section class="section" aria-labelledby="permission-title"><div class="section-heading"><h2 id="permission-title">挑战设置</h2><span>可随时撤回</span></div><article class="card instruction-card"><h3>同伴挑战：已授权</h3><p class="lede">允许邀请码伙伴和仅按年级的全网临时随机匹配；不需要每场逐次批准。</p><button class="danger" type="button" data-action="revoke">撤回挑战授权</button></article></section>
+            </div>
+          </section>`;
+      }
+
+      function renderView(view, variant) {
+        if (view === "home") return variant === "A" ? renderHomeA() : variant === "B" ? renderHomeB() : renderHomeC();
+        if (view === "capture") return renderCapture();
+        if (view === "confirm") return renderConfirm();
+        if (view === "explain") return renderExplain();
+        if (view === "mistakes") return renderMistakes();
+        if (view === "review") return renderReview();
+        if (view === "challenge") return renderChallenge();
+        if (view === "guardian") return renderGuardian();
+        return renderHomeA();
+      }
+
+      function navCurrent(view, navView) {
+        if (view === navView) return true;
+        if (["capture", "confirm", "explain"].includes(view) && navView === (currentVariant() === "B" ? "capture" : "home")) return true;
+        return false;
+      }
+
+      function renderNav(variant, view) {
+        const items = navByVariant[variant];
+        navInner.style.setProperty("--nav-count", items.length);
+        navInner.innerHTML = items.map(([target, label]) => `<button class="nav-button" type="button" data-view="${target}" ${navCurrent(view, target) ? `aria-current="page"` : ""}>${label}</button>`).join("");
+      }
+
+      function render() {
+        const variant = currentVariant();
+        const view = currentView();
+        variantLabel.textContent = `方案 ${variant} · ${variants[variant].name}`;
+        main.innerHTML = renderView(view, variant);
+        renderNav(variant, view);
+        document.title = `方案 ${variant} · ${variants[variant].name}｜Rhea 移动端原型`;
+      }
+
+      document.addEventListener("click", event => {
+        const target = event.target.closest("button");
+        if (!target) return;
+
+        if (target.dataset.view) {
+          navigate(target.dataset.view);
+          return;
+        }
+        if (target.hasAttribute("data-back")) {
+          if (window.history.length > 1) window.history.back();
+          else navigate("home");
+          return;
+        }
+        if (target.dataset.variantDirection) {
+          setVariant(Number(target.dataset.variantDirection));
+          return;
+        }
+        if (target.dataset.subject) {
+          state.subject = target.dataset.subject;
+          render();
+          announce(`已切换到${state.subject}工作台`);
+          return;
+        }
+        if (target.dataset.filter) {
+          state.mistakeFilter = target.dataset.filter;
+          render();
+          announce(`已筛选${state.mistakeFilter}错题`);
+          return;
+        }
+
+        const action = target.dataset.action;
+        if (action === "upload") {
+          showToast("模拟识别完成，请核对题目和答案");
+          window.setTimeout(() => navigate("confirm"), 450);
+        } else if (action === "save-edit") {
+          showToast("修改已暂存，仅用于本次原型演示");
+        } else if (action === "confirm") {
+          showToast("内容已确认，AI 正在生成分步讲解");
+          window.setTimeout(() => navigate("explain"), 450);
+        } else if (action === "finish-grading") {
+          showToast("错题已归集，复习卡已重新生成");
+          state.reviewIndex = 1;
+          state.answerVisible = false;
+          window.setTimeout(() => navigate("review"), 450);
+        } else if (action === "reveal") {
+          state.answerVisible = true;
+          render();
+          announce("已显示参考思路");
+        } else if (action === "rate") {
+          if (state.reviewIndex < 5) {
+            state.reviewIndex += 1;
+            state.answerVisible = false;
+            render();
+            announce(`已记录掌握程度，进入第 ${state.reviewIndex} 张卡片`);
+          } else {
+            showToast("今日 5 张复习卡已完成");
+            window.setTimeout(() => navigate("home"), 500);
+          }
+        } else if (action === "accept-invite") {
+          showToast("已接受小松的挑战，双方题目将独立生成");
+        } else if (action === "join-code") {
+          const code = document.querySelector("#invite-code").value.trim();
+          showToast(code.length === 6 ? "邀请码有效，已发送伙伴连接请求" : "请输入 6 位邀请码");
+        } else if (action === "random-match") {
+          const status = document.querySelector("#match-status");
+          status.classList.add("is-visible");
+          target.textContent = "已完成临时匹配";
+          target.disabled = true;
+          announce(status.textContent);
+        } else if (action === "report") {
+          showToast("当前匹配已结束，双方已永久避配；举报进入安全审核");
+        } else if (action === "unlock-guardian") {
+          state.guardianUnlocked = true;
+          render();
+          announce("监护人验证完成，已进入学习报告");
+        } else if (action === "revoke") {
+          showToast("挑战授权已撤回，孩子将无法发起或接受新挑战");
+        } else if (action === "lesson") {
+          showToast(`${state.subject}教程已整理为 3 个学习要点`);
+        }
+      });
+
+      document.addEventListener("keydown", event => {
+        const active = document.activeElement;
+        const isEditing = active && (active.matches("input, textarea, [contenteditable='true']"));
+        if (isEditing) return;
+        if (event.key === "ArrowLeft") setVariant(-1);
+        if (event.key === "ArrowRight") setVariant(1);
+      });
+
+      window.addEventListener("popstate", render);
+      render();
+    })();
+  </script>
+</body>
+</html>
