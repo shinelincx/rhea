@@ -154,6 +154,7 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
     await pool.query('GRANT USAGE ON SCHEMA learning TO rhea_rls_test');
     await pool.query('GRANT SELECT ON learning.learning_profiles TO rhea_rls_test');
     await pool.query('GRANT SELECT ON learning.family_consents TO rhea_rls_test');
+    await pool.query('GRANT SELECT ON learning.guardian_memberships TO rhea_rls_test');
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
