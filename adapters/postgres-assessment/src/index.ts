@@ -62,16 +62,6 @@ interface ResolutionRow extends QueryResultRow {
   resulting_assessment_version_id: string;
 }
 
-interface BasisRow extends QueryResultRow {
-  content_hash: string;
-  invalidated_at: Date | null;
-  kind: CurrentLearningBasisReference['kind'];
-  selection_version: number;
-  source_version_id: string;
-  validity_epoch: number;
-  version_label: string;
-}
-
 function json<Value>(value: unknown): Value {
   return (typeof value === 'string' ? JSON.parse(value) : value) as Value;
 }
@@ -139,7 +129,15 @@ export class PostgresAssessmentStore implements AssessmentStore {
   async createAssessment(assessment: StoredObjectiveAssessment): Promise<boolean> {
     return this.#withProfile(assessment.learningProfileId, async (client) => {
       const version = assessment.versions[0];
-      if (!version || !(await this.#basisIsCurrent(client, assessment.materialId, version.basis))) {
+      if (
+        !version ||
+        !(await this.#basisIsCurrent(
+          client,
+          assessment.learningProfileId,
+          assessment.materialId,
+          version.basis,
+        ))
+      ) {
         return false;
       }
       const inserted = await client.query<{ id: string }>(
@@ -301,7 +299,12 @@ export class PostgresAssessmentStore implements AssessmentStore {
         !assessment ||
         assessment.current_version_id !== input.expectedCurrentVersionId ||
         assessment.open_dispute_id !== input.expectedOpenDisputeId ||
-        !(await this.#basisIsCurrent(client, assessment.material_id, input.version.basis))
+        !(await this.#basisIsCurrent(
+          client,
+          input.learningProfileId,
+          assessment.material_id,
+          input.version.basis,
+        ))
       ) {
         return false;
       }
@@ -351,38 +354,26 @@ export class PostgresAssessmentStore implements AssessmentStore {
 
   async #basisIsCurrent(
     client: PoolClient,
+    learningProfileId: string,
     materialId: string,
     expected: CurrentLearningBasisReference,
   ): Promise<boolean> {
-    const result = await client.query<BasisRow>(
-      `SELECT material.invalidated_at, material.validity_epoch,
-              selection.version AS selection_version,
-              source.id AS source_version_id, source.content_hash,
-              source.kind, source.version_label
-       FROM learning.learning_materials material
-       JOIN LATERAL (
-         SELECT version, source_version_id
-         FROM learning.basis_selection_versions
-         WHERE material_id = material.id
-         ORDER BY version DESC
-         LIMIT 1
-       ) selection ON true
-       JOIN learning.learning_source_versions source ON source.id = selection.source_version_id
-       WHERE material.id = $1
-       FOR UPDATE OF material`,
-      [materialId],
+    const result = await client.query<{ is_current: boolean }>(
+      `SELECT learning.lock_current_assessment_basis(
+         $1, $2, $3, $4, $5, $6, $7, $8
+       ) AS is_current`,
+      [
+        learningProfileId,
+        materialId,
+        expected.sourceVersionId,
+        expected.selectionVersion,
+        expected.validityEpoch,
+        expected.contentHash,
+        expected.kind,
+        expected.versionLabel,
+      ],
     );
-    const current = result.rows[0];
-    return Boolean(
-      current &&
-      !current.invalidated_at &&
-      current.validity_epoch === expected.validityEpoch &&
-      current.selection_version === expected.selectionVersion &&
-      current.source_version_id === expected.sourceVersionId &&
-      current.content_hash === expected.contentHash &&
-      current.kind === expected.kind &&
-      current.version_label === expected.versionLabel,
-    );
+    return result.rows[0]?.is_current === true;
   }
 
   async #hydrate(

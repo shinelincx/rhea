@@ -212,8 +212,19 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
     const evidence = await pool.query(
       `SELECT
          has_table_privilege('rhea_assessment_app', 'learning.learning_materials', 'UPDATE') AS can_mutate_material,
+         has_table_privilege('rhea_assessment_app', 'learning.learning_materials', 'SELECT') AS can_read_material,
+         has_function_privilege(
+           'rhea_assessment_app',
+           'learning.lock_current_assessment_basis(uuid,uuid,uuid,integer,integer,text,text,text)',
+           'EXECUTE'
+         ) AS can_lock_current_basis,
          has_schema_privilege('rhea_assessment_app', 'safety', 'USAGE') AS can_use_safety`,
     );
-    expect(evidence.rows[0]).toEqual({ can_mutate_material: false, can_use_safety: false });
+    expect(evidence.rows[0]).toEqual({
+      can_lock_current_basis: true,
+      can_mutate_material: false,
+      can_read_material: false,
+      can_use_safety: false,
+    });
   });
 });
