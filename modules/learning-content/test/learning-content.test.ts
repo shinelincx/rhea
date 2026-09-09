@@ -116,7 +116,7 @@ describe('learning content organization', () => {
       learningProfileId: 'profile-1',
       sourceHash: 'a'.repeat(64),
     });
-    const teacherAnswer = await service.addSourceVersion({
+    const firstAnswer = await service.addSourceVersion({
       actor: learner,
       contentHash: 'b'.repeat(64),
       kind: 'answer',
@@ -126,13 +126,24 @@ describe('learning content organization', () => {
       versionLabel: '2026-09-09',
     });
 
-    expect(teacherAnswer.basis).toMatchObject({
+    expect(firstAnswer.basis).toMatchObject({
       currentSourceVersionId: material.sourceVersions[0]?.id,
-      hasConflict: true,
+      hasConflict: false,
     });
+    const teacherAnswer = await service.addSourceVersion({
+      actor: learner,
+      contentHash: 'c'.repeat(64),
+      kind: 'answer',
+      label: '教师修订答案',
+      learningProfileId: 'profile-1',
+      materialId: material.id,
+      versionLabel: '2026-09-10',
+    });
+    expect(teacherAnswer.basis.hasConflict).toBe(true);
     expect(teacherAnswer.sourceVersions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ contentHash: 'b'.repeat(64), kind: 'answer', versionNumber: 1 }),
+        expect.objectContaining({ contentHash: 'c'.repeat(64), kind: 'answer', versionNumber: 2 }),
       ]),
     );
 
@@ -148,6 +159,29 @@ describe('learning content organization', () => {
       hasConflict: true,
       selectionRevision: 2,
     });
+    await expect(
+      service.getCurrentBasisReference({
+        learningProfileId: 'profile-1',
+        materialId: material.id,
+      }),
+    ).resolves.toMatchObject({
+      contentHash: 'c'.repeat(64),
+      materialId: material.id,
+      selectionVersion: 2,
+      sourceVersionId: teacherAnswer.sourceVersions.at(-1)!.id,
+    });
+    await service.invalidateByConfirmedContent({
+      actor: learner,
+      confirmedContentVersionId: 'confirmed-1',
+      learningProfileId: 'profile-1',
+      reason: '确认内容已被新版本取代',
+    });
+    await expect(
+      service.getCurrentBasisReference({
+        learningProfileId: 'profile-1',
+        materialId: material.id,
+      }),
+    ).rejects.toMatchObject({ code: 'UPSTREAM_INVALIDATED' });
   });
 
   it('rejects taxonomy details when content is pending classification', async () => {
@@ -158,6 +192,25 @@ describe('learning content organization', () => {
         classification: classified({ primarySubject: null }),
         confirmedContentVersion: 1,
         confirmedContentVersionId: 'confirmed-invalid',
+        familySpaceId: 'family-1',
+        learningProfileId: 'profile-1',
+        sourceHash: 'a'.repeat(64),
+      }),
+    ).rejects.toEqual(expect.any(LearningContentError));
+
+    await expect(
+      service.organizeConfirmedContent({
+        actor: learner,
+        classification: {
+          coursePathName: null,
+          knowledgePointNames: [],
+          primaryKnowledgePointName: null,
+          primarySubject: null,
+          relatedSubjects: ['science'],
+          unitName: null,
+        },
+        confirmedContentVersion: 1,
+        confirmedContentVersionId: 'confirmed-related-subject',
         familySpaceId: 'family-1',
         learningProfileId: 'profile-1',
         sourceHash: 'a'.repeat(64),

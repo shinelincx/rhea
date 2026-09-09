@@ -165,7 +165,7 @@ describe('Learning content HTTP interface', () => {
       },
     });
 
-    const withAnswerResponse = await app.inject({
+    const firstAnswerResponse = await app.inject({
       headers: { authorization: `Bearer ${guardian.accessToken}` },
       method: 'POST',
       payload: {
@@ -173,6 +173,18 @@ describe('Learning content HTTP interface', () => {
         kind: 'answer',
         label: '教师答案',
         versionLabel: '第 1 版',
+      },
+      url: `${baseUrl}/learning-materials/${organized.id}/source-versions`,
+    });
+    expect(firstAnswerResponse.json()).toMatchObject({ data: { basis: { hasConflict: false } } });
+    const withAnswerResponse = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: {
+        contentHash: 'c'.repeat(64),
+        kind: 'answer',
+        label: '教师修订答案',
+        versionLabel: '第 2 版',
       },
       url: `${baseUrl}/learning-materials/${organized.id}/source-versions`,
     });
@@ -191,6 +203,19 @@ describe('Learning content HTTP interface', () => {
     expect(selected.json()).toMatchObject({
       data: {
         basis: { currentSourceVersionId: answerId, hasConflict: true, selectionRevision: 2 },
+      },
+    });
+    const basisReference = await app.inject({
+      headers: { authorization: `Bearer ${learner.accessToken}` },
+      method: 'GET',
+      url: `${baseUrl}/learning-materials/${organized.id}/current-basis-reference`,
+    });
+    expect(basisReference.json()).toMatchObject({
+      data: {
+        contentHash: 'c'.repeat(64),
+        materialId: organized.id,
+        selectionVersion: 2,
+        sourceVersionId: answerId,
       },
     });
   });

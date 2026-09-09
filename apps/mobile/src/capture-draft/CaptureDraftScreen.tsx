@@ -125,6 +125,7 @@ export function CaptureDraftScreen({
   const [unitName, setUnitName] = useState('');
   const [knowledgePointNames, setKnowledgePointNames] = useState('');
   const [learningMaterial, setLearningMaterial] = useState<MobileLearningMaterial | null>(null);
+  const [editingClassification, setEditingClassification] = useState(false);
   const pageContents = useRef(new Map<string, Uint8Array>());
 
   useEffect(() => {
@@ -376,25 +377,36 @@ export function CaptureDraftScreen({
     setWorking(true);
     setError(null);
     try {
-      const material = await submissionGateway.organize({
-        accessToken,
-        classification: {
-          coursePathName: asPending ? null : coursePathName.trim() || null,
-          knowledgePointNames: points,
-          primaryKnowledgePointName: points[0] ?? null,
-          primarySubject: subject,
-          relatedSubjects: [],
-          unitName: asPending ? null : unitName.trim() || null,
-        },
-        familySpaceId,
-        learningProfileId,
-        processingJobId: job.id,
-      });
+      const classification = {
+        coursePathName: asPending ? null : coursePathName.trim() || null,
+        knowledgePointNames: points,
+        primaryKnowledgePointName: points[0] ?? null,
+        primarySubject: subject,
+        relatedSubjects: [],
+        unitName: asPending ? null : unitName.trim() || null,
+      };
+      const material = learningMaterial
+        ? await submissionGateway.correctClassification({
+            accessToken,
+            classification,
+            familySpaceId,
+            learningProfileId,
+            materialId: learningMaterial.id,
+            reason: '学习者修正学习归类',
+          })
+        : await submissionGateway.organize({
+            accessToken,
+            classification,
+            familySpaceId,
+            learningProfileId,
+            processingJobId: job.id,
+          });
       setLearningMaterial(material);
+      setEditingClassification(false);
       setNotice(
         material.currentClassification.status === 'pending'
           ? '已放入待归类，系统不会猜测学科或知识点。'
-          : `已整理到${subjectLabels[material.currentClassification.primarySubject!]}，后续批改会引用当前学习依据。`,
+          : `已整理到${subjectLabels[material.currentClassification.primarySubject!]}，当前学习依据版本已记录。`,
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '学习内容暂时无法整理，请稍后重试。');
@@ -513,7 +525,9 @@ export function CaptureDraftScreen({
               </View>
             ) : null}
 
-            {job?.status === 'completed' && familySpaceId && !learningMaterial ? (
+            {job?.status === 'completed' &&
+            familySpaceId &&
+            (!learningMaterial || editingClassification) ? (
               <View style={styles.classificationCard}>
                 <Text style={styles.guideTitle}>整理到哪里？</Text>
                 <Text style={styles.guideText}>
@@ -579,7 +593,7 @@ export function CaptureDraftScreen({
               </View>
             ) : null}
 
-            {learningMaterial ? (
+            {learningMaterial && !editingClassification ? (
               <View style={styles.classificationCard}>
                 <Text style={styles.guideTitle}>
                   {learningMaterial.currentClassification.status === 'pending'
@@ -595,6 +609,11 @@ export function CaptureDraftScreen({
                     学习来源存在冲突，已明确保留当前采用的依据。
                   </Text>
                 ) : null}
+                <ActionButton
+                  disabled={working}
+                  label="修改归类"
+                  onPress={() => setEditingClassification(true)}
+                />
               </View>
             ) : null}
 

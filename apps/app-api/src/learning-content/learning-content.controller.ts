@@ -115,6 +115,22 @@ export class LearningContentController {
     };
   }
 
+  @Get('learning-materials/:materialId/current-basis-reference')
+  async getCurrentBasisReference(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Param('materialId') materialId: string,
+  ) {
+    await this.authorize(authorization, familySpaceId, learningProfileId, 'learning.read');
+    return {
+      data: await this.learningContent.getCurrentBasisReference({
+        learningProfileId,
+        materialId,
+      }),
+    };
+  }
+
   @Put('learning-materials/:materialId/classification')
   async correctClassification(
     @Headers('authorization') authorization: string | undefined,
@@ -147,7 +163,13 @@ export class LearningContentController {
     @Param('learningProfileId') learningProfileId: string,
     @Param('materialId') materialId: string,
     @Body()
-    body: { contentHash?: unknown; kind?: unknown; label?: unknown; versionLabel?: unknown },
+    body: {
+      conflictsWithSourceVersionIds?: unknown;
+      contentHash?: unknown;
+      kind?: unknown;
+      label?: unknown;
+      versionLabel?: unknown;
+    },
   ) {
     const actor = await this.authorize(
       authorization,
@@ -158,6 +180,10 @@ export class LearningContentController {
     return {
       data: await this.learningContent.addSourceVersion({
         actor: actorReference(actor),
+        conflictsWithSourceVersionIds: stringArray(
+          body.conflictsWithSourceVersionIds ?? [],
+          '冲突来源',
+        ),
         contentHash: stringValue(body.contentHash, '来源摘要'),
         kind: stringValue(body.kind, '来源类型') as LearningSourceKind,
         label: stringValue(body.label, '来源名称'),

@@ -160,6 +160,20 @@ describe('capture draft mobile flow', () => {
         },
         status: 'completed',
       })),
+      correctClassification: jest.fn(async (input): Promise<MobileLearningMaterial> => ({
+        basis: {
+          currentSourceVersionId: 'source-1',
+          hasConflict: false,
+          selectionRevision: 1,
+        },
+        currentClassification: {
+          primarySubject: input.classification.primarySubject,
+          revision: 2,
+          status: 'classified',
+        },
+        id: 'material-1',
+        sourceVersions: [{ id: 'source-1', versionLabel: 'confirmed-content-v1' }],
+      })),
       getJob: jest.fn(async () => awaiting),
       organize: jest.fn(async (): Promise<MobileLearningMaterial> => ({
         basis: {
@@ -184,8 +198,9 @@ describe('capture draft mobile flow', () => {
         submissionGateway={gateway}
       />,
     );
+    const continueButton = await view.findByRole('button', { name: '继续拍照' });
     await act(async () => {
-      fireEvent.press(await view.findByRole('button', { name: '继续拍照' }));
+      fireEvent.press(continueButton);
     });
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '检查并继续上传' }));
@@ -207,14 +222,34 @@ describe('capture draft mobile flow', () => {
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '先放入待归类' }));
     });
-    expect(gateway.organize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        classification: expect.objectContaining({ primarySubject: null }),
-        familySpaceId: 'family-a',
-        learningProfileId: 'profile-a',
-        processingJobId: 'job-1',
-      }),
+    await waitFor(() =>
+      expect(gateway.organize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classification: expect.objectContaining({ primarySubject: null }),
+          familySpaceId: 'family-a',
+          learningProfileId: 'profile-a',
+          processingJobId: 'job-1',
+        }),
+      ),
     );
     expect(await view.findByText('待归类')).toBeVisible();
+
+    fireEvent.press(view.getByRole('button', { name: '修改归类' }));
+    fireEvent.press(await view.findByRole('button', { name: '数学' }));
+    fireEvent.changeText(view.getByLabelText('知识点'), '两位数乘法');
+    await waitFor(() => expect(view.getByRole('button', { name: '保存学习归类' })).toBeEnabled());
+    fireEvent.press(view.getByRole('button', { name: '保存学习归类' }));
+    await waitFor(() =>
+      expect(gateway.correctClassification).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classification: expect.objectContaining({
+            primaryKnowledgePointName: '两位数乘法',
+            primarySubject: 'mathematics',
+          }),
+          materialId: 'material-1',
+          reason: '学习者修正学习归类',
+        }),
+      ),
+    );
   });
 });

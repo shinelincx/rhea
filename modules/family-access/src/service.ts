@@ -129,7 +129,6 @@ export class FamilyAccessService implements FamilyAccess {
     pin: string;
   }): Promise<LearningProfile> {
     const guardian = await this.#requireManagingGuardian(input.accessToken, input.familySpaceId);
-    void guardian;
     const profile = {
       displayName: requiredText(input.displayName, '学习档案名称'),
       failedPinAttempts: 0,
@@ -139,7 +138,7 @@ export class FamilyAccessService implements FamilyAccess {
       pinHash: await this.#pinHasher.hash(checkedPin(input.pin)),
       pinLockedUntil: null,
     };
-    await this.#store.createLearningProfile(profile);
+    await this.#store.createLearningProfile({ editorGuardianId: guardian.guardianId, profile });
     const { displayName, familySpaceId, grade, id } = profile;
     return { displayName, familySpaceId, grade, id };
   }
@@ -268,11 +267,20 @@ export class FamilyAccessService implements FamilyAccess {
       }
       return actor;
     }
-    const [managesFamily, profile] = await Promise.all([
-      this.#store.isManagingGuardian(actor.guardianId, input.familySpaceId),
-      this.#store.findLearningProfile(input.learningProfileId, input.familySpaceId),
-    ]);
-    if (!managesFamily || !profile) {
+    const authorized =
+      input.capability === 'learning.submit'
+        ? await this.#store.canEditLearningContent({
+            familySpaceId: input.familySpaceId,
+            guardianId: actor.guardianId,
+            learningProfileId: input.learningProfileId,
+          })
+        : (
+            await Promise.all([
+              this.#store.isManagingGuardian(actor.guardianId, input.familySpaceId),
+              this.#store.findLearningProfile(input.learningProfileId, input.familySpaceId),
+            ])
+          ).every(Boolean);
+    if (!authorized) {
       throw new FamilyAccessError('CAPABILITY_DENIED', '该监护人无权访问此学习档案');
     }
     return actor;

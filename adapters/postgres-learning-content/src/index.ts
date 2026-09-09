@@ -16,8 +16,11 @@ interface MaterialRow extends QueryResultRow {
   created_at: Date;
   family_space_id: string;
   id: string;
+  invalidated_at: Date | null;
+  invalidation_reason: string | null;
   learning_profile_id: string;
   source_hash: string;
+  validity_epoch: number;
 }
 
 interface ClassificationRow extends QueryResultRow {
@@ -48,6 +51,7 @@ interface KnowledgePointRow extends QueryResultRow {
 }
 
 interface SourceRow extends QueryResultRow {
+  conflicts_with_source_version_ids: string[];
   content_hash: string;
   created_at: Date;
   created_by_id: string;
@@ -84,8 +88,8 @@ export class PostgresLearningContentStore implements LearningContentStore {
       const inserted = await client.query(
         `INSERT INTO learning.learning_materials
           (id, family_space_id, learning_profile_id, confirmed_content_version_id,
-           source_hash, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+           source_hash, validity_epoch, invalidated_at, invalidation_reason, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (learning_profile_id, confirmed_content_version_id) DO NOTHING`,
         [
           material.id,
@@ -93,6 +97,9 @@ export class PostgresLearningContentStore implements LearningContentStore {
           material.learningProfileId,
           material.confirmedContentVersionId,
           material.sourceHash,
+          material.validityEpoch,
+          material.invalidatedAt,
+          material.invalidationReason,
           material.createdAt,
         ],
       );
@@ -102,6 +109,17 @@ export class PostgresLearningContentStore implements LearningContentStore {
       await this.#insertClassification(client, material, material.classificationHistory[0]!);
       await this.#insertSourceVersion(client, material, material.sourceVersions[0]!);
       await this.#insertBasisSelection(client, material, material.basisSelectionHistory[0]!);
+      await this.#recordChange(client, material, {
+        actor: material.classificationHistory[0]!.changedBy,
+        eventId: material.id,
+        eventType: 'learning_material.organized',
+        occurredAt: material.createdAt,
+        payload: {
+          classificationRevision: 1,
+          confirmedContentVersionId: material.confirmedContentVersionId,
+          sourceVersionId: material.sourceVersions[0]!.id,
+        },
+      });
       return true;
     });
   }
@@ -123,6 +141,13 @@ export class PostgresLearningContentStore implements LearningContentStore {
         this.#materialReference(material),
         input.classification,
       );
+      await this.#recordChange(client, this.#materialReference(material), {
+        actor: input.classification.changedBy,
+        eventId: input.classification.id,
+        eventType: 'learning_material.classification_corrected',
+        occurredAt: input.classification.changedAt,
+        payload: { classificationRevision: input.classification.revision },
+      });
       return true;
     });
   }
@@ -144,6 +169,17 @@ export class PostgresLearningContentStore implements LearningContentStore {
         this.#materialReference(material),
         input.sourceVersion,
       );
+      await this.#recordChange(client, this.#materialReference(material), {
+        actor: input.sourceVersion.createdBy,
+        eventId: input.sourceVersion.id,
+        eventType: 'learning_material.source_version_added',
+        occurredAt: input.sourceVersion.createdAt,
+        payload: {
+          kind: input.sourceVersion.kind,
+          sourceVersionId: input.sourceVersion.id,
+          versionNumber: input.sourceVersion.versionNumber,
+        },
+      });
       return true;
     });
   }
@@ -161,6 +197,16 @@ export class PostgresLearningContentStore implements LearningContentStore {
       );
       if (count !== input.expectedSelectionRevision) return false;
       await this.#insertBasisSelection(client, this.#materialReference(material), input.selection);
+      await this.#recordChange(client, this.#materialReference(material), {
+        actor: input.selection.selectedBy,
+        eventId: input.selection.id,
+        eventType: 'learning_material.current_basis_selected',
+        occurredAt: input.selection.selectedAt,
+        payload: {
+          selectionVersion: input.selection.version,
+          sourceVersionId: input.selection.sourceVersionId,
+        },
+      });
       return true;
     });
   }
@@ -172,7 +218,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
     return this.#withProfile(learningProfileId, async (client) => {
       const result = await client.query<MaterialRow>(
         `SELECT id, family_space_id, learning_profile_id, confirmed_content_version_id,
-                source_hash, created_at
+                source_hash, validity_epoch, invalidated_at, invalidation_reason, created_at
          FROM learning.learning_materials
          WHERE confirmed_content_version_id = $1 AND learning_profile_id = $2`,
         [confirmedContentVersionId, learningProfileId],
@@ -188,11 +234,44 @@ export class PostgresLearningContentStore implements LearningContentStore {
     return this.#withProfile(learningProfileId, async (client) => {
       const result = await client.query<MaterialRow>(
         `SELECT id, family_space_id, learning_profile_id, confirmed_content_version_id,
-                source_hash, created_at
+                source_hash, validity_epoch, invalidated_at, invalidation_reason, created_at
          FROM learning.learning_materials WHERE id = $1 AND learning_profile_id = $2`,
         [id, learningProfileId],
       );
       return result.rows[0] ? this.#hydrate(client, result.rows[0]) : null;
+    });
+  }
+
+  async invalidateMaterial(
+    input: Parameters<LearningContentStore['invalidateMaterial']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const material = await this.#lockMaterial(client, input.materialId, input.learningProfileId);
+      if (!material || material.validity_epoch !== input.expectedValidityEpoch) return false;
+      const updated = await client.query(
+        `UPDATE learning.learning_materials
+         SET validity_epoch = validity_epoch + 1, invalidated_at = $3, invalidation_reason = $4
+         WHERE id = $1 AND learning_profile_id = $2 AND validity_epoch = $5`,
+        [
+          input.materialId,
+          input.learningProfileId,
+          input.invalidatedAt,
+          input.reason,
+          input.expectedValidityEpoch,
+        ],
+      );
+      if (updated.rowCount !== 1) return false;
+      await this.#recordChange(client, this.#materialReference(material), {
+        actor: input.actor,
+        eventId: input.eventId,
+        eventType: 'learning_material.upstream_invalidated',
+        occurredAt: input.invalidatedAt,
+        payload: {
+          previousValidityEpoch: input.expectedValidityEpoch,
+          reason: input.reason,
+        },
+      });
+      return true;
     });
   }
 
@@ -289,9 +368,10 @@ export class PostgresLearningContentStore implements LearningContentStore {
     await client.query(
       `INSERT INTO learning.learning_source_versions
         (id, material_id, family_space_id, learning_profile_id, kind, version_number,
-         label, version_label, content_hash, source_confirmed_content_version_id,
+         label, version_label, content_hash, conflicts_with_source_version_ids,
+         source_confirmed_content_version_id,
          created_by_type, created_by_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [
         source.id,
         material.id,
@@ -302,6 +382,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
         source.label,
         source.versionLabel,
         source.contentHash,
+        source.conflictsWithSourceVersionIds,
         source.sourceConfirmedContentVersionId,
         source.createdBy.type,
         source.createdBy.id,
@@ -362,6 +443,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
         : { rows: [] as KnowledgePointRow[] };
     const sourceResult = await client.query<SourceRow>(
       `SELECT id, kind, version_number, label, version_label, content_hash,
+              conflicts_with_source_version_ids,
               source_confirmed_content_version_id, created_by_type, created_by_id, created_at
        FROM learning.learning_source_versions WHERE material_id = $1
        ORDER BY created_at, id`,
@@ -425,9 +507,12 @@ export class PostgresLearningContentStore implements LearningContentStore {
       createdAt: row.created_at.toISOString(),
       familySpaceId: row.family_space_id,
       id: row.id,
+      invalidatedAt: row.invalidated_at?.toISOString() ?? null,
+      invalidationReason: row.invalidation_reason,
       learningProfileId: row.learning_profile_id,
       sourceHash: row.source_hash,
       sourceVersions: sourceResult.rows.map((source) => ({
+        conflictsWithSourceVersionIds: source.conflicts_with_source_version_ids,
         contentHash: source.content_hash,
         createdAt: source.created_at.toISOString(),
         createdBy: { id: source.created_by_id, type: source.created_by_type },
@@ -438,6 +523,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
         versionLabel: source.version_label,
         versionNumber: source.version_number,
       })),
+      validityEpoch: row.validity_epoch,
     };
   }
 
@@ -448,7 +534,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
   ): Promise<MaterialRow | null> {
     const result = await client.query<MaterialRow>(
       `SELECT id, family_space_id, learning_profile_id, confirmed_content_version_id,
-              source_hash, created_at
+              source_hash, validity_epoch, invalidated_at, invalidation_reason, created_at
        FROM learning.learning_materials
        WHERE id = $1 AND learning_profile_id = $2 FOR UPDATE`,
       [id, learningProfileId],
@@ -464,6 +550,49 @@ export class PostgresLearningContentStore implements LearningContentStore {
       id: row.id,
       learningProfileId: row.learning_profile_id,
     };
+  }
+
+  async #recordChange(
+    client: PoolClient,
+    material: Pick<StoredLearningMaterial, 'familySpaceId' | 'id' | 'learningProfileId'>,
+    change: {
+      actor: { id: string; type: 'guardian' | 'learner' };
+      eventId: string;
+      eventType: string;
+      occurredAt: string;
+      payload: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO learning.domain_outbox
+        (id, family_space_id, learning_profile_id, aggregate_type, aggregate_id,
+         event_type, payload, occurred_at)
+       VALUES ($1, $2, $3, 'learning_material', $4, $5, $6, $7)`,
+      [
+        change.eventId,
+        material.familySpaceId,
+        material.learningProfileId,
+        material.id,
+        change.eventType,
+        JSON.stringify(change.payload),
+        change.occurredAt,
+      ],
+    );
+    await client.query(
+      `INSERT INTO learning.learning_access_audit
+        (family_space_id, learning_profile_id, actor_type, actor_id,
+         action, resource_type, resource_id, occurred_at)
+       VALUES ($1, $2, $3, $4, $5, 'learning_material', $6, $7)`,
+      [
+        material.familySpaceId,
+        material.learningProfileId,
+        change.actor.type,
+        change.actor.id,
+        change.eventType,
+        material.id,
+        change.occurredAt,
+      ],
+    );
   }
 
   async #count(client: PoolClient, table: string, materialId: string): Promise<number> {
@@ -487,6 +616,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await setProfile(client, learningProfileId);
       const result = await action(client);
       await client.query('COMMIT');

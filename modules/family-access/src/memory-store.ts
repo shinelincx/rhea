@@ -15,6 +15,7 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
   readonly #devices = new Map<string, DeviceRecord>();
   readonly #families = new Map<string, FamilySpace>();
   readonly #guardiansBySubject = new Map<string, GuardianRecord>();
+  readonly #learningContentEditors = new Set<string>();
   readonly #managingMemberships = new Set<string>();
   readonly #profiles = new Map<string, LearningProfileRecord>();
   readonly #sessions = new Map<string, SessionRecord>();
@@ -31,8 +32,12 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
     this.#managingMemberships.add(`${input.guardianId}:${input.familySpace.id}`);
   }
 
-  async createLearningProfile(profile: LearningProfileRecord): Promise<void> {
-    this.#profiles.set(profile.id, { ...profile });
+  async createLearningProfile(input: {
+    editorGuardianId: string;
+    profile: LearningProfileRecord;
+  }): Promise<void> {
+    this.#profiles.set(input.profile.id, { ...input.profile });
+    this.#learningContentEditors.add(`${input.editorGuardianId}:${input.profile.id}`);
   }
 
   async createSession(session: SessionRecord): Promise<void> {
@@ -69,6 +74,18 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
 
   async isManagingGuardian(guardianId: string, familySpaceId: string): Promise<boolean> {
     return this.#managingMemberships.has(`${guardianId}:${familySpaceId}`);
+  }
+
+  async canEditLearningContent(input: {
+    familySpaceId: string;
+    guardianId: string;
+    learningProfileId: string;
+  }): Promise<boolean> {
+    const profile = this.#profiles.get(input.learningProfileId);
+    return (
+      profile?.familySpaceId === input.familySpaceId &&
+      this.#learningContentEditors.has(`${input.guardianId}:${input.learningProfileId}`)
+    );
   }
 
   async listLearningProfiles(familySpaceId: string): Promise<LearningProfile[]> {

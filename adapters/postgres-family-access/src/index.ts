@@ -117,23 +117,36 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     );
   }
 
-  async createLearningProfile(profile: LearningProfileRecord): Promise<void> {
-    await this.#withContext({ family_space_id: profile.familySpaceId }, async (client) => {
-      await client.query(
-        `INSERT INTO learning.learning_profiles
+  async createLearningProfile(input: {
+    editorGuardianId: string;
+    profile: LearningProfileRecord;
+  }): Promise<void> {
+    const { profile } = input;
+    await this.#withContext(
+      { family_space_id: profile.familySpaceId, guardian_id: input.editorGuardianId },
+      async (client) => {
+        await client.query(
+          `INSERT INTO learning.learning_profiles
           (id, family_space_id, display_name, grade, pin_hash, failed_pin_attempts, pin_locked_until)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          profile.id,
-          profile.familySpaceId,
-          profile.displayName,
-          profile.grade,
-          profile.pinHash,
-          profile.failedPinAttempts,
-          profile.pinLockedUntil,
-        ],
-      );
-    });
+          [
+            profile.id,
+            profile.familySpaceId,
+            profile.displayName,
+            profile.grade,
+            profile.pinHash,
+            profile.failedPinAttempts,
+            profile.pinLockedUntil,
+          ],
+        );
+        await client.query(
+          `INSERT INTO learning.learning_profile_guardian_permissions
+            (family_space_id, learning_profile_id, guardian_id, capability)
+           VALUES ($1, $2, $3, 'learning_content.edit')`,
+          [profile.familySpaceId, profile.id, input.editorGuardianId],
+        );
+      },
+    );
   }
 
   async createSession(session: SessionRecord): Promise<void> {
@@ -280,6 +293,25 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
            WHERE guardian_id = $1 AND family_space_id = $2
              AND role = 'managing' AND status = 'active'`,
           [guardianId, familySpaceId],
+        );
+        return result.rowCount === 1;
+      },
+    );
+  }
+
+  async canEditLearningContent(input: {
+    familySpaceId: string;
+    guardianId: string;
+    learningProfileId: string;
+  }): Promise<boolean> {
+    return this.#withContext(
+      { family_space_id: input.familySpaceId, guardian_id: input.guardianId },
+      async (client) => {
+        const result = await client.query(
+          `SELECT 1 FROM learning.learning_profile_guardian_permissions
+           WHERE family_space_id = $1 AND learning_profile_id = $2
+             AND guardian_id = $3 AND capability = 'learning_content.edit'`,
+          [input.familySpaceId, input.learningProfileId, input.guardianId],
         );
         return result.rowCount === 1;
       },
@@ -465,6 +497,7 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     const client = await this.#pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await setContext(client, context);
       const result = await action(client);
       await client.query('COMMIT');

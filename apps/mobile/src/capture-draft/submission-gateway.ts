@@ -73,6 +73,14 @@ export interface SubmissionGateway {
     id: string,
     edits: Record<string, string>,
   ): Promise<MobileProcessingJob>;
+  correctClassification(input: {
+    accessToken: string;
+    classification: MobileClassificationDraft;
+    familySpaceId: string;
+    learningProfileId: string;
+    materialId: string;
+    reason: string;
+  }): Promise<MobileLearningMaterial>;
   getJob(accessToken: string, id: string): Promise<MobileProcessingJob>;
   organize(input: {
     accessToken: string;
@@ -150,6 +158,19 @@ export function createSubmissionGateway(baseUrl: string): SubmissionGateway {
         headers: { ...authorization(accessToken), 'Content-Type': 'application/json' },
         method: 'PUT',
       });
+    },
+    correctClassification(input) {
+      return request(
+        `/v1/family-spaces/${encodeURIComponent(input.familySpaceId)}/learning-profiles/${encodeURIComponent(input.learningProfileId)}/learning-materials/${encodeURIComponent(input.materialId)}/classification`,
+        {
+          body: JSON.stringify({
+            classification: input.classification,
+            reason: input.reason,
+          }),
+          headers: { ...authorization(input.accessToken), 'Content-Type': 'application/json' },
+          method: 'PUT',
+        },
+      );
     },
     getJob(accessToken, id) {
       return request(`/v1/processing-jobs/${id}`, {

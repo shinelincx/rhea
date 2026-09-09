@@ -30,4 +30,13 @@ export interface LearningContentStore {
     learningProfileId: string,
   ): Promise<StoredLearningMaterial | null>;
   findMaterial(id: string, learningProfileId: string): Promise<StoredLearningMaterial | null>;
+  invalidateMaterial(input: {
+    actor: { id: string; type: 'guardian' | 'learner' };
+    eventId: string;
+    expectedValidityEpoch: number;
+    invalidatedAt: string;
+    learningProfileId: string;
+    materialId: string;
+    reason: string;
+  }): Promise<boolean>;
 }

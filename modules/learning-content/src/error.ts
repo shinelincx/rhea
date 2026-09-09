@@ -4,6 +4,7 @@ export type LearningContentErrorCode =
   | 'CONFIRMED_CONTENT_ALREADY_ORGANIZED'
   | 'MATERIAL_NOT_FOUND'
   | 'SOURCE_INVALID'
+  | 'UPSTREAM_INVALIDATED'
   | 'VERSION_CONFLICT';
 
 export class LearningContentError extends Error {

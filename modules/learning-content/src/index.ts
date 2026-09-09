@@ -7,6 +7,7 @@ export type {
   ClassificationDraft,
   ClassificationVersion,
   CoursePathReference,
+  CurrentLearningBasisReference,
   KnowledgePointReference,
   LearningActorReference,
   LearningBasisView,

@@ -75,6 +75,17 @@ export class MemoryLearningContentStore implements LearningContentStore {
     return material ? clone(material) : null;
   }
 
+  async invalidateMaterial(
+    input: Parameters<LearningContentStore['invalidateMaterial']>[0],
+  ): Promise<boolean> {
+    const material = this.#matching(input.materialId, input.learningProfileId);
+    if (!material || material.validityEpoch !== input.expectedValidityEpoch) return false;
+    material.validityEpoch += 1;
+    material.invalidatedAt = input.invalidatedAt;
+    material.invalidationReason = input.reason;
+    return true;
+  }
+
   #matching(id: string, learningProfileId: string): StoredLearningMaterial | null {
     const material = this.#materials.get(id);
     return material?.learningProfileId === learningProfileId ? material : null;

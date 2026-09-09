@@ -113,7 +113,7 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
       materialId: material.id,
       reason: '补充估算知识点',
     });
-    const withAnswer = await service.addSourceVersion({
+    await service.addSourceVersion({
       actor: { id: fixture.learningProfileId, type: 'learner' },
       contentHash: 'b'.repeat(64),
       kind: 'answer',
@@ -121,6 +121,15 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
       learningProfileId: fixture.learningProfileId,
       materialId: material.id,
       versionLabel: '第 1 版',
+    });
+    const withAnswer = await service.addSourceVersion({
+      actor: { id: fixture.learningProfileId, type: 'learner' },
+      contentHash: 'c'.repeat(64),
+      kind: 'answer',
+      label: '教师修订答案',
+      learningProfileId: fixture.learningProfileId,
+      materialId: material.id,
+      versionLabel: '第 2 版',
     });
     const answer = withAnswer.sourceVersions.at(-1)!;
     const selected = await service.selectCurrentBasis({
@@ -138,6 +147,29 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
     expect(selected).toMatchObject({
       basis: { currentSourceVersionId: answer.id, hasConflict: true, selectionRevision: 2 },
     });
+    const evidence = await pool.connect();
+    try {
+      await evidence.query('BEGIN');
+      await evidence.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
+        fixture.learningProfileId,
+      ]);
+      const outbox = await evidence.query(
+        'SELECT event_type FROM learning.domain_outbox WHERE aggregate_id = $1 ORDER BY occurred_at, id',
+        [material.id],
+      );
+      const audit = await evidence.query(
+        'SELECT action FROM learning.learning_access_audit WHERE resource_id = $1',
+        [material.id],
+      );
+      expect(outbox.rows).toHaveLength(5);
+      expect(audit.rows).toHaveLength(5);
+      await evidence.query('COMMIT');
+    } catch (error) {
+      await evidence.query('ROLLBACK');
+      throw error;
+    } finally {
+      evidence.release();
+    }
     await expect(
       service.getMaterial({ learningProfileId: randomUUID(), materialId: material.id }),
     ).rejects.toMatchObject({ code: 'MATERIAL_NOT_FOUND' });

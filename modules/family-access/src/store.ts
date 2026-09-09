@@ -49,7 +49,10 @@ export interface FamilyAccessStore {
     familySpace: FamilySpace;
     guardianId: string;
   }): Promise<void>;
-  createLearningProfile(profile: LearningProfileRecord): Promise<void>;
+  createLearningProfile(input: {
+    editorGuardianId: string;
+    profile: LearningProfileRecord;
+  }): Promise<void>;
   createSession(session: SessionRecord): Promise<void>;
   findConsent(familySpaceId: string, kind: ConsentKind): Promise<ConsentRecord | null>;
   findDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null>;
@@ -57,6 +60,11 @@ export interface FamilyAccessStore {
   findLearningProfile(id: string, familySpaceId: string): Promise<LearningProfileRecord | null>;
   findSessionByTokenHash(tokenHash: string): Promise<SessionRecord | null>;
   isManagingGuardian(guardianId: string, familySpaceId: string): Promise<boolean>;
+  canEditLearningContent(input: {
+    familySpaceId: string;
+    guardianId: string;
+    learningProfileId: string;
+  }): Promise<boolean>;
   listLearningProfiles(familySpaceId: string): Promise<LearningProfile[]>;
   listConsentEvents(familySpaceId: string, kind: ConsentKind): Promise<ConsentEventRecord[]>;
   listConsentRecords(familySpaceId: string): Promise<ConsentRecord[]>;

@@ -53,6 +53,7 @@ export interface ClassificationVersion {
 }
 
 export interface LearningSourceVersion {
+  conflictsWithSourceVersionIds: string[];
   contentHash: string;
   createdAt: string;
   createdBy: LearningActorReference;
@@ -80,6 +81,16 @@ export interface LearningBasisView {
   selectionRevision: number;
 }
 
+export interface CurrentLearningBasisReference {
+  contentHash: string;
+  kind: LearningSourceKind;
+  materialId: string;
+  selectionVersion: number;
+  sourceVersionId: string;
+  validityEpoch: number;
+  versionLabel: string;
+}
+
 export interface LearningMaterial {
   basis: LearningBasisView;
   basisSelectionHistory: BasisSelectionVersion[];
@@ -89,9 +100,12 @@ export interface LearningMaterial {
   currentClassification: ClassificationVersion;
   familySpaceId: string;
   id: string;
+  invalidatedAt: string | null;
+  invalidationReason: string | null;
   learningProfileId: string;
   sourceHash: string;
   sourceVersions: LearningSourceVersion[];
+  validityEpoch: number;
 }
 
 export interface StoredLearningMaterial extends Omit<

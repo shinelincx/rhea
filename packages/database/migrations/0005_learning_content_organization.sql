@@ -1,3 +1,12 @@
+CREATE TABLE learning.learning_profile_guardian_permissions (
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  guardian_id uuid NOT NULL REFERENCES learning.guardians(id) ON DELETE CASCADE,
+  capability text NOT NULL CHECK (capability IN ('learning_content.edit')),
+  granted_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (learning_profile_id, guardian_id, capability)
+);
+
 CREATE TABLE learning.course_paths (
   id uuid PRIMARY KEY,
   family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
@@ -29,9 +38,11 @@ CREATE TABLE learning.knowledge_points (
   learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
   subject text NOT NULL CHECK (subject IN ('chinese', 'mathematics', 'english', 'science')),
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
-  created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (learning_profile_id, subject, name)
+  created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX knowledge_points_name_lookup_idx
+  ON learning.knowledge_points (learning_profile_id, subject, name);
 
 CREATE TABLE learning.learning_materials (
   id uuid PRIMARY KEY,
@@ -39,6 +50,9 @@ CREATE TABLE learning.learning_materials (
   learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
   confirmed_content_version_id uuid NOT NULL REFERENCES learning.confirmed_content_versions(id),
   source_hash text NOT NULL CHECK (source_hash ~ '^[0-9a-f]{64}$'),
+  validity_epoch integer NOT NULL DEFAULT 1 CHECK (validity_epoch > 0),
+  invalidated_at timestamptz,
+  invalidation_reason text,
   created_at timestamptz NOT NULL,
   UNIQUE (learning_profile_id, confirmed_content_version_id)
 );
@@ -63,8 +77,11 @@ CREATE TABLE learning.classification_versions (
   changed_by_id uuid NOT NULL,
   changed_at timestamptz NOT NULL,
   UNIQUE (material_id, revision),
+  CHECK (related_subjects <@ ARRAY['chinese', 'mathematics', 'english', 'science']::text[]),
+  CHECK (primary_subject IS NULL OR NOT primary_subject = ANY(related_subjects)),
   CHECK (
-    (status = 'pending' AND primary_subject IS NULL AND course_path_id IS NULL AND unit_id IS NULL)
+    (status = 'pending' AND primary_subject IS NULL AND cardinality(related_subjects) = 0
+      AND course_path_id IS NULL AND unit_id IS NULL)
     OR (status = 'classified' AND primary_subject IS NOT NULL)
   )
 );
@@ -93,6 +110,7 @@ CREATE TABLE learning.learning_source_versions (
   label text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 120),
   version_label text NOT NULL CHECK (char_length(version_label) BETWEEN 1 AND 120),
   content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+  conflicts_with_source_version_ids uuid[] NOT NULL DEFAULT '{}',
   source_confirmed_content_version_id uuid REFERENCES learning.confirmed_content_versions(id),
   created_by_type text NOT NULL CHECK (created_by_type IN ('guardian', 'learner')),
   created_by_id uuid NOT NULL,
@@ -114,6 +132,30 @@ CREATE TABLE learning.basis_selection_versions (
   UNIQUE (material_id, version)
 );
 
+CREATE TABLE learning.domain_outbox (
+  id uuid PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  aggregate_type text NOT NULL,
+  aggregate_id uuid NOT NULL,
+  event_type text NOT NULL,
+  payload jsonb NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  published_at timestamptz
+);
+
+CREATE TABLE learning.learning_access_audit (
+  id bigserial PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  actor_type text NOT NULL CHECK (actor_type IN ('guardian', 'learner')),
+  actor_id uuid NOT NULL,
+  action text NOT NULL,
+  resource_type text NOT NULL,
+  resource_id uuid NOT NULL,
+  occurred_at timestamptz NOT NULL
+);
+
 CREATE INDEX learning_materials_profile_time_idx
   ON learning.learning_materials (learning_profile_id, created_at DESC);
 CREATE INDEX classifications_material_revision_idx
@@ -122,6 +164,10 @@ CREATE INDEX source_versions_material_kind_idx
   ON learning.learning_source_versions (material_id, kind, version_number DESC);
 CREATE INDEX basis_selections_material_version_idx
   ON learning.basis_selection_versions (material_id, version DESC);
+CREATE INDEX domain_outbox_unpublished_idx
+  ON learning.domain_outbox (occurred_at, id) WHERE published_at IS NULL;
+CREATE INDEX learning_access_audit_profile_time_idx
+  ON learning.learning_access_audit (learning_profile_id, occurred_at DESC);
 
 ALTER TABLE learning.course_paths ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning.course_paths FORCE ROW LEVEL SECURITY;
@@ -139,6 +185,12 @@ ALTER TABLE learning.learning_source_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning.learning_source_versions FORCE ROW LEVEL SECURITY;
 ALTER TABLE learning.basis_selection_versions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE learning.basis_selection_versions FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_profile_guardian_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_profile_guardian_permissions FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.domain_outbox ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.domain_outbox FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_access_audit ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_access_audit FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY course_paths_profile_isolation ON learning.course_paths
   USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
@@ -164,3 +216,32 @@ CREATE POLICY learning_source_versions_profile_isolation ON learning.learning_so
 CREATE POLICY basis_selection_versions_profile_isolation ON learning.basis_selection_versions
   USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
   WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY learning_profile_guardian_permissions_scope
+  ON learning.learning_profile_guardian_permissions
+  USING (
+    family_space_id::text = current_setting('rhea.family_space_id', true)
+    AND guardian_id::text = current_setting('rhea.guardian_id', true)
+  )
+  WITH CHECK (
+    family_space_id::text = current_setting('rhea.family_space_id', true)
+    AND guardian_id::text = current_setting('rhea.guardian_id', true)
+  );
+CREATE POLICY domain_outbox_profile_isolation ON learning.domain_outbox
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY learning_access_audit_profile_isolation ON learning.learning_access_audit
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'rhea_learning_app') THEN
+    CREATE ROLE rhea_learning_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+  END IF;
+END
+$$;
+
+ALTER ROLE rhea_learning_app SET search_path = pg_catalog, learning;
+GRANT USAGE ON SCHEMA learning TO rhea_learning_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA learning TO rhea_learning_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA learning TO rhea_learning_app;
