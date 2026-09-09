@@ -39,8 +39,14 @@ jobs:
           --health-retries 20
     env:
       DATABASE_URL: postgresql://rhea:rhea_dev_password@127.0.0.1:5432/rhea
+      OBJECT_STORE_ACCESS_KEY: rhea
+      OBJECT_STORE_BUCKET: rhea-private
+      OBJECT_STORE_ENDPOINT: http://127.0.0.1:9000
+      OBJECT_STORE_FORCE_PATH_STYLE: 'true'
       REDIS_URL: redis://127.0.0.1:6379
       OBJECT_STORE_HEALTH_URL: http://127.0.0.1:9000/minio/health/live
+      OBJECT_STORE_REGION: cn-shanghai
+      OBJECT_STORE_SECRET_KEY: rhea_dev_password
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -68,6 +74,11 @@ jobs:
           done
           docker logs rhea-minio
           exit 1
+      - name: Create private object bucket
+        run: |
+          docker run --rm --network host --entrypoint /bin/sh \
+            minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1 \
+            -c 'mc alias set local http://127.0.0.1:9000 rhea rhea_dev_password && mc mb --ignore-existing local/rhea-private'
       - run: pnpm install --frozen-lockfile
       - name: Verify repeatable migrations
         run: |

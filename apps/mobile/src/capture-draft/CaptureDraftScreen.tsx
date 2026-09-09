@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ import {
   type DraftQualityWarning,
 } from './model';
 import type { CaptureDraftRepository } from './repository';
+import type { MobileProcessingJob, SubmissionGateway } from './submission-gateway';
 
 const warningLabels: Record<DraftQualityWarning, string> = {
   blurry: '画面可能模糊，请靠近或重拍',
@@ -35,10 +37,12 @@ const warningLabels: Record<DraftQualityWarning, string> = {
 };
 
 interface CaptureDraftScreenProps {
+  accessToken?: string;
   captureSource: CaptureSource;
   learningProfileId: string;
   onBack: () => void;
   repository: CaptureDraftRepository;
+  submissionGateway?: SubmissionGateway;
 }
 
 type ScreenStatus = 'loading' | 'ready';
@@ -87,10 +91,12 @@ function ActionButton({
 }
 
 export function CaptureDraftScreen({
+  accessToken,
   captureSource,
   learningProfileId,
   onBack,
   repository,
+  submissionGateway,
 }: CaptureDraftScreenProps) {
   const [draft, setDraft] = useState<CaptureDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +104,8 @@ export function CaptureDraftScreen({
   const [previews, setPreviews] = useState<Map<string, string>>(new Map());
   const [status, setStatus] = useState<ScreenStatus>('loading');
   const [working, setWorking] = useState(false);
+  const [job, setJob] = useState<MobileProcessingJob | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
   const pageContents = useRef(new Map<string, Uint8Array>());
 
   useEffect(() => {
@@ -140,6 +148,24 @@ export function CaptureDraftScreen({
       active = false;
     };
   }, [learningProfileId, repository]);
+
+  useEffect(() => {
+    if (
+      !accessToken ||
+      !submissionGateway ||
+      !job ||
+      ['awaiting_confirmation', 'completed', 'failed', 'canceled'].includes(job.status)
+    ) {
+      return;
+    }
+    const timer = setInterval(() => {
+      void submissionGateway
+        .getJob(accessToken, job.id)
+        .then((next) => setJob(next))
+        .catch(() => setError('状态更新暂时中断，草稿仍在本机，可稍后继续。'));
+    }, 700);
+    return () => clearInterval(timer);
+  }, [accessToken, job, submissionGateway]);
 
   const persist = useCallback(
     async (nextDraft: CaptureDraft) => {
@@ -244,13 +270,73 @@ export function CaptureDraftScreen({
     void persist(deleteDraftPage(draft, pageId, now()));
   }
 
-  function validate() {
+  async function validate() {
     if (!draft) {
       return;
     }
     const result = validateDraft(draft);
     setError(result.valid ? null : result.errors.join('\n'));
-    setNotice(result.valid ? '草稿检查通过，下一步将安全上传并批改。' : null);
+    if (!result.valid) {
+      setNotice(null);
+      return;
+    }
+    if (!submissionGateway || !accessToken) {
+      setNotice('草稿检查通过，下一步将安全上传并批改。');
+      return;
+    }
+    setWorking(true);
+    setNotice('正在创建安全上传…');
+    try {
+      const submitted = await submissionGateway.submit({
+        accessToken,
+        draft,
+        onProgress: (uploaded, total) => setNotice(`正在上传第 ${uploaded}/${total} 页…`),
+        pageContents: pageContents.current,
+      });
+      setJob(submitted);
+      setNotice('上传完成，后端正在检查并识别。');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '上传没有完成，草稿已保留。');
+      setNotice(null);
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function confirmRecognition() {
+    if (!accessToken || !submissionGateway || !job) {
+      return;
+    }
+    setWorking(true);
+    setError(null);
+    try {
+      const completed = await submissionGateway.confirm(accessToken, job.id, edits);
+      setJob(completed);
+      if (draft) {
+        await repository.clear(draft);
+      }
+      setNotice('识别内容已确认，原始整页文件已进入删除流程。');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '确认没有完成，请检查后重试。');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function cancelProcessing() {
+    if (!accessToken || !submissionGateway || !job) {
+      return;
+    }
+    setWorking(true);
+    try {
+      const canceled = await submissionGateway.cancel(accessToken, job.id);
+      setJob(canceled);
+      setNotice('处理已取消，迟到的识别结果不会进入后续批改。');
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '取消没有完成，请重试。');
+    } finally {
+      setWorking(false);
+    }
   }
 
   return (
@@ -280,13 +366,13 @@ export function CaptureDraftScreen({
 
             <View style={styles.primaryActions}>
               <ActionButton
-                disabled={working}
+                disabled={working || job !== null}
                 label="继续拍照"
                 onPress={() => void acquire('camera')}
                 primary
               />
               <ActionButton
-                disabled={working}
+                disabled={working || job !== null}
                 label="导入图片或 PDF"
                 onPress={() => void acquire('files')}
               />
@@ -301,6 +387,66 @@ export function CaptureDraftScreen({
               <Text accessibilityLiveRegion="polite" style={styles.noticeText}>
                 {notice}
               </Text>
+            ) : null}
+
+            {job ? (
+              <View style={styles.jobCard}>
+                <Text style={styles.guideTitle}>识别任务</Text>
+                <Text style={styles.mutedText}>{statusLabel(job.status)}</Text>
+                {job.qualityIssues.map(({ issue, pageId }) => (
+                  <Text key={`${pageId}:${issue}`} style={styles.warningText}>
+                    {warningLabels[issue]}
+                  </Text>
+                ))}
+                {!['completed', 'failed', 'canceled'].includes(job.status) ? (
+                  <ActionButton
+                    disabled={working}
+                    label="取消处理"
+                    onPress={() => void cancelProcessing()}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+
+            {job?.status === 'awaiting_confirmation' && job.candidate ? (
+              <View style={styles.confirmationCard}>
+                <Text style={styles.guideTitle}>确认识别内容</Text>
+                <Text style={styles.guideText}>黄色项目置信度较低，请重点核对；修改后再确认。</Text>
+                {[...job.candidate.regions]
+                  .sort((left, right) => left.readingOrder - right.readingOrder)
+                  .map((region) => (
+                    <View
+                      key={region.id}
+                      style={region.lowConfidence ? styles.lowConfidenceRegion : styles.region}
+                    >
+                      <Text style={styles.regionLabel}>
+                        {region.kind === 'answer'
+                          ? '作答'
+                          : region.kind === 'question'
+                            ? '题目'
+                            : '公共题干'}
+                        {region.lowConfidence
+                          ? ` · 需要核对 ${Math.round(region.confidence * 100)}%`
+                          : ''}
+                      </Text>
+                      <TextInput
+                        accessibilityLabel={`编辑${region.kind === 'answer' ? '作答' : '题目'}内容`}
+                        multiline
+                        onChangeText={(text) =>
+                          setEdits((current) => ({ ...current, [region.id]: text }))
+                        }
+                        style={styles.regionInput}
+                        value={edits[region.id] ?? region.text}
+                      />
+                    </View>
+                  ))}
+                <ActionButton
+                  disabled={working}
+                  label="确认识别内容"
+                  onPress={() => void confirmRecognition()}
+                  primary
+                />
+              </View>
             ) : null}
 
             {draft?.pages.length === 0 ? (
@@ -348,40 +494,51 @@ export function CaptureDraftScreen({
                 ))}
                 <View style={styles.pageActions}>
                   <ActionButton
+                    disabled={job !== null}
                     label={`旋转第 ${index + 1} 页`}
                     onPress={() =>
                       updateDraft((current) => rotateDraftPage(current, page.id, now()))
                     }
                   />
                   <ActionButton
+                    disabled={job !== null}
                     label={`裁边第 ${index + 1} 页`}
                     onPress={() => updateDraft((current) => cropDraftPage(current, page.id, now()))}
                   />
                   <ActionButton
-                    disabled={working || page.mimeType === 'application/pdf'}
+                    disabled={working || job !== null || page.mimeType === 'application/pdf'}
                     label={`重拍第 ${index + 1} 页`}
                     onPress={() => void retake(page.id)}
                   />
                   <ActionButton
-                    disabled={index === 0}
+                    disabled={job !== null || index === 0}
                     label={`第 ${index + 1} 页上移`}
                     onPress={() =>
                       updateDraft((current) => moveDraftPage(current, page.id, -1, now()))
                     }
                   />
                   <ActionButton
-                    disabled={index === draft.pages.length - 1}
+                    disabled={job !== null || index === draft.pages.length - 1}
                     label={`第 ${index + 1} 页下移`}
                     onPress={() =>
                       updateDraft((current) => moveDraftPage(current, page.id, 1, now()))
                     }
                   />
-                  <ActionButton label={`删除第 ${index + 1} 页`} onPress={() => remove(page.id)} />
+                  <ActionButton
+                    disabled={job !== null}
+                    label={`删除第 ${index + 1} 页`}
+                    onPress={() => remove(page.id)}
+                  />
                 </View>
               </View>
             ))}
 
-            <ActionButton disabled={working} label="检查并继续上传" onPress={validate} primary />
+            <ActionButton
+              disabled={working || job !== null}
+              label="检查并继续上传"
+              onPress={() => void validate()}
+              primary
+            />
             <Text style={styles.securityText}>草稿已在本机加密保存，只能由当前学习档案恢复。</Text>
           </ScrollView>
         )}
@@ -405,6 +562,14 @@ const styles = StyleSheet.create({
   actionButtonPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
   actionButtonPrimaryText: { color: colors.surface, fontSize: 15, fontWeight: '700' },
   actionButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
+  confirmationCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
   content: { gap: spacing.md, paddingBottom: spacing.xxl },
   editedLabel: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   emptyCard: {
@@ -441,7 +606,23 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   headerSpacer: { width: 72 },
+  jobCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
   loading: { alignItems: 'center', flex: 1, gap: spacing.md, justifyContent: 'center' },
+  lowConfidenceRegion: {
+    backgroundColor: '#FFF4E5',
+    borderColor: '#F79009',
+    borderRadius: radii.md,
+    borderWidth: 2,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
   mutedText: { color: colors.mutedForeground, fontSize: 15, lineHeight: 23, textAlign: 'center' },
   noticeText: {
     backgroundColor: '#ECFDF3',
@@ -479,6 +660,25 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   primaryActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  region: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  regionInput: {
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: colors.foreground,
+    fontSize: 16,
+    minHeight: 52,
+    padding: spacing.sm,
+  },
+  regionLabel: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700' },
   safeArea: { backgroundColor: colors.background, flex: 1 },
   screen: {
     alignSelf: 'center',
@@ -492,3 +692,17 @@ const styles = StyleSheet.create({
   title: { color: colors.foreground, fontSize: 25, fontWeight: '800' },
   warningText: { color: '#B54708', fontSize: 14, fontWeight: '600', lineHeight: 21 },
 });
+
+function statusLabel(status: MobileProcessingJob['status']): string {
+  const labels: Record<MobileProcessingJob['status'], string> = {
+    awaiting_confirmation: '等待你确认识别内容',
+    canceled: '已取消',
+    completed: '内容确认完成',
+    failed: '处理失败，草稿仍可重新提交',
+    quality_check: '正在检查图片质量',
+    queued: '正在排队',
+    recognizing: '正在识别题目与作答',
+    security_check: '正在检查文件安全',
+  };
+  return labels[status];
+}

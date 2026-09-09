@@ -1,0 +1,91 @@
+import type { FileInspectionPort, RecognitionPort } from './ports.js';
+
+function detectedMime(bytes: Uint8Array): string | null {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  const prefix = new TextDecoder().decode(bytes.slice(0, 12));
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (prefix.startsWith('%PDF-')) {
+    return 'application/pdf';
+  }
+  if (prefix.startsWith('RIFF') && prefix.slice(8, 12) === 'WEBP') {
+    return 'image/webp';
+  }
+  return null;
+}
+
+export const deterministicFileInspection: FileInspectionPort = {
+  async inspect(page, bytes) {
+    const text = new TextDecoder().decode(bytes);
+    const actualMimeType = detectedMime(bytes);
+    const qualityIssues = [
+      ...(page.width !== null && page.height !== null && Math.min(page.width, page.height) < 900
+        ? (['blurry'] as const)
+        : []),
+      ...(text.includes('RHEA_TOO_DARK') ? (['too_dark'] as const) : []),
+      ...(text.includes('RHEA_GLARE') ? (['glare'] as const) : []),
+      ...(text.includes('RHEA_MISSING_EDGE') ? (['missing_edge'] as const) : []),
+    ];
+    return {
+      actualMimeType,
+      qualityIssues,
+      safe:
+        actualMimeType !== null &&
+        actualMimeType === page.mimeType &&
+        !text.includes('EICAR') &&
+        !text.includes('<script'),
+    };
+  },
+};
+
+export const deterministicRecognition: RecognitionPort = {
+  async recognize({ pages }) {
+    return {
+      adapterVersion: 'deterministic-ocr-v1',
+      regions: pages.flatMap(({ page }, pageIndex) => [
+        {
+          confidence: pageIndex === 0 ? 0.97 : 0.62,
+          id: `${page.id}:question`,
+          kind: 'question' as const,
+          lowConfidence: pageIndex !== 0,
+          pageId: page.id,
+          polygon: [
+            { x: 0.08, y: 0.12 },
+            { x: 0.92, y: 0.12 },
+            { x: 0.92, y: 0.32 },
+            { x: 0.08, y: 0.32 },
+          ],
+          readingOrder: pageIndex * 2,
+          text: pageIndex === 0 ? '计算：36 ÷ 4 =' : '请确认这段识别文字',
+        },
+        {
+          confidence: 0.95,
+          id: `${page.id}:answer`,
+          kind: 'answer' as const,
+          lowConfidence: false,
+          pageId: page.id,
+          polygon: [
+            { x: 0.5, y: 0.34 },
+            { x: 0.76, y: 0.34 },
+            { x: 0.76, y: 0.44 },
+            { x: 0.5, y: 0.44 },
+          ],
+          readingOrder: pageIndex * 2 + 1,
+          text: '8',
+        },
+      ]),
+    };
+  },
+};

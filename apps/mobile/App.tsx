@@ -14,6 +14,7 @@ import {
   EncryptedCaptureDraftRepository,
   MemoryDraftFilePort,
 } from './src/capture-draft/repository';
+import { createSubmissionGateway } from './src/capture-draft/submission-gateway';
 import { deviceCredentialStore } from './src/family-entry/device-credential-store';
 import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
@@ -28,6 +29,7 @@ const familyEntryGateway = createFamilyEntryGateway(
   process.env.EXPO_PUBLIC_DEVELOPMENT_IDENTITY_ASSERTION ??
     (__DEV__ ? 'development:guardian-demo' : ''),
 );
+const submissionGateway = createSubmissionGateway(apiBaseUrl);
 const captureDraftRepository = new EncryptedCaptureDraftRepository(
   Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
   Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
@@ -94,10 +96,12 @@ export default function App() {
       ) : learnerSession ? (
         learnerRoute === 'capture' ? (
           <CaptureDraftScreen
+            accessToken={learnerSession.accessToken}
             captureSource={expoCaptureSource}
             learningProfileId={learnerSession.profile.id}
             onBack={() => setLearnerRoute('today')}
             repository={captureDraftRepository}
+            submissionGateway={submissionGateway}
           />
         ) : (
           <TodayRouteScreen

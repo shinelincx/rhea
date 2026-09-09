@@ -7,6 +7,10 @@ import {
   MemoryDraftFilePort,
   type DraftCryptoPort,
 } from '../src/capture-draft/repository';
+import type {
+  MobileProcessingJob,
+  SubmissionGateway,
+} from '../src/capture-draft/submission-gateway';
 
 const passThroughCrypto: DraftCryptoPort = {
   decrypt: async (_profileId, _context, ciphertext) => ciphertext,
@@ -113,5 +117,79 @@ describe('capture draft mobile flow', () => {
       fireEvent.press(view.getByRole('button', { name: '重拍第 1 页' }));
     });
     expect(view.getByText('数学练习-1.jpg')).toBeVisible();
+  });
+
+  it('shows backend quality and confidence, accepts edits, and clears confirmed raw draft', async () => {
+    const repository = new EncryptedCaptureDraftRepository(
+      passThroughCrypto,
+      new MemoryDraftFilePort(),
+    );
+    const awaiting: MobileProcessingJob = {
+      candidate: {
+        adapterVersion: 'fixture-v1',
+        id: 'candidate-1',
+        regions: [
+          {
+            confidence: 0.62,
+            id: 'region-1',
+            kind: 'answer',
+            lowConfidence: true,
+            pageId: 'page-1',
+            readingOrder: 0,
+            text: '8',
+          },
+        ],
+        sourceHash: 'source-hash',
+      },
+      completedContent: null,
+      errorCode: null,
+      id: 'job-1',
+      qualityIssues: [{ issue: 'too_dark', pageId: 'page-1' }],
+      status: 'awaiting_confirmation',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    };
+    const gateway: SubmissionGateway = {
+      cancel: jest.fn(),
+      confirm: jest.fn(async (): Promise<MobileProcessingJob> => ({
+        ...awaiting,
+        completedContent: {
+          id: 'content-1',
+          sourceCandidateId: 'candidate-1',
+          sourceHash: 'source-hash',
+        },
+        status: 'completed',
+      })),
+      getJob: jest.fn(async () => awaiting),
+      submit: jest.fn(async () => awaiting),
+    };
+    const view = await render(
+      <CaptureDraftScreen
+        accessToken="learner-token"
+        captureSource={captureSource()}
+        learningProfileId="profile-a"
+        onBack={jest.fn()}
+        repository={repository}
+        submissionGateway={gateway}
+      />,
+    );
+    await act(async () => {
+      fireEvent.press(await view.findByRole('button', { name: '继续拍照' }));
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '检查并继续上传' }));
+    });
+
+    expect(await view.findByText('画面太暗，请到明亮处重拍')).toBeVisible();
+    expect(view.getByText('作答 · 需要核对 62%')).toBeVisible();
+    await act(async () => {
+      fireEvent.changeText(view.getByLabelText('编辑作答内容'), '9');
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '确认识别内容' }));
+    });
+
+    expect(gateway.confirm).toHaveBeenCalledWith('learner-token', 'job-1', { 'region-1': '9' });
+    expect(await view.findByText('识别内容已确认，原始整页文件已进入删除流程。')).toBeVisible();
+    await expect(repository.loadLatest('profile-a')).resolves.toBeNull();
   });
 });

@@ -2,18 +2,23 @@ import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
 import { createInMemoryFamilyAccess, type FamilyAccess } from '@rhea/family-access';
+import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
+import type { SubmissionService } from '@rhea/submission';
 
 import { AppModule } from './app.module.js';
 import type { DependencyProbe } from './health/dependency-probe.js';
 import { createEnvironmentDependencyProbes } from './health/environment-probes.js';
+import { createLocalSubmission } from './submission/create-local-submission.js';
+import type { SubmissionScheduler } from './submission/submission.provider.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
   dependencyProbes?: DependencyProbe[];
   familyAccess?: FamilyAccess;
   jobClient?: JobClient;
+  submissionScheduler?: SubmissionScheduler;
+  submissionService?: SubmissionService;
   shutdownResources?: Array<{ close(): Promise<void> }>;
 }
 
@@ -35,10 +40,26 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const dependencyProbes = options.dependencyProbes ?? createEnvironmentDependencyProbes();
   const familyAccess = options.familyAccess ?? createInMemoryFamilyAccess();
   const jobClient = options.jobClient ?? createMemoryJobRuntime();
+  const localSubmission = createLocalSubmission();
+  const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
+  adapter
+    .getInstance()
+    .addContentTypeParser(
+      ['application/pdf', 'image/heic', 'image/heif', 'image/jpeg', 'image/png', 'image/webp'],
+      { parseAs: 'buffer' },
+      (_request, body, done) => done(null, body),
+    );
 
   const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule.register(dependencyProbes, jobClient, familyAccess, options.shutdownResources ?? []),
-    new FastifyAdapter(),
+    AppModule.register(
+      dependencyProbes,
+      jobClient,
+      familyAccess,
+      options.submissionService ?? localSubmission.service,
+      options.submissionScheduler ?? localSubmission.scheduler,
+      options.shutdownResources ?? [],
+    ),
+    adapter,
     {
       logger: false,
     },

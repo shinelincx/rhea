@@ -11,6 +11,14 @@ import { FAMILY_ACCESS } from './family-access/family-access.provider.js';
 import { HealthController } from './health/health.controller.js';
 import { JOB_CLIENT } from './jobs/job-client.js';
 import { ProbeJobsController } from './jobs/probe-jobs.controller.js';
+import { SubmissionController } from './submission/submission.controller.js';
+import { SubmissionExceptionFilter } from './submission/submission-exception.filter.js';
+import {
+  SUBMISSION_SCHEDULER,
+  SUBMISSION_SERVICE,
+  type SubmissionScheduler,
+  type SubmissionService,
+} from './submission/submission.provider.js';
 import { TodayRouteController } from './today-route.controller.js';
 
 @Module({})
@@ -19,6 +27,8 @@ export class AppModule {
     dependencyProbes: DependencyProbe[],
     jobClient: JobClient,
     familyAccess: FamilyAccess,
+    submissionService: SubmissionService,
+    submissionScheduler: SubmissionScheduler,
     shutdownResources: Array<{ close(): Promise<void> }>,
   ): DynamicModule {
     return {
@@ -27,12 +37,17 @@ export class AppModule {
         FamilyAccessController,
         HealthController,
         ProbeJobsController,
+        SubmissionController,
         TodayRouteController,
       ],
       providers: [
         {
           provide: APP_FILTER,
           useClass: FamilyAccessExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: SubmissionExceptionFilter,
         },
         {
           provide: FAMILY_ACCESS,
@@ -45,6 +60,14 @@ export class AppModule {
         {
           provide: JOB_CLIENT,
           useValue: jobClient,
+        },
+        {
+          provide: SUBMISSION_SERVICE,
+          useValue: submissionService,
+        },
+        {
+          provide: SUBMISSION_SCHEDULER,
+          useValue: submissionScheduler,
         },
         ...shutdownResources.map((resource, index) => ({
           provide: `SHUTDOWN_RESOURCE_${index}`,
