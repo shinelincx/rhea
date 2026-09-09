@@ -1,0 +1,10 @@
+AGENTS.md
+CONTEXT.md
+docs/adr/
+docs/agents/
+docs/architecture/
+docs/requirements/
+**/dist/
+**/coverage/
+**/.expo/
+pnpm-lock.yaml

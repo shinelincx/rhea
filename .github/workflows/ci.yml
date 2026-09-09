@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/**
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_DB: rhea
+          POSTGRES_PASSWORD: rhea_dev_password
+          POSTGRES_USER: rhea
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rhea -d rhea"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:8.2.1-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://rhea:rhea_dev_password@127.0.0.1:5432/rhea
+      REDIS_URL: redis://127.0.0.1:6379
+      OBJECT_STORE_HEALTH_URL: http://127.0.0.1:9000/minio/health/live
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24.15.0
+          cache: pnpm
+      - name: Start object storage
+        run: >-
+          docker run --detach --name rhea-minio
+          --publish 9000:9000
+          --env MINIO_ROOT_USER=rhea
+          --env MINIO_ROOT_PASSWORD=rhea_dev_password
+          minio/minio:RELEASE.2025-07-23T15-54-02Z
+          server /data
+      - name: Wait for object storage
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent "$OBJECT_STORE_HEALTH_URL" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs rhea-minio
+          exit 1
+      - run: pnpm install --frozen-lockfile
+      - name: Verify repeatable migrations
+        run: |
+          pnpm migrate
+          pnpm migrate
+      - run: pnpm check
+      - name: Verify API-to-worker queue path
+        run: |
+          pnpm dev:worker:domain > /tmp/rhea-worker.log 2>&1 &
+          worker_pid=$!
+          pnpm dev:api > /tmp/rhea-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$worker_pid" "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3000/health/live >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          job_id=$(curl --fail --silent \
+            --header 'content-type: application/json' \
+            --data '{"outcome":"success"}' \
+            http://127.0.0.1:3000/internal/probe-jobs | jq --raw-output '.data.id')
+          for attempt in $(seq 1 30); do
+            status=$(curl --fail --silent \
+              "http://127.0.0.1:3000/internal/probe-jobs/$job_id" | jq --raw-output '.data.status')
+            if [ "$status" = "succeeded" ]; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/rhea-worker.log
+          cat /tmp/rhea-api.log
+          exit 1

@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Rhea 学习助手",
+    "slug": "rhea-learning-assistant",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
