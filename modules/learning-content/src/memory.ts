@@ -86,6 +86,8 @@ export class MemoryLearningContentStore implements LearningContentStore {
     return true;
   }
 
+  async recordAccess(_input: Parameters<LearningContentStore['recordAccess']>[0]): Promise<void> {}
+
   #matching(id: string, learningProfileId: string): StoredLearningMaterial | null {
     const material = this.#materials.get(id);
     return material?.learningProfileId === learningProfileId ? material : null;

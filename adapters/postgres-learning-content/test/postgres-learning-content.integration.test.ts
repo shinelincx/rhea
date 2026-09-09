@@ -120,6 +120,7 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
       label: '教师答案',
       learningProfileId: fixture.learningProfileId,
       materialId: material.id,
+      sourceKey: 'teacher-answer:q1',
       versionLabel: '第 1 版',
     });
     const withAnswer = await service.addSourceVersion({
@@ -129,11 +130,12 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
       label: '教师修订答案',
       learningProfileId: fixture.learningProfileId,
       materialId: material.id,
+      sourceKey: 'teacher-answer:q1',
       versionLabel: '第 2 版',
     });
     const answer = withAnswer.sourceVersions.at(-1)!;
     const selected = await service.selectCurrentBasis({
-      actor: { id: fixture.learningProfileId, type: 'learner' },
+      actor: { id: randomUUID(), type: 'guardian' },
       learningProfileId: fixture.learningProfileId,
       materialId: material.id,
       reason: '采用教师答案',
@@ -146,6 +148,16 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
     });
     expect(selected).toMatchObject({
       basis: { currentSourceVersionId: answer.id, hasConflict: true, selectionRevision: 2 },
+    });
+    await service.getMaterial({
+      actor: { id: fixture.learningProfileId, type: 'learner' },
+      learningProfileId: fixture.learningProfileId,
+      materialId: material.id,
+    });
+    await service.getCurrentBasisReference({
+      actor: { id: fixture.learningProfileId, type: 'learner' },
+      learningProfileId: fixture.learningProfileId,
+      materialId: material.id,
     });
     const evidence = await pool.connect();
     try {
@@ -162,7 +174,7 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
         [material.id],
       );
       expect(outbox.rows).toHaveLength(5);
-      expect(audit.rows).toHaveLength(5);
+      expect(audit.rows).toHaveLength(7);
       await evidence.query('COMMIT');
     } catch (error) {
       await evidence.query('ROLLBACK');
@@ -171,7 +183,11 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
       evidence.release();
     }
     await expect(
-      service.getMaterial({ learningProfileId: randomUUID(), materialId: material.id }),
+      service.getMaterial({
+        actor: { id: fixture.learningProfileId, type: 'learner' },
+        learningProfileId: randomUUID(),
+        materialId: material.id,
+      }),
     ).rejects.toMatchObject({ code: 'MATERIAL_NOT_FOUND' });
   });
 });

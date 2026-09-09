@@ -109,9 +109,18 @@ export class LearningContentController {
     @Param('learningProfileId') learningProfileId: string,
     @Param('materialId') materialId: string,
   ) {
-    await this.authorize(authorization, familySpaceId, learningProfileId, 'learning.read');
+    const actor = await this.authorize(
+      authorization,
+      familySpaceId,
+      learningProfileId,
+      'learning.read',
+    );
     return {
-      data: await this.learningContent.getMaterial({ learningProfileId, materialId }),
+      data: await this.learningContent.getMaterial({
+        actor: actorReference(actor),
+        learningProfileId,
+        materialId,
+      }),
     };
   }
 
@@ -122,11 +131,41 @@ export class LearningContentController {
     @Param('learningProfileId') learningProfileId: string,
     @Param('materialId') materialId: string,
   ) {
-    await this.authorize(authorization, familySpaceId, learningProfileId, 'learning.read');
+    const actor = await this.authorize(
+      authorization,
+      familySpaceId,
+      learningProfileId,
+      'learning.read',
+    );
     return {
       data: await this.learningContent.getCurrentBasisReference({
+        actor: actorReference(actor),
         learningProfileId,
         materialId,
+      }),
+    };
+  }
+
+  @Post('confirmed-content-versions/:confirmedContentVersionId/invalidation')
+  async invalidateConfirmedContentDependency(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Param('confirmedContentVersionId') confirmedContentVersionId: string,
+    @Body() body: { reason?: unknown },
+  ) {
+    const actor = await this.authorize(
+      authorization,
+      familySpaceId,
+      learningProfileId,
+      'learning.submit',
+    );
+    return {
+      data: await this.learningContent.invalidateByConfirmedContent({
+        actor: actorReference(actor),
+        confirmedContentVersionId,
+        learningProfileId,
+        reason: stringValue(body.reason, '失效原因'),
       }),
     };
   }
@@ -168,6 +207,7 @@ export class LearningContentController {
       contentHash?: unknown;
       kind?: unknown;
       label?: unknown;
+      sourceKey?: unknown;
       versionLabel?: unknown;
     },
   ) {
@@ -189,6 +229,9 @@ export class LearningContentController {
         label: stringValue(body.label, '来源名称'),
         learningProfileId,
         materialId,
+        ...(body.sourceKey === undefined
+          ? {}
+          : { sourceKey: stringValue(body.sourceKey, '来源身份') }),
         versionLabel: stringValue(body.versionLabel, '来源版本'),
       }),
     };

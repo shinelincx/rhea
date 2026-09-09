@@ -123,6 +123,7 @@ describe('learning content organization', () => {
       label: '教师答案',
       learningProfileId: 'profile-1',
       materialId: material.id,
+      sourceKey: 'teacher-answer:q1',
       versionLabel: '2026-09-09',
     });
 
@@ -130,25 +131,47 @@ describe('learning content organization', () => {
       currentSourceVersionId: material.sourceVersions[0]?.id,
       hasConflict: false,
     });
-    const teacherAnswer = await service.addSourceVersion({
+    const independentAnswer = await service.addSourceVersion({
       actor: learner,
       contentHash: 'c'.repeat(64),
+      kind: 'answer',
+      label: '第二题教师答案',
+      learningProfileId: 'profile-1',
+      materialId: material.id,
+      sourceKey: 'teacher-answer:q2',
+      versionLabel: '2026-09-09',
+    });
+    expect(independentAnswer.basis.hasConflict).toBe(false);
+    const teacherAnswer = await service.addSourceVersion({
+      actor: learner,
+      contentHash: 'd'.repeat(64),
       kind: 'answer',
       label: '教师修订答案',
       learningProfileId: 'profile-1',
       materialId: material.id,
+      sourceKey: 'teacher-answer:q1',
       versionLabel: '2026-09-10',
     });
     expect(teacherAnswer.basis.hasConflict).toBe(true);
     expect(teacherAnswer.sourceVersions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ contentHash: 'b'.repeat(64), kind: 'answer', versionNumber: 1 }),
-        expect.objectContaining({ contentHash: 'c'.repeat(64), kind: 'answer', versionNumber: 2 }),
+        expect.objectContaining({ contentHash: 'd'.repeat(64), kind: 'answer', versionNumber: 2 }),
       ]),
     );
 
+    await expect(
+      service.selectCurrentBasis({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        materialId: material.id,
+        reason: '采用教师答案',
+        sourceVersionId: teacherAnswer.sourceVersions.at(-1)!.id,
+      }),
+    ).rejects.toMatchObject({ code: 'BASIS_SELECTION_REQUIRES_GUARDIAN' });
+
     const selected = await service.selectCurrentBasis({
-      actor: learner,
+      actor: { id: 'guardian-1', type: 'guardian' },
       learningProfileId: 'profile-1',
       materialId: material.id,
       reason: '采用教师答案',
@@ -161,11 +184,12 @@ describe('learning content organization', () => {
     });
     await expect(
       service.getCurrentBasisReference({
+        actor: learner,
         learningProfileId: 'profile-1',
         materialId: material.id,
       }),
     ).resolves.toMatchObject({
-      contentHash: 'c'.repeat(64),
+      contentHash: 'd'.repeat(64),
       materialId: material.id,
       selectionVersion: 2,
       sourceVersionId: teacherAnswer.sourceVersions.at(-1)!.id,
@@ -178,6 +202,14 @@ describe('learning content organization', () => {
     });
     await expect(
       service.getCurrentBasisReference({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        materialId: material.id,
+      }),
+    ).rejects.toMatchObject({ code: 'UPSTREAM_INVALIDATED' });
+    await expect(
+      service.getMaterial({
+        actor: learner,
         learningProfileId: 'profile-1',
         materialId: material.id,
       }),

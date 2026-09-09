@@ -403,6 +403,8 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE rhea_learning_app');
+      await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await setProfile(client, learningProfileId);
       const result = await action(client);
       await client.query('COMMIT');

@@ -49,5 +49,21 @@ describeWithDatabase('PostgreSQL migrations', () => {
       'metrics',
       'safety',
     ]);
+    const privileges = await pool.query<{
+      audit_delete: boolean;
+      audit_insert: boolean;
+      classification_update: boolean;
+      material_update: boolean;
+    }>(`SELECT
+      has_table_privilege('rhea_learning_app', 'learning.learning_access_audit', 'DELETE') AS audit_delete,
+      has_table_privilege('rhea_learning_app', 'learning.learning_access_audit', 'INSERT') AS audit_insert,
+      has_table_privilege('rhea_learning_app', 'learning.classification_versions', 'UPDATE') AS classification_update,
+      has_table_privilege('rhea_learning_app', 'learning.learning_materials', 'UPDATE') AS material_update`);
+    expect(privileges.rows[0]).toEqual({
+      audit_delete: false,
+      audit_insert: true,
+      classification_update: false,
+      material_update: true,
+    });
   });
 });

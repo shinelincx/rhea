@@ -59,6 +59,7 @@ interface SourceRow extends QueryResultRow {
   id: string;
   kind: LearningSourceVersion['kind'];
   label: string;
+  source_key: string;
   source_confirmed_content_version_id: string | null;
   version_label: string;
   version_number: number;
@@ -275,6 +276,19 @@ export class PostgresLearningContentStore implements LearningContentStore {
     });
   }
 
+  async recordAccess(input: Parameters<LearningContentStore['recordAccess']>[0]): Promise<void> {
+    await this.#withProfile(input.learningProfileId, async (client) => {
+      await this.#insertAccessAudit(client, {
+        action: input.action,
+        actor: input.actor,
+        familySpaceId: input.familySpaceId,
+        learningProfileId: input.learningProfileId,
+        materialId: input.materialId,
+        occurredAt: new Date().toISOString(),
+      });
+    });
+  }
+
   async #insertClassification(
     client: PoolClient,
     material: Pick<StoredLearningMaterial, 'familySpaceId' | 'id' | 'learningProfileId'>,
@@ -368,10 +382,10 @@ export class PostgresLearningContentStore implements LearningContentStore {
     await client.query(
       `INSERT INTO learning.learning_source_versions
         (id, material_id, family_space_id, learning_profile_id, kind, version_number,
-         label, version_label, content_hash, conflicts_with_source_version_ids,
+         label, source_key, version_label, content_hash, conflicts_with_source_version_ids,
          source_confirmed_content_version_id,
          created_by_type, created_by_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [
         source.id,
         material.id,
@@ -380,6 +394,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
         source.kind,
         source.versionNumber,
         source.label,
+        source.sourceKey,
         source.versionLabel,
         source.contentHash,
         source.conflictsWithSourceVersionIds,
@@ -442,7 +457,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
           )
         : { rows: [] as KnowledgePointRow[] };
     const sourceResult = await client.query<SourceRow>(
-      `SELECT id, kind, version_number, label, version_label, content_hash,
+      `SELECT id, kind, version_number, label, source_key, version_label, content_hash,
               conflicts_with_source_version_ids,
               source_confirmed_content_version_id, created_by_type, created_by_id, created_at
        FROM learning.learning_source_versions WHERE material_id = $1
@@ -519,6 +534,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
         id: source.id,
         kind: source.kind,
         label: source.label,
+        sourceKey: source.source_key,
         sourceConfirmedContentVersionId: source.source_confirmed_content_version_id,
         versionLabel: source.version_label,
         versionNumber: source.version_number,
@@ -578,19 +594,40 @@ export class PostgresLearningContentStore implements LearningContentStore {
         change.occurredAt,
       ],
     );
+    await this.#insertAccessAudit(client, {
+      action: change.eventType,
+      actor: change.actor,
+      familySpaceId: material.familySpaceId,
+      learningProfileId: material.learningProfileId,
+      materialId: material.id,
+      occurredAt: change.occurredAt,
+    });
+  }
+
+  async #insertAccessAudit(
+    client: PoolClient,
+    input: {
+      action: string;
+      actor: { id: string; type: 'guardian' | 'learner' };
+      familySpaceId: string;
+      learningProfileId: string;
+      materialId: string;
+      occurredAt: string;
+    },
+  ): Promise<void> {
     await client.query(
       `INSERT INTO learning.learning_access_audit
         (family_space_id, learning_profile_id, actor_type, actor_id,
          action, resource_type, resource_id, occurred_at)
        VALUES ($1, $2, $3, $4, $5, 'learning_material', $6, $7)`,
       [
-        material.familySpaceId,
-        material.learningProfileId,
-        change.actor.type,
-        change.actor.id,
-        change.eventType,
-        material.id,
-        change.occurredAt,
+        input.familySpaceId,
+        input.learningProfileId,
+        input.actor.type,
+        input.actor.id,
+        input.action,
+        input.materialId,
+        input.occurredAt,
       ],
     );
   }
@@ -616,6 +653,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE rhea_learning_app');
       await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await setProfile(client, learningProfileId);
       const result = await action(client);

@@ -184,7 +184,8 @@ function view(material: StoredLearningMaterial): LearningMaterial {
       if (
         source.id !== other.id &&
         source.contentHash !== other.contentHash &&
-        (source.kind === other.kind || source.conflictsWithSourceVersionIds.includes(other.id))
+        (source.sourceKey === other.sourceKey ||
+          source.conflictsWithSourceVersionIds.includes(other.id))
       ) {
         conflictingSourceVersionIds.add(source.id);
         conflictingSourceVersionIds.add(other.id);
@@ -201,6 +202,17 @@ function view(material: StoredLearningMaterial): LearningMaterial {
     },
     currentClassification: structuredClone(currentClassification),
   };
+}
+
+function requireActive(material: StoredLearningMaterial): LearningMaterial {
+  const current = view(material);
+  if (current.invalidatedAt) {
+    throw new LearningContentError(
+      'UPSTREAM_INVALIDATED',
+      '上游确认内容已变化，当前学习资料及其依据必须重新建立',
+    );
+  }
+  return current;
 }
 
 export class LearningContentService {
@@ -246,6 +258,7 @@ export class LearningContentService {
       id: randomUUID(),
       kind: 'learning_material',
       label: '已确认学习资料',
+      sourceKey: `confirmed-content:${confirmedContentVersionId}`,
       sourceConfirmedContentVersionId: confirmedContentVersionId,
       versionLabel: `confirmed-content-v${input.confirmedContentVersion}`,
       versionNumber: 1,
@@ -292,27 +305,43 @@ export class LearningContentService {
     if (!material) {
       throw new LearningContentError('MATERIAL_NOT_FOUND', '没有找到这份学习资料');
     }
-    return view(material);
+    return requireActive(material);
   }
 
   async getMaterial(input: {
+    actor: LearningActorReference;
     learningProfileId: string;
     materialId: string;
   }): Promise<LearningMaterial> {
-    return view(await this.#requireMaterial(input.materialId, input.learningProfileId));
+    const material = await this.#requireMaterial(input.materialId, input.learningProfileId);
+    await this.#store.recordAccess({
+      action: material.invalidatedAt
+        ? 'learning_material.read_rejected_invalidated'
+        : 'learning_material.read',
+      actor: input.actor,
+      familySpaceId: material.familySpaceId,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+    });
+    return requireActive(material);
   }
 
   async getCurrentBasisReference(input: {
+    actor: LearningActorReference;
     learningProfileId: string;
     materialId: string;
   }): Promise<CurrentLearningBasisReference> {
-    const material = view(await this.#requireMaterial(input.materialId, input.learningProfileId));
-    if (material.invalidatedAt) {
-      throw new LearningContentError(
-        'UPSTREAM_INVALIDATED',
-        '上游确认内容已变化，当前学习依据必须重新选择',
-      );
-    }
+    const stored = await this.#requireMaterial(input.materialId, input.learningProfileId);
+    await this.#store.recordAccess({
+      action: stored.invalidatedAt
+        ? 'learning_material.current_basis_reference.read_rejected_invalidated'
+        : 'learning_material.current_basis_reference.read',
+      actor: input.actor,
+      familySpaceId: stored.familySpaceId,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+    });
+    const material = requireActive(stored);
     const source = material.sourceVersions.find(
       (candidate) => candidate.id === material.basis.currentSourceVersionId,
     )!;
@@ -339,6 +368,9 @@ export class LearningContentService {
     );
     if (!material) {
       throw new LearningContentError('MATERIAL_NOT_FOUND', '没有找到这份学习资料');
+    }
+    if (material.invalidatedAt) {
+      return view(material);
     }
     const invalidatedAt = this.#clock.now.toISOString();
     const reason = requiredText(input.reason, '失效原因');
@@ -368,6 +400,7 @@ export class LearningContentService {
     reason: string;
   }): Promise<LearningMaterial> {
     const material = await this.#requireMaterial(input.materialId, input.learningProfileId);
+    requireActive(material);
     const current = material.classificationHistory.at(-1)!;
     const classification = normalizeClassification(input.learningProfileId, input.classification, {
       actor: input.actor,
@@ -398,12 +431,14 @@ export class LearningContentService {
     label: string;
     learningProfileId: string;
     materialId: string;
+    sourceKey?: string;
     versionLabel: string;
   }): Promise<LearningMaterial> {
     if (!SOURCE_KINDS.has(input.kind) || input.kind === 'learning_material') {
       throw new LearningContentError('SOURCE_INVALID', '补充来源必须是题目、答案或评分依据');
     }
     const material = await this.#requireMaterial(input.materialId, input.learningProfileId);
+    requireActive(material);
     const conflictsWithSourceVersionIds = [...new Set(input.conflictsWithSourceVersionIds ?? [])];
     if (
       conflictsWithSourceVersionIds.some(
@@ -411,6 +446,15 @@ export class LearningContentService {
       )
     ) {
       throw new LearningContentError('SOURCE_INVALID', '冲突来源必须属于这份学习资料');
+    }
+    const sourceKey = input.sourceKey
+      ? requiredText(input.sourceKey, '来源身份')
+      : `source:${randomUUID()}`;
+    const priorVersions = material.sourceVersions.filter(
+      (source) => source.sourceKey === sourceKey,
+    );
+    if (priorVersions.some((source) => source.kind !== input.kind)) {
+      throw new LearningContentError('SOURCE_INVALID', '同一来源身份不能改变来源类型');
     }
     const sourceVersion: LearningSourceVersion = {
       conflictsWithSourceVersionIds,
@@ -420,10 +464,10 @@ export class LearningContentService {
       id: randomUUID(),
       kind: input.kind,
       label: requiredText(input.label, '来源名称'),
+      sourceKey,
       sourceConfirmedContentVersionId: null,
       versionLabel: requiredText(input.versionLabel, '来源版本'),
-      versionNumber:
-        material.sourceVersions.filter((source) => source.kind === input.kind).length + 1,
+      versionNumber: priorVersions.length + 1,
     };
     const saved = await this.#store.appendSourceVersion({
       expectedSourceCount: material.sourceVersions.length,
@@ -446,6 +490,13 @@ export class LearningContentService {
     sourceVersionId: string;
   }): Promise<LearningMaterial> {
     const material = await this.#requireMaterial(input.materialId, input.learningProfileId);
+    requireActive(material);
+    if (view(material).basis.hasConflict && input.actor.type !== 'guardian') {
+      throw new LearningContentError(
+        'BASIS_SELECTION_REQUIRES_GUARDIAN',
+        '学习依据存在争议，需要监护人重新选择或补充来源',
+      );
+    }
     if (!material.sourceVersions.some((source) => source.id === input.sourceVersionId)) {
       throw new LearningContentError('SOURCE_INVALID', '选择的学习依据不属于这份学习资料');
     }

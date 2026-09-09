@@ -7,6 +7,20 @@ CREATE TABLE learning.learning_profile_guardian_permissions (
   PRIMARY KEY (learning_profile_id, guardian_id, capability)
 );
 
+-- Compatibility grant for profiles created before profile-scoped edit permission existed.
+ALTER TABLE learning.learning_profiles NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.guardian_memberships NO FORCE ROW LEVEL SECURITY;
+INSERT INTO learning.learning_profile_guardian_permissions
+  (family_space_id, learning_profile_id, guardian_id, capability)
+SELECT profile.family_space_id, profile.id, membership.guardian_id, 'learning_content.edit'
+FROM learning.learning_profiles profile
+JOIN learning.guardian_memberships membership
+  ON membership.family_space_id = profile.family_space_id
+WHERE membership.status = 'active'
+ON CONFLICT DO NOTHING;
+ALTER TABLE learning.learning_profiles FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.guardian_memberships FORCE ROW LEVEL SECURITY;
+
 CREATE TABLE learning.course_paths (
   id uuid PRIMARY KEY,
   family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
@@ -108,6 +122,7 @@ CREATE TABLE learning.learning_source_versions (
   kind text NOT NULL CHECK (kind IN ('learning_material', 'question', 'answer', 'grading_basis')),
   version_number integer NOT NULL CHECK (version_number > 0),
   label text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 120),
+  source_key text NOT NULL CHECK (char_length(source_key) BETWEEN 1 AND 160),
   version_label text NOT NULL CHECK (char_length(version_label) BETWEEN 1 AND 120),
   content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
   conflicts_with_source_version_ids uuid[] NOT NULL DEFAULT '{}',
@@ -115,7 +130,7 @@ CREATE TABLE learning.learning_source_versions (
   created_by_type text NOT NULL CHECK (created_by_type IN ('guardian', 'learner')),
   created_by_id uuid NOT NULL,
   created_at timestamptz NOT NULL,
-  UNIQUE (material_id, kind, version_number)
+  UNIQUE (material_id, source_key, version_number)
 );
 
 CREATE TABLE learning.basis_selection_versions (
@@ -161,7 +176,7 @@ CREATE INDEX learning_materials_profile_time_idx
 CREATE INDEX classifications_material_revision_idx
   ON learning.classification_versions (material_id, revision DESC);
 CREATE INDEX source_versions_material_kind_idx
-  ON learning.learning_source_versions (material_id, kind, version_number DESC);
+  ON learning.learning_source_versions (material_id, kind, source_key, version_number DESC);
 CREATE INDEX basis_selections_material_version_idx
   ON learning.basis_selection_versions (material_id, version DESC);
 CREATE INDEX domain_outbox_unpublished_idx
@@ -242,6 +257,46 @@ END
 $$;
 
 ALTER ROLE rhea_learning_app SET search_path = pg_catalog, learning;
+REVOKE ALL ON SCHEMA learning FROM rhea_learning_app;
+REVOKE ALL ON ALL TABLES IN SCHEMA learning FROM rhea_learning_app;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA learning FROM rhea_learning_app;
 GRANT USAGE ON SCHEMA learning TO rhea_learning_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA learning TO rhea_learning_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA learning TO rhea_learning_app;
+GRANT SELECT, INSERT, UPDATE ON
+  learning.guardians,
+  learning.learning_profiles,
+  learning.sessions,
+  learning.family_consents,
+  learning.upload_sessions,
+  learning.upload_pages,
+  learning.processing_jobs,
+  learning.learning_materials
+TO rhea_learning_app;
+GRANT SELECT, INSERT ON
+  learning.family_spaces,
+  learning.guardian_memberships,
+  learning.registered_devices,
+  learning.consent_events,
+  learning.learning_profile_guardian_permissions,
+  learning.recognition_candidates,
+  learning.confirmed_content_versions,
+  learning.raw_asset_deletions,
+  learning.course_paths,
+  learning.learning_units,
+  learning.knowledge_points,
+  learning.classification_versions,
+  learning.classification_knowledge_points,
+  learning.learning_source_versions,
+  learning.basis_selection_versions,
+  learning.domain_outbox
+TO rhea_learning_app;
+GRANT INSERT ON learning.learning_access_audit TO rhea_learning_app;
+GRANT USAGE, SELECT ON SEQUENCE
+  learning.raw_asset_deletions_id_seq,
+  learning.learning_access_audit_id_seq
+TO rhea_learning_app;
+
+DO $$
+BEGIN
+  EXECUTE format('GRANT rhea_learning_app TO %I', current_user);
+END
+$$;

@@ -60,6 +60,7 @@ export interface LearningSourceVersion {
   id: string;
   kind: LearningSourceKind;
   label: string;
+  sourceKey: string;
   sourceConfirmedContentVersionId: string | null;
   versionLabel: string;
   versionNumber: number;

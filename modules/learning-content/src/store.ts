@@ -39,4 +39,11 @@ export interface LearningContentStore {
     materialId: string;
     reason: string;
   }): Promise<boolean>;
+  recordAccess(input: {
+    action: string;
+    actor: { id: string; type: 'guardian' | 'learner' };
+    familySpaceId: string;
+    learningProfileId: string;
+    materialId: string;
+  }): Promise<void>;
 }

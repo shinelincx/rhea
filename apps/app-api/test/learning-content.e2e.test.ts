@@ -113,7 +113,11 @@ describe('Learning content HTTP interface', () => {
     });
     const job = submitted.json<{ data: ProcessingJobView }>().data;
     await submissions.process(job.id, profile.id);
-    await submissions.confirm({ edits: {}, id: job.id, learningProfileId: profile.id });
+    const completed = await submissions.confirm({
+      edits: {},
+      id: job.id,
+      learningProfileId: profile.id,
+    });
 
     const baseUrl = `/v1/family-spaces/${family.id}/learning-profiles/${profile.id}`;
     const organizedResponse = await app.inject({
@@ -172,6 +176,7 @@ describe('Learning content HTTP interface', () => {
         contentHash: 'b'.repeat(64),
         kind: 'answer',
         label: '教师答案',
+        sourceKey: 'teacher-answer:q1',
         versionLabel: '第 1 版',
       },
       url: `${baseUrl}/learning-materials/${organized.id}/source-versions`,
@@ -184,6 +189,7 @@ describe('Learning content HTTP interface', () => {
         contentHash: 'c'.repeat(64),
         kind: 'answer',
         label: '教师修订答案',
+        sourceKey: 'teacher-answer:q1',
         versionLabel: '第 2 版',
       },
       url: `${baseUrl}/learning-materials/${organized.id}/source-versions`,
@@ -218,5 +224,20 @@ describe('Learning content HTTP interface', () => {
         sourceVersionId: answerId,
       },
     });
+
+    const invalidated = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: { reason: '学习者撤回已确认内容' },
+      url: `${baseUrl}/confirmed-content-versions/${completed.completedContent!.id}/invalidation`,
+    });
+    expect(invalidated.statusCode).toBe(201);
+    const rejectedRead = await app.inject({
+      headers: { authorization: `Bearer ${learner.accessToken}` },
+      method: 'GET',
+      url: `${baseUrl}/learning-materials/${organized.id}`,
+    });
+    expect(rejectedRead.statusCode).toBe(409);
+    expect(rejectedRead.json()).toMatchObject({ error: { code: 'UPSTREAM_INVALIDATED' } });
   });
 });

@@ -497,6 +497,7 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     const client = await this.#pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE rhea_learning_app');
       await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await setContext(client, context);
       const result = await action(client);
