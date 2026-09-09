@@ -8,6 +8,7 @@ import type { LoadTodayRoute, TodayRoute } from './types';
 interface TodayRouteScreenProps {
   learningProfileName?: string;
   loadRoute: LoadTodayRoute;
+  onStartCapture?: () => void;
   onSwitchProfile?: () => void;
 }
 
@@ -17,6 +18,7 @@ type ScreenState =
 export function TodayRouteScreen({
   learningProfileName,
   loadRoute,
+  onStartCapture,
   onSwitchProfile,
 }: TodayRouteScreenProps) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
@@ -78,6 +80,18 @@ export function TodayRouteScreen({
                 今天没有待办
               </Text>
               <Text style={styles.emptyBody}>想学习时，拍一页练习就能开始。</Text>
+              {onStartCapture ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onStartCapture}
+                  style={({ pressed }) => [
+                    styles.captureButton,
+                    pressed ? styles.retryButtonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.retryButtonText}>拍照或导入作业</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -116,6 +130,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     maxWidth: 320,
+  },
+  captureButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
   },
   content: {
     alignItems: 'center',

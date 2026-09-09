@@ -10,6 +10,14 @@
         {
           "configureAndroidBackup": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Rhea 需要使用相机拍摄作业页面。",
+          "microphonePermission": false,
+          "photosPermission": "Rhea 只会访问你选择的作业图片。"
+        }
       ]
     ],
     "userInterfaceStyle": "light",

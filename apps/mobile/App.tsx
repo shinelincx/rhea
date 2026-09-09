@@ -1,7 +1,19 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Platform } from 'react-native';
 
+import { CaptureDraftScreen } from './src/capture-draft/CaptureDraftScreen';
+import { expoCaptureSource } from './src/capture-draft/capture-source';
+import {
+  ExpoAesDraftCryptoPort,
+  ExpoDraftFilePort,
+  InMemoryAesDraftCryptoPort,
+} from './src/capture-draft/expo-repository';
+import {
+  EncryptedCaptureDraftRepository,
+  MemoryDraftFilePort,
+} from './src/capture-draft/repository';
 import { deviceCredentialStore } from './src/family-entry/device-credential-store';
 import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
@@ -16,6 +28,10 @@ const familyEntryGateway = createFamilyEntryGateway(
   process.env.EXPO_PUBLIC_DEVELOPMENT_IDENTITY_ASSERTION ??
     (__DEV__ ? 'development:guardian-demo' : ''),
 );
+const captureDraftRepository = new EncryptedCaptureDraftRepository(
+  Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
+  Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
+);
 
 interface LearnerSession {
   accessToken: string;
@@ -27,6 +43,7 @@ export default function App() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [guardianFamilySpaceId, setGuardianFamilySpaceId] = useState<string | null>(null);
+  const [learnerRoute, setLearnerRoute] = useState<'today' | 'capture'>('today');
 
   useEffect(() => {
     if (!learnerSession) {
@@ -54,6 +71,7 @@ export default function App() {
       await familyEntryGateway.logout(learnerSession.accessToken);
     } finally {
       setLearnerSession(null);
+      setLearnerRoute('today');
       setSessionNotice('已安全退出，可以选择其他学习档案。');
     }
   }
@@ -61,6 +79,7 @@ export default function App() {
   function startLearnerSession(session: LearnerSession) {
     setSessionNotice(null);
     setLearnerSession(session);
+    setLearnerRoute('today');
   }
 
   return (
@@ -73,11 +92,21 @@ export default function App() {
           onClose={() => setGuardianFamilySpaceId(null)}
         />
       ) : learnerSession ? (
-        <TodayRouteScreen
-          learningProfileName={learnerSession.profile.displayName}
-          loadRoute={loadTodayRoute}
-          onSwitchProfile={() => void switchProfile()}
-        />
+        learnerRoute === 'capture' ? (
+          <CaptureDraftScreen
+            captureSource={expoCaptureSource}
+            learningProfileId={learnerSession.profile.id}
+            onBack={() => setLearnerRoute('today')}
+            repository={captureDraftRepository}
+          />
+        ) : (
+          <TodayRouteScreen
+            learningProfileName={learnerSession.profile.displayName}
+            loadRoute={loadTodayRoute}
+            onStartCapture={() => setLearnerRoute('capture')}
+            onSwitchProfile={() => void switchProfile()}
+          />
+        )
       ) : (
         <FamilyEntryScreen
           credentialStore={deviceCredentialStore}
