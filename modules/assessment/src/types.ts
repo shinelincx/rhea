@@ -5,6 +5,21 @@ export interface AssessmentActorReference {
   type: 'guardian' | 'learner';
 }
 
+export interface ObjectiveAssessmentInputReference {
+  confirmedContentVersionId: string;
+  processingJobId: string;
+  questionRegionId: string;
+  responseRegionId: string;
+}
+
+export interface ResolvedObjectiveAssessmentInput {
+  gradingRuleVersionId: string | null;
+  question: Omit<QuestionVersionSnapshot, 'contentHash'>;
+  requiresProfessionalReview: boolean;
+  response: Omit<ResponseVersionSnapshot, 'contentHash'>;
+  rule: ObjectiveGradingRule | null;
+}
+
 export interface QuestionVersionSnapshot {
   contentHash: string;
   subject: Subject;
@@ -51,8 +66,11 @@ export interface ObjectiveAssessmentVersion {
   createdBy: AssessmentActorReference;
   decision: ObjectiveAssessmentDecision;
   id: string;
+  inputReference: ObjectiveAssessmentInputReference;
   predecessorId: string | null;
   question: QuestionVersionSnapshot;
+  gradingRuleVersionId: string | null;
+  requiresProfessionalReview: boolean;
   response: ResponseVersionSnapshot;
   revision: number;
   rule: ObjectiveGradingRule | null;
@@ -67,6 +85,7 @@ export interface AssessmentDispute {
   raisedAt: string;
   raisedBy: AssessmentActorReference;
   reason: string;
+  reviewRoute: 'guardian' | 'professional';
   target: AssessmentDisputeTarget;
 }
 

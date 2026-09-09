@@ -5,6 +5,8 @@ export type AssessmentErrorCode =
   | 'DISPUTE_RESOLUTION_REQUIRES_GUARDIAN'
   | 'DOWNSTREAM_INELIGIBLE'
   | 'INPUT_INVALID'
+  | 'PROFESSIONAL_REVIEW_REQUIRED'
+  | 'TRUSTED_INPUT_NOT_FOUND'
   | 'VERSION_CONFLICT';
 
 export class AssessmentError extends Error {

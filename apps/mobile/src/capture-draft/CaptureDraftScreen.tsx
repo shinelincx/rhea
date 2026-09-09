@@ -29,12 +29,11 @@ import {
 import type { CaptureDraftRepository } from './repository';
 import type {
   MobileLearningMaterial,
-  MobileObjectiveAssessment,
-  MobileObjectiveGradingRule,
   MobileProcessingJob,
   MobileSubject,
   SubmissionGateway,
 } from './submission-gateway';
+import { ObjectiveAssessmentCard } from './ObjectiveAssessmentCard';
 
 const warningLabels: Record<DraftQualityWarning, string> = {
   blurry: '画面可能模糊，请靠近或重拍',
@@ -129,11 +128,6 @@ export function CaptureDraftScreen({
   const [knowledgePointNames, setKnowledgePointNames] = useState('');
   const [learningMaterial, setLearningMaterial] = useState<MobileLearningMaterial | null>(null);
   const [editingClassification, setEditingClassification] = useState(false);
-  const [acceptedAnswer, setAcceptedAnswer] = useState('');
-  const [assessment, setAssessment] = useState<MobileObjectiveAssessment | null>(null);
-  const [showDispute, setShowDispute] = useState(false);
-  const [disputeReason, setDisputeReason] = useState('');
-  const [correctionText, setCorrectionText] = useState('');
   const pageContents = useRef(new Map<string, Uint8Array>());
 
   useEffect(() => {
@@ -410,7 +404,6 @@ export function CaptureDraftScreen({
             processingJobId: job.id,
           });
       setLearningMaterial(material);
-      setAssessment(null);
       setEditingClassification(false);
       setNotice(
         material.currentClassification.status === 'pending'
@@ -419,115 +412,6 @@ export function CaptureDraftScreen({
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '学习内容暂时无法整理，请稍后重试。');
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  function gradingRule(
-    subject: MobileSubject,
-    expected: string,
-  ): MobileObjectiveGradingRule | null {
-    const normalized = expected.trim();
-    if (!normalized) return null;
-    if (subject === 'mathematics' && /^[+-]?\d+(?:\.\d+)?$/.test(normalized)) {
-      return { expected: normalized, kind: 'numeric' };
-    }
-    if (subject === 'science') {
-      return { correctOption: normalized, kind: 'single_choice' };
-    }
-    return {
-      acceptedAnswers: [normalized],
-      caseSensitive: subject === 'chinese',
-      collapseWhitespace: true,
-      kind: 'accepted_text',
-    };
-  }
-
-  async function gradeObjective(useEnteredRule: boolean) {
-    const content = job?.completedContent;
-    const subject = learningMaterial?.currentClassification.primarySubject;
-    const question = content?.regions.find((region) => region.kind === 'question');
-    const response = content?.regions.find((region) => region.kind === 'answer');
-    if (
-      !accessToken ||
-      !familySpaceId ||
-      !submissionGateway ||
-      !content ||
-      !learningMaterial ||
-      !subject ||
-      !question ||
-      !response
-    ) {
-      setError('确认内容中缺少可配对的题目或作答，暂无法可靠批改。');
-      return;
-    }
-    if (useEnteredRule && !acceptedAnswer.trim()) {
-      setError('请填写当前学习依据中的答案或规则；如果没有，请选择暂无法可靠批改。');
-      return;
-    }
-    setWorking(true);
-    setError(null);
-    try {
-      const result = await submissionGateway.gradeObjective({
-        accessToken,
-        familySpaceId,
-        learningProfileId,
-        materialId: learningMaterial.id,
-        question: {
-          subject,
-          text: question.text,
-          versionId: `${content.id}:${question.id}`,
-        },
-        response: {
-          text: response.text,
-          versionId: `${content.id}:${response.id}`,
-        },
-        rule: useEnteredRule ? gradingRule(subject, acceptedAnswer) : null,
-      });
-      setAssessment(result);
-      setShowDispute(false);
-      setNotice(
-        result.currentVersion.decision.outcome === 'ungradable'
-          ? '已明确标记为暂无法可靠批改，不会猜测对错。'
-          : '确定性批改已完成，结果已绑定当前学习依据。',
-      );
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '批改暂时没有完成，请稍后重试。');
-    } finally {
-      setWorking(false);
-    }
-  }
-
-  async function submitDispute() {
-    if (
-      !accessToken ||
-      !familySpaceId ||
-      !submissionGateway ||
-      !assessment ||
-      !disputeReason.trim() ||
-      !correctionText.trim()
-    ) {
-      setError('请填写质疑原因和补充修正信息。');
-      return;
-    }
-    setWorking(true);
-    setError(null);
-    try {
-      const disputed = await submissionGateway.disputeAssessment({
-        accessToken,
-        assessmentId: assessment.id,
-        correctionText,
-        familySpaceId,
-        learningProfileId,
-        reason: disputeReason,
-        target: 'assessment',
-      });
-      setAssessment(disputed);
-      setShowDispute(false);
-      setNotice('批改质疑已提交，结果进入待复核。');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '质疑没有提交成功，请稍后重试。');
     } finally {
       setWorking(false);
     }
@@ -736,113 +620,22 @@ export function CaptureDraftScreen({
             ) : null}
 
             {learningMaterial?.currentClassification.status === 'classified' &&
-            job?.completedContent ? (
-              <View style={styles.assessmentCard}>
-                <Text style={styles.guideTitle}>客观题批改</Text>
-                {!assessment ? (
-                  <>
-                    <Text style={styles.guideText}>
-                      只按当前学习依据做确定性比较。没有可靠答案时，请直接标记暂无法批改。
-                    </Text>
-                    <Text style={styles.assessmentDetail}>
-                      题目：
-                      {job.completedContent.regions.find((region) => region.kind === 'question')
-                        ?.text ?? '未找到确认题目'}
-                    </Text>
-                    <Text style={styles.assessmentDetail}>
-                      我的作答：
-                      {job.completedContent.regions.find((region) => region.kind === 'answer')
-                        ?.text ?? '未找到确认作答'}
-                    </Text>
-                    <Text style={styles.inputLabel}>采用答案或规则</Text>
-                    <TextInput
-                      accessibilityLabel="采用答案或规则"
-                      onChangeText={setAcceptedAnswer}
-                      placeholder="填写当前学习依据中的答案或选项"
-                      style={styles.taxonomyInput}
-                      value={acceptedAnswer}
-                    />
-                    <View style={styles.primaryActions}>
-                      <ActionButton
-                        disabled={working || !acceptedAnswer.trim()}
-                        label="进行确定性批改"
-                        onPress={() => void gradeObjective(true)}
-                        primary
-                      />
-                      <ActionButton
-                        disabled={working}
-                        label="没有可靠答案，标记暂无法批改"
-                        onPress={() => void gradeObjective(false)}
-                      />
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <Text accessibilityLiveRegion="polite" style={styles.assessmentOutcome}>
-                      {assessment.openDisputeId
-                        ? '结果待复核'
-                        : assessment.currentVersion.decision.outcome === 'correct'
-                          ? '答对了'
-                          : assessment.currentVersion.decision.outcome === 'incorrect'
-                            ? '需要订正'
-                            : '暂无法可靠批改'}
-                    </Text>
-                    <Text style={styles.assessmentDetail}>
-                      题目：{assessment.currentVersion.question.text}
-                    </Text>
-                    <Text style={styles.assessmentDetail}>
-                      我的作答：{assessment.currentVersion.response.text}
-                    </Text>
-                    <Text style={styles.assessmentDetail}>
-                      采用答案：{assessment.currentVersion.decision.expectedDisplay ?? '依据不足'}
-                    </Text>
-                    <Text style={styles.guideText}>
-                      批改版本：{assessment.currentVersion.revision}
-                    </Text>
-                    <Text style={styles.guideText}>
-                      当前学习依据版本：{assessment.currentVersion.basis.selectionVersion}
-                    </Text>
-                    {assessment.openDisputeId ? (
-                      <Text style={styles.warningText}>
-                        结果待复核，相关错题、掌握度、复习和挑战计分已暂停。
-                      </Text>
-                    ) : (
-                      <ActionButton
-                        disabled={working}
-                        label="我觉得批改不对"
-                        onPress={() => setShowDispute(true)}
-                      />
-                    )}
-                    {showDispute && !assessment.openDisputeId ? (
-                      <View style={styles.disputePanel}>
-                        <Text style={styles.inputLabel}>为什么觉得不对？</Text>
-                        <TextInput
-                          accessibilityLabel="质疑原因"
-                          onChangeText={setDisputeReason}
-                          placeholder="例如：作答识别错误"
-                          style={styles.taxonomyInput}
-                          value={disputeReason}
-                        />
-                        <Text style={styles.inputLabel}>补充修正信息</Text>
-                        <TextInput
-                          accessibilityLabel="补充修正信息"
-                          multiline
-                          onChangeText={setCorrectionText}
-                          placeholder="说明你看到的内容或正确写法"
-                          style={styles.regionInput}
-                          value={correctionText}
-                        />
-                        <ActionButton
-                          disabled={working || !disputeReason.trim() || !correctionText.trim()}
-                          label="提交质疑并暂停结果"
-                          onPress={() => void submitDispute()}
-                          primary
-                        />
-                      </View>
-                    ) : null}
-                  </>
-                )}
-              </View>
+            job?.completedContent &&
+            accessToken &&
+            familySpaceId &&
+            submissionGateway ? (
+              <ObjectiveAssessmentCard
+                accessToken={accessToken}
+                completedContent={job.completedContent}
+                familySpaceId={familySpaceId}
+                key={`${learningMaterial.id}:${learningMaterial.currentClassification.revision}`}
+                learningMaterial={learningMaterial}
+                learningProfileId={learningProfileId}
+                onError={setError}
+                onNotice={setNotice}
+                processingJobId={job.id}
+                submissionGateway={submissionGateway}
+              />
             ) : null}
 
             {draft?.pages.length === 0 ? (
@@ -958,16 +751,6 @@ const styles = StyleSheet.create({
   actionButtonPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
   actionButtonPrimaryText: { color: colors.surface, fontSize: 15, fontWeight: '700' },
   actionButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
-  assessmentCard: {
-    backgroundColor: '#FFFCF5',
-    borderColor: '#F2C94C',
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    gap: spacing.md,
-    padding: spacing.lg,
-  },
-  assessmentDetail: { color: colors.foreground, fontSize: 16, lineHeight: 24 },
-  assessmentOutcome: { color: colors.primary, fontSize: 22, fontWeight: '800' },
   confirmationCard: {
     backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
@@ -986,7 +769,6 @@ const styles = StyleSheet.create({
   },
   content: { gap: spacing.md, paddingBottom: spacing.xxl },
   editedLabel: { color: colors.primary, fontSize: 14, fontWeight: '700' },
-  disputePanel: { gap: spacing.sm },
   emptyCard: {
     alignItems: 'center',
     backgroundColor: colors.surface,
@@ -1021,7 +803,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   headerSpacer: { width: 72 },
-  inputLabel: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
   jobCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

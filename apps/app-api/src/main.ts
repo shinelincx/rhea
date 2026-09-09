@@ -14,6 +14,7 @@ const configuredLearningContent = createConfiguredLearningContent(process.env);
 const configuredAssessment = createConfiguredAssessment(
   process.env,
   configuredLearningContent.service,
+  configuredSubmission.service,
 );
 const app = await createApp({
   assessmentService: configuredAssessment.service,

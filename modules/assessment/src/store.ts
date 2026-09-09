@@ -1,9 +1,18 @@
 import type {
+  AssessmentActorReference,
   AssessmentDispute,
   AssessmentDisputeResolution,
+  DownstreamAssessmentReference,
   ObjectiveAssessmentVersion,
   StoredObjectiveAssessment,
 } from './types.js';
+import type { CurrentLearningBasisReference } from '@rhea/learning-content';
+
+export type DownstreamAssessmentRead =
+  | { kind: 'basis_changed' }
+  | { kind: 'ineligible'; reason: 'disputed' | 'ungradable' }
+  | { kind: 'not_found' }
+  | { kind: 'eligible'; reference: DownstreamAssessmentReference };
 
 export interface AssessmentStore {
   appendDispute(input: {
@@ -18,6 +27,12 @@ export interface AssessmentStore {
     deduplicationKey: string,
     learningProfileId: string,
   ): Promise<StoredObjectiveAssessment | null>;
+  readDownstreamReference(input: {
+    actor: AssessmentActorReference;
+    assessmentId: string;
+    currentBasis: CurrentLearningBasisReference;
+    learningProfileId: string;
+  }): Promise<DownstreamAssessmentRead>;
   recordAccess(input: {
     action: string;
     actor: { id: string; type: 'guardian' | 'learner' };

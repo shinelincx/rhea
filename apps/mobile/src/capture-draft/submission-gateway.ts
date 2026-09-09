@@ -71,16 +71,6 @@ export interface MobileLearningMaterial {
   sourceVersions: Array<{ id: string; versionLabel: string }>;
 }
 
-export type MobileObjectiveGradingRule =
-  | {
-      acceptedAnswers: string[];
-      caseSensitive: boolean;
-      collapseWhitespace: boolean;
-      kind: 'accepted_text';
-    }
-  | { correctOption: string; kind: 'single_choice' }
-  | { expected: string; kind: 'numeric' };
-
 export interface MobileObjectiveAssessment {
   currentVersion: {
     basis: { selectionVersion: number; sourceVersionId: string; versionLabel: string };
@@ -95,7 +85,7 @@ export interface MobileObjectiveAssessment {
     response: { text: string; versionId: string };
     revision: number;
   };
-  disputes: Array<{ id: string }>;
+  disputes: Array<{ id: string; reviewRoute: 'guardian' | 'professional' }>;
   id: string;
   openDisputeId: string | null;
   resolutions: Array<{ id: string }>;
@@ -129,11 +119,14 @@ export interface SubmissionGateway {
   gradeObjective(input: {
     accessToken: string;
     familySpaceId: string;
+    inputReference: {
+      confirmedContentVersionId: string;
+      processingJobId: string;
+      questionRegionId: string;
+      responseRegionId: string;
+    };
     learningProfileId: string;
     materialId: string;
-    question: { subject: MobileSubject; text: string; versionId: string };
-    response: { text: string; versionId: string };
-    rule: MobileObjectiveGradingRule | null;
   }): Promise<MobileObjectiveAssessment>;
   getJob(accessToken: string, id: string): Promise<MobileProcessingJob>;
   organize(input: {
@@ -246,19 +239,13 @@ export function createSubmissionGateway(baseUrl: string): SubmissionGateway {
         method: 'GET',
       });
     },
-    async gradeObjective(input) {
-      const [questionHash, responseHash] = await Promise.all([
-        sha256(new TextEncoder().encode(input.question.text)),
-        sha256(new TextEncoder().encode(input.response.text)),
-      ]);
+    gradeObjective(input) {
       return request(
         `/v1/family-spaces/${encodeURIComponent(input.familySpaceId)}/learning-profiles/${encodeURIComponent(input.learningProfileId)}/objective-assessments`,
         {
           body: JSON.stringify({
+            inputReference: input.inputReference,
             materialId: input.materialId,
-            question: { ...input.question, contentHash: questionHash },
-            response: { ...input.response, contentHash: responseHash },
-            rule: input.rule,
           }),
           headers: { ...authorization(input.accessToken), 'Content-Type': 'application/json' },
           method: 'POST',

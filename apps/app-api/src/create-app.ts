@@ -47,8 +47,10 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const familyAccess = options.familyAccess ?? createInMemoryFamilyAccess();
   const jobClient = options.jobClient ?? createMemoryJobRuntime();
   const localSubmission = createLocalSubmission();
+  const submissions = options.submissionService ?? localSubmission.service;
   const learningContent = options.learningContentService ?? createLocalLearningContent();
-  const assessment = options.assessmentService ?? createLocalAssessment(learningContent);
+  const assessment =
+    options.assessmentService ?? createLocalAssessment(learningContent, submissions);
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
     .getInstance()
@@ -65,7 +67,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       familyAccess,
       assessment,
       learningContent,
-      options.submissionService ?? localSubmission.service,
+      submissions,
       options.submissionScheduler ?? localSubmission.scheduler,
       options.shutdownResources ?? [],
     ),

@@ -3,17 +3,12 @@ import {
   AssessmentError,
   type AssessmentActorReference,
   type AssessmentDisputeTarget,
-  type ObjectiveGradingRule,
-  type QuestionVersionSnapshot,
-  type ResponseVersionSnapshot,
 } from '@rhea/assessment';
 import { FamilyAccessError, type Actor } from '@rhea/family-access';
-import type { Subject } from '@rhea/learning-content';
 
 import { FAMILY_ACCESS, type FamilyAccess } from '../family-access/family-access.provider.js';
 import { ASSESSMENT_SERVICE, type AssessmentService } from './assessment.provider.js';
 
-const SUBJECTS = new Set<Subject>(['chinese', 'mathematics', 'english', 'science']);
 const DISPUTE_TARGETS = new Set<AssessmentDisputeTarget>(['assessment', 'question', 'response']);
 
 function bearerToken(authorization: string | undefined): string {
@@ -37,68 +32,20 @@ function stringValue(value: unknown, label: string): string {
   return value;
 }
 
-function booleanValue(value: unknown, label: string): boolean {
-  if (typeof value !== 'boolean') {
-    throw new AssessmentError('INPUT_INVALID', `${label}必须是布尔值`);
-  }
-  return value;
-}
-
-function stringArray(value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new AssessmentError('INPUT_INVALID', `${label}必须是文本列表`);
-  }
-  return value;
-}
-
 function actorReference(actor: Actor): AssessmentActorReference {
   return actor.type === 'guardian'
     ? { id: actor.guardianId, type: 'guardian' }
     : { id: actor.learningProfileId, type: 'learner' };
 }
 
-function question(value: unknown): QuestionVersionSnapshot {
-  const body = recordValue(value, '题目');
-  const subject = stringValue(body.subject, '学科') as Subject;
-  if (!SUBJECTS.has(subject)) {
-    throw new AssessmentError('INPUT_INVALID', '仅支持语文、数学、英语和科学客观题');
-  }
+function inputReference(value: unknown) {
+  const body = recordValue(value, '已确认批改输入');
   return {
-    contentHash: stringValue(body.contentHash, '题目摘要'),
-    subject,
-    text: stringValue(body.text, '题目内容'),
-    versionId: stringValue(body.versionId, '题目版本'),
+    confirmedContentVersionId: stringValue(body.confirmedContentVersionId, '已确认内容版本'),
+    processingJobId: stringValue(body.processingJobId, '识别任务'),
+    questionRegionId: stringValue(body.questionRegionId, '题目区域'),
+    responseRegionId: stringValue(body.responseRegionId, '作答区域'),
   };
-}
-
-function response(value: unknown): ResponseVersionSnapshot {
-  const body = recordValue(value, '作答');
-  return {
-    contentHash: stringValue(body.contentHash, '作答摘要'),
-    text: stringValue(body.text, '作答内容'),
-    versionId: stringValue(body.versionId, '作答版本'),
-  };
-}
-
-function rule(value: unknown): ObjectiveGradingRule | null {
-  if (value === null || value === undefined) return null;
-  const body = recordValue(value, '评价规则');
-  const kind = stringValue(body.kind, '评价规则类型');
-  if (kind === 'numeric') {
-    return { expected: stringValue(body.expected, '预期答案'), kind };
-  }
-  if (kind === 'accepted_text') {
-    return {
-      acceptedAnswers: stringArray(body.acceptedAnswers, '可接受答案'),
-      caseSensitive: booleanValue(body.caseSensitive, '是否区分大小写'),
-      collapseWhitespace: booleanValue(body.collapseWhitespace, '是否归一化空格'),
-      kind,
-    };
-  }
-  if (kind === 'single_choice') {
-    return { correctOption: stringValue(body.correctOption, '正确选项'), kind };
-  }
-  throw new AssessmentError('INPUT_INVALID', '暂不支持这种客观评价规则');
 }
 
 @Controller('v1/family-spaces/:familySpaceId/learning-profiles/:learningProfileId')
@@ -120,11 +67,9 @@ export class AssessmentController {
       data: await this.assessments.gradeObjective({
         actor: actorReference(actor),
         familySpaceId,
+        inputReference: inputReference(body.inputReference),
         learningProfileId,
         materialId: stringValue(body.materialId, '学习资料'),
-        question: question(body.question),
-        response: response(body.response),
-        rule: rule(body.rule),
       }),
     };
   }
@@ -202,14 +147,10 @@ export class AssessmentController {
       data: await this.assessments.resolveDispute({
         actor: actorReference(actor),
         assessmentId,
-        ...(body.correctedQuestion === undefined
-          ? {}
-          : { correctedQuestion: question(body.correctedQuestion) }),
-        ...(body.correctedResponse === undefined
-          ? {}
-          : { correctedResponse: response(body.correctedResponse) }),
-        ...(body.correctedRule === undefined ? {} : { correctedRule: rule(body.correctedRule) }),
         disputeId,
+        ...(body.inputReference === undefined
+          ? {}
+          : { inputReference: inputReference(body.inputReference) }),
         learningProfileId,
         reason: stringValue(body.reason, '解决说明'),
       }),

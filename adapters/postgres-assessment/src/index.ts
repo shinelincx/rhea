@@ -8,6 +8,13 @@ import type {
   ResponseVersionSnapshot,
   StoredObjectiveAssessment,
 } from '@rhea/assessment';
+import {
+  deriveTrustedBuiltInRule,
+  type DownstreamAssessmentRead,
+  type ObjectiveAssessmentInputReader,
+  type ObjectiveAssessmentInputReference,
+  type ResolvedObjectiveAssessmentInput,
+} from '@rhea/assessment';
 import type { CurrentLearningBasisReference } from '@rhea/learning-content';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
@@ -33,10 +40,13 @@ interface VersionRow extends QueryResultRow {
   created_by_id: string;
   created_by_type: ObjectiveAssessmentVersion['createdBy']['type'];
   decision: unknown;
+  grading_rule_version_id: string | null;
   grading_rule: unknown | null;
   id: string;
+  input_reference: unknown;
   predecessor_id: string | null;
   question: unknown;
+  requires_professional_review: boolean;
   response: unknown;
   revision: number;
 }
@@ -49,7 +59,17 @@ interface DisputeRow extends QueryResultRow {
   raised_by_id: string;
   raised_by_type: AssessmentDispute['raisedBy']['type'];
   reason: string;
+  review_route: AssessmentDispute['reviewRoute'];
   target: AssessmentDispute['target'];
+}
+
+interface TrustedInputRow extends QueryResultRow {
+  grading_rule: unknown | null;
+  grading_rule_version_id: string | null;
+  question_text: string;
+  requires_professional_review: boolean;
+  response_text: string;
+  subject: ResolvedObjectiveAssessmentInput['question']['subject'];
 }
 
 interface ResolutionRow extends QueryResultRow {
@@ -70,7 +90,7 @@ function timestamp(value: Date): string {
   return value.toISOString();
 }
 
-export class PostgresAssessmentStore implements AssessmentStore {
+export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssessmentInputReader {
   constructor(private readonly pool: Pool) {}
 
   async appendDispute(input: Parameters<AssessmentStore['appendDispute']>[0]): Promise<boolean> {
@@ -91,8 +111,8 @@ export class PostgresAssessmentStore implements AssessmentStore {
       await client.query(
         `INSERT INTO learning.assessment_disputes
           (id, assessment_id, assessment_version_id, family_space_id, learning_profile_id,
-           target, reason, correction_text, raised_by_type, raised_by_id, raised_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+           target, reason, correction_text, review_route, raised_by_type, raised_by_id, raised_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
         [
           dispute.id,
           assessment.id,
@@ -102,6 +122,7 @@ export class PostgresAssessmentStore implements AssessmentStore {
           dispute.target,
           dispute.reason,
           dispute.correctionText,
+          dispute.reviewRoute,
           dispute.raisedBy.type,
           dispute.raisedBy.id,
           dispute.raisedAt,
@@ -119,6 +140,7 @@ export class PostgresAssessmentStore implements AssessmentStore {
         payload: {
           assessmentVersionId: dispute.assessmentVersionId,
           disputeId: dispute.id,
+          reviewRoute: dispute.reviewRoute,
           target: dispute.target,
         },
       });
@@ -196,7 +218,8 @@ export class PostgresAssessmentStore implements AssessmentStore {
       if (!row) return null;
       const [versions, disputes, resolutions] = await Promise.all([
         client.query<VersionRow>(
-          `SELECT id, revision, question, response, grading_rule, decision,
+          `SELECT id, revision, question, response, input_reference, grading_rule,
+                  grading_rule_version_id, decision, requires_professional_review,
                   basis_source_version_id, basis_selection_version, basis_validity_epoch,
                   basis_content_hash, basis_kind, basis_version_label, predecessor_id,
                   created_by_type, created_by_id, created_at
@@ -207,7 +230,7 @@ export class PostgresAssessmentStore implements AssessmentStore {
         ),
         client.query<DisputeRow>(
           `SELECT id, assessment_version_id, target, reason, correction_text,
-                  raised_by_type, raised_by_id, raised_at
+                  review_route, raised_by_type, raised_by_id, raised_at
            FROM learning.assessment_disputes
            WHERE assessment_id = $1
            ORDER BY raised_at, id`,
@@ -233,6 +256,7 @@ export class PostgresAssessmentStore implements AssessmentStore {
           raisedAt: timestamp(dispute.raised_at),
           raisedBy: { id: dispute.raised_by_id, type: dispute.raised_by_type },
           reason: dispute.reason,
+          reviewRoute: dispute.review_route,
           target: dispute.target,
         })),
         familySpaceId: row.family_space_id,
@@ -268,6 +292,122 @@ export class PostgresAssessmentStore implements AssessmentStore {
       return result.rows[0]?.id ?? null;
     });
     return id ? this.findAssessment(id, learningProfileId) : null;
+  }
+
+  async readDownstreamReference(input: {
+    actor: { id: string; type: 'guardian' | 'learner' };
+    assessmentId: string;
+    currentBasis: CurrentLearningBasisReference;
+    learningProfileId: string;
+  }): Promise<DownstreamAssessmentRead> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const assessment = await this.#lockAssessment(
+        client,
+        input.assessmentId,
+        input.learningProfileId,
+      );
+      if (!assessment) return { kind: 'not_found' };
+      const stored = await this.#hydrate(client, assessment);
+      const current = stored?.versions.at(-1);
+      if (!stored || !current || current.id !== assessment.current_version_id) {
+        return { kind: 'not_found' };
+      }
+      if (
+        !(await this.#basisIsCurrent(
+          client,
+          input.learningProfileId,
+          assessment.material_id,
+          input.currentBasis,
+        )) ||
+        current.basis.sourceVersionId !== input.currentBasis.sourceVersionId ||
+        current.basis.selectionVersion !== input.currentBasis.selectionVersion ||
+        current.basis.validityEpoch !== input.currentBasis.validityEpoch ||
+        current.basis.contentHash !== input.currentBasis.contentHash
+      ) {
+        return { kind: 'basis_changed' };
+      }
+      if (assessment.open_dispute_id) {
+        return { kind: 'ineligible', reason: 'disputed' };
+      }
+      if (current.decision.outcome === 'ungradable') {
+        return { kind: 'ineligible', reason: 'ungradable' };
+      }
+      await client.query(
+        `INSERT INTO learning.assessment_access_audit
+          (family_space_id, learning_profile_id, actor_type, actor_id, action, assessment_id)
+         VALUES ($1, $2, $3, $4, 'assessment.downstream_reference.read', $5)`,
+        [
+          assessment.family_space_id,
+          assessment.learning_profile_id,
+          input.actor.type,
+          input.actor.id,
+          assessment.id,
+        ],
+      );
+      return {
+        kind: 'eligible',
+        reference: {
+          assessmentId: assessment.id,
+          assessmentVersionId: current.id,
+          basisSelectionVersion: current.basis.selectionVersion,
+          basisSourceVersionId: current.basis.sourceVersionId,
+          basisValidityEpoch: current.basis.validityEpoch,
+          outcome: current.decision.outcome,
+          questionVersionId: current.question.versionId,
+          responseVersionId: current.response.versionId,
+          subject: current.question.subject,
+        },
+      };
+    });
+  }
+
+  async resolveObjectiveInput(input: {
+    actor: { id: string; type: 'guardian' | 'learner' };
+    basis: CurrentLearningBasisReference;
+    learningProfileId: string;
+    materialId: string;
+    reference: ObjectiveAssessmentInputReference;
+  }): Promise<ResolvedObjectiveAssessmentInput | null> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const result = await client.query<TrustedInputRow>(
+        `SELECT question_text, response_text, subject, grading_rule_version_id,
+                grading_rule, requires_professional_review
+         FROM learning.resolve_objective_assessment_input(
+           $1, $2, $3, $4, $5, $6, $7, $8, $9
+         )`,
+        [
+          input.learningProfileId,
+          input.materialId,
+          input.reference.processingJobId,
+          input.reference.confirmedContentVersionId,
+          input.reference.questionRegionId,
+          input.reference.responseRegionId,
+          input.basis.sourceVersionId,
+          input.basis.selectionVersion,
+          input.basis.validityEpoch,
+        ],
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      const question = {
+        subject: row.subject,
+        text: row.question_text,
+        versionId: `${input.reference.confirmedContentVersionId}:${input.reference.questionRegionId}`,
+      };
+      const response = {
+        text: row.response_text,
+        versionId: `${input.reference.confirmedContentVersionId}:${input.reference.responseRegionId}`,
+      };
+      const storedRule = row.grading_rule ? json<ObjectiveGradingRule>(row.grading_rule) : null;
+      const builtIn = storedRule ? null : deriveTrustedBuiltInRule(question);
+      return {
+        gradingRuleVersionId: row.grading_rule_version_id ?? builtIn?.gradingRuleVersionId ?? null,
+        question,
+        requiresProfessionalReview: row.requires_professional_review,
+        response,
+        rule: storedRule ?? builtIn?.rule ?? null,
+      };
+    });
   }
 
   async recordAccess(input: Parameters<AssessmentStore['recordAccess']>[0]): Promise<void> {
@@ -381,7 +521,8 @@ export class PostgresAssessmentStore implements AssessmentStore {
     row: AssessmentRow,
   ): Promise<StoredObjectiveAssessment | null> {
     const versions = await client.query<VersionRow>(
-      `SELECT id, revision, question, response, grading_rule, decision,
+      `SELECT id, revision, question, response, input_reference, grading_rule,
+              grading_rule_version_id, decision, requires_professional_review,
               basis_source_version_id, basis_selection_version, basis_validity_epoch,
               basis_content_hash, basis_kind, basis_version_label, predecessor_id,
               created_by_type, created_by_id, created_at
@@ -417,12 +558,15 @@ export class PostgresAssessmentStore implements AssessmentStore {
       createdAt: timestamp(row.created_at),
       createdBy: { id: row.created_by_id, type: row.created_by_type },
       decision: json<ObjectiveAssessmentDecision>(row.decision),
+      gradingRuleVersionId: row.grading_rule_version_id,
       id: row.id,
+      inputReference: json<ObjectiveAssessmentInputReference>(row.input_reference),
       predecessorId: row.predecessor_id,
       question: json<QuestionVersionSnapshot>(row.question),
       response: json<ResponseVersionSnapshot>(row.response),
       revision: row.revision,
       rule: row.grading_rule ? json<ObjectiveGradingRule>(row.grading_rule) : null,
+      requiresProfessionalReview: row.requires_professional_review,
     };
   }
 
@@ -434,12 +578,13 @@ export class PostgresAssessmentStore implements AssessmentStore {
     await client.query(
       `INSERT INTO learning.objective_assessment_versions
         (id, assessment_id, family_space_id, learning_profile_id, revision,
-         question, response, grading_rule, decision, basis_source_version_id,
+         question, response, input_reference, grading_rule, grading_rule_version_id,
+         decision, requires_professional_review, basis_source_version_id,
          basis_selection_version, basis_validity_epoch, basis_content_hash,
          basis_kind, basis_version_label, predecessor_id, created_by_type,
          created_by_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,
-               $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+               $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
       [
         version.id,
         assessment.id,
@@ -448,8 +593,11 @@ export class PostgresAssessmentStore implements AssessmentStore {
         version.revision,
         JSON.stringify(version.question),
         JSON.stringify(version.response),
+        JSON.stringify(version.inputReference),
         version.rule ? JSON.stringify(version.rule) : null,
+        version.gradingRuleVersionId,
         JSON.stringify(version.decision),
+        version.requiresProfessionalReview,
         version.basis.sourceVersionId,
         version.basis.selectionVersion,
         version.basis.validityEpoch,
@@ -528,6 +676,7 @@ export class PostgresAssessmentStore implements AssessmentStore {
     try {
       await client.query('BEGIN');
       await client.query('SET LOCAL ROLE rhea_assessment_app');
+      await client.query('SET LOCAL search_path TO pg_catalog, learning');
       await client.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
         learningProfileId,
       ]);

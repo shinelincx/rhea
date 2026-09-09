@@ -54,6 +54,34 @@ describe('Objective assessment HTTP interface', () => {
     });
     const assessment = new AssessmentService({
       basisReader: learningContent,
+      inputReader: {
+        async resolveObjectiveInput({ reference }) {
+          const answers: Record<string, string> = { 'answer-1': '41', 'answer-2': '42' };
+          const responseText = answers[reference.responseRegionId];
+          if (
+            reference.confirmedContentVersionId !== '00000000-0000-4000-8000-000000000100' ||
+            reference.processingJobId !== '00000000-0000-4000-8000-000000000104' ||
+            reference.questionRegionId !== 'question-1' ||
+            !responseText
+          ) {
+            return null;
+          }
+          return {
+            gradingRuleVersionId: 'trusted-test-rule-v1',
+            question: {
+              subject: 'mathematics' as const,
+              text: '6 × 7 = ?',
+              versionId: `content-1:${reference.questionRegionId}`,
+            },
+            requiresProfessionalReview: false,
+            response: {
+              text: responseText,
+              versionId: `content-1:${reference.responseRegionId}`,
+            },
+            rule: { expected: '42', kind: 'numeric' as const },
+          };
+        },
+      },
       store: new MemoryAssessmentStore(),
     });
     app = await createApp({
@@ -69,6 +97,12 @@ describe('Objective assessment HTTP interface', () => {
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },
       method: 'POST',
       payload: {
+        inputReference: {
+          confirmedContentVersionId: '00000000-0000-4000-8000-000000000100',
+          processingJobId: '00000000-0000-4000-8000-000000000104',
+          questionRegionId: 'question-1',
+          responseRegionId: 'answer-1',
+        },
         materialId: material.id,
         question: {
           contentHash: 'b'.repeat(64),
@@ -86,8 +120,22 @@ describe('Objective assessment HTTP interface', () => {
       url: `${baseUrl}/objective-assessments`,
     });
     expect(gradedResponse.statusCode).toBe(201);
-    const graded = gradedResponse.json<{ data: { currentVersion: { id: string }; id: string } }>()
-      .data;
+    const graded = gradedResponse.json<{
+      data: {
+        currentVersion: {
+          decision: { expectedDisplay: string; outcome: string };
+          id: string;
+          question: { text: string };
+          response: { text: string };
+        };
+        id: string;
+      };
+    }>().data;
+    expect(graded.currentVersion).toMatchObject({
+      decision: { expectedDisplay: '42', outcome: 'incorrect' },
+      question: { text: '6 × 7 = ?' },
+      response: { text: '41' },
+    });
 
     const disputedResponse = await app.inject({
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },
@@ -114,10 +162,11 @@ describe('Objective assessment HTTP interface', () => {
       headers: { authorization: `Bearer ${guardian.accessToken}` },
       method: 'POST',
       payload: {
-        correctedResponse: {
-          contentHash: 'd'.repeat(64),
-          text: '42',
-          versionId: '00000000-0000-4000-8000-000000000103',
+        inputReference: {
+          confirmedContentVersionId: '00000000-0000-4000-8000-000000000100',
+          processingJobId: '00000000-0000-4000-8000-000000000104',
+          questionRegionId: 'question-1',
+          responseRegionId: 'answer-2',
         },
         reason: '监护人核对原稿后修正',
       },

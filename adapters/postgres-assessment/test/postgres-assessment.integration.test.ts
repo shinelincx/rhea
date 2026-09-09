@@ -27,6 +27,30 @@ async function createLearningMaterial() {
   const processingJobId = randomUUID();
   const candidateId = randomUUID();
   const confirmedContentVersionId = randomUUID();
+  const questionRegionId = 'question-1';
+  const responseRegionId = 'answer-1';
+  const regions = [
+    {
+      confidence: 0.99,
+      id: questionRegionId,
+      kind: 'question',
+      lowConfidence: false,
+      pageId: 'page-1',
+      polygon: [],
+      readingOrder: 0,
+      text: '6 × 7 = ?',
+    },
+    {
+      confidence: 0.99,
+      id: responseRegionId,
+      kind: 'answer',
+      lowConfidence: false,
+      pageId: 'page-1',
+      polygon: [],
+      readingOrder: 1,
+      text: '41',
+    },
+  ];
   const setup = await pool.connect();
   try {
     await setup.query('BEGIN');
@@ -60,15 +84,22 @@ async function createLearningMaterial() {
     await setup.query(
       `INSERT INTO learning.recognition_candidates
         (id, job_id, learning_profile_id, adapter_version, source_hash, regions)
-       VALUES ($1, $2, $3, 'test-v1', $4, '[]')`,
-      [candidateId, processingJobId, learningProfileId, 'a'.repeat(64)],
+       VALUES ($1, $2, $3, 'test-v1', $4, $5::jsonb)`,
+      [candidateId, processingJobId, learningProfileId, 'a'.repeat(64), JSON.stringify(regions)],
     );
     await setup.query(
       `INSERT INTO learning.confirmed_content_versions
         (id, job_id, learning_profile_id, version, source_candidate_id, source_hash,
          regions, confirmed_by_learning_profile_id, confirmed_at)
-       VALUES ($1, $2, $3, 1, $4, $5, '[]', $3, now())`,
-      [confirmedContentVersionId, processingJobId, learningProfileId, candidateId, 'a'.repeat(64)],
+       VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $3, now())`,
+      [
+        confirmedContentVersionId,
+        processingJobId,
+        learningProfileId,
+        candidateId,
+        'a'.repeat(64),
+        JSON.stringify(regions),
+      ],
     );
     await setup.query('COMMIT');
   } catch (error) {
@@ -96,16 +127,27 @@ async function createLearningMaterial() {
     learningProfileId,
     sourceHash: 'a'.repeat(64),
   });
-  return { familySpaceId, learningContent, learningProfileId, material };
+  return {
+    confirmedContentVersionId,
+    familySpaceId,
+    learningContent,
+    learningProfileId,
+    material,
+    processingJobId,
+    questionRegionId,
+    responseRegionId,
+  };
 }
 
 describeWithDatabase('PostgreSQL assessment adapter', () => {
   it('atomically persists immutable grading and dispute histories behind profile isolation', async () => {
     if (!pool) return;
     const fixture = await createLearningMaterial();
+    const store = new PostgresAssessmentStore(pool);
     const service = new AssessmentService({
       basisReader: fixture.learningContent,
-      store: new PostgresAssessmentStore(pool),
+      inputReader: store,
+      store,
     });
     const learner = { id: fixture.learningProfileId, type: 'learner' as const };
     const original = await service.gradeObjective({
@@ -113,14 +155,12 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       familySpaceId: fixture.familySpaceId,
       learningProfileId: fixture.learningProfileId,
       materialId: fixture.material.id,
-      question: {
-        contentHash: 'b'.repeat(64),
-        subject: 'mathematics',
-        text: '6 × 7 = ?',
-        versionId: randomUUID(),
+      inputReference: {
+        confirmedContentVersionId: fixture.confirmedContentVersionId,
+        processingJobId: fixture.processingJobId,
+        questionRegionId: fixture.questionRegionId,
+        responseRegionId: fixture.responseRegionId,
       },
-      response: { contentHash: 'c'.repeat(64), text: '41', versionId: randomUUID() },
-      rule: { expected: '42', kind: 'numeric' },
     });
     const disputed = await service.raiseDispute({
       actor: learner,
@@ -140,11 +180,6 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
     const resolved = await service.resolveDispute({
       actor: { id: randomUUID(), type: 'guardian' },
       assessmentId: original.id,
-      correctedResponse: {
-        contentHash: 'd'.repeat(64),
-        text: '42',
-        versionId: randomUUID(),
-      },
       disputeId: disputed.openDisputeId!,
       learningProfileId: fixture.learningProfileId,
       reason: '核对原稿后修正',
@@ -157,7 +192,7 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
         learningProfileId: fixture.learningProfileId,
       }),
     ).resolves.toMatchObject({
-      currentVersion: { decision: { outcome: 'correct' }, revision: 2 },
+      currentVersion: { decision: { outcome: 'incorrect' }, revision: 2 },
       resolutions: [{ resultingAssessmentVersionId: resolved.currentVersion.id }],
       versions: [{ revision: 1 }, { revision: 2 }],
     });

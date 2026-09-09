@@ -348,7 +348,7 @@ describe('capture draft mobile flow', () => {
       correctClassification: jest.fn(),
       disputeAssessment: jest.fn(async () => ({
         ...graded,
-        disputes: [{ id: 'dispute-1' }],
+        disputes: [{ id: 'dispute-1', reviewRoute: 'professional' as const }],
         openDisputeId: 'dispute-1',
       })),
       getJob: jest.fn(async () => awaiting),
@@ -398,14 +398,22 @@ describe('capture draft mobile flow', () => {
       fireEvent.press(view.getByRole('button', { name: '保存学习归类' }));
     });
 
-    const acceptedAnswer = await view.findByLabelText('采用答案或规则');
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: '按当前学习依据批改' })).toBeEnabled(),
+    );
     await act(async () => {
-      fireEvent.changeText(acceptedAnswer, '9');
+      fireEvent.press(view.getByRole('button', { name: '按当前学习依据批改' }));
     });
-    await waitFor(() => expect(view.getByRole('button', { name: '进行确定性批改' })).toBeEnabled());
-    await act(async () => {
-      fireEvent.press(view.getByRole('button', { name: '进行确定性批改' }));
-    });
+    expect(gateway.gradeObjective).toHaveBeenCalledWith(
+      expect.objectContaining({
+        inputReference: {
+          confirmedContentVersionId: 'content-1',
+          processingJobId: 'job-1',
+          questionRegionId: 'question-1',
+          responseRegionId: 'answer-1',
+        },
+      }),
+    );
     expect(await view.findByText('需要订正')).toBeVisible();
     expect(view.getByText('我的作答：8')).toBeVisible();
     expect(view.getByText('采用答案：9')).toBeVisible();
@@ -424,8 +432,9 @@ describe('capture draft mobile flow', () => {
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '提交质疑并暂停结果' }));
     });
+    expect(await view.findByText('已转专业复核')).toBeVisible();
     expect(
-      await view.findByText('结果待复核，相关错题、掌握度、复习和挑战计分已暂停。'),
+      view.getByText('已交由专业人员复核；相关错题、掌握度、复习和挑战计分均已暂停。'),
     ).toBeVisible();
   });
 });

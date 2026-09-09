@@ -11,8 +11,10 @@ import type {
   AssessmentDisputeTarget,
   DownstreamAssessmentReference,
   ObjectiveAssessment,
+  ObjectiveAssessmentInputReference,
   ObjectiveGradingRule,
   QuestionVersionSnapshot,
+  ResolvedObjectiveAssessmentInput,
   ResponseVersionSnapshot,
   StoredObjectiveAssessment,
 } from './types.js';
@@ -28,9 +30,20 @@ export interface LearningBasisReader {
   }): Promise<CurrentLearningBasisReference>;
 }
 
+export interface ObjectiveAssessmentInputReader {
+  resolveObjectiveInput(input: {
+    actor: AssessmentActorReference;
+    basis: CurrentLearningBasisReference;
+    learningProfileId: string;
+    materialId: string;
+    reference: ObjectiveAssessmentInputReference;
+  }): Promise<ResolvedObjectiveAssessmentInput | null>;
+}
+
 export interface AssessmentServiceDependencies {
   basisReader: LearningBasisReader;
   clock?: { readonly now: Date };
+  inputReader: ObjectiveAssessmentInputReader;
   store: AssessmentStore;
 }
 
@@ -57,6 +70,14 @@ function requiredText(value: string, label: string, maximum = 4_000): string {
     throw new AssessmentError('INPUT_INVALID', `${label}不能为空且不能超过 ${maximum} 个字符`);
   }
   return normalized;
+}
+
+function trustedContentHash(
+  kind: 'question' | 'response',
+  versionId: string,
+  text: string,
+): string {
+  return createHash('sha256').update(`${kind}\u001f${versionId}\u001f${text}`).digest('hex');
 }
 
 function checkedRule(rule: ObjectiveGradingRule | null): ObjectiveGradingRule | null {
@@ -228,6 +249,7 @@ function basisMatches(
 export class AssessmentService {
   readonly #basisReader: LearningBasisReader;
   readonly #clock: { readonly now: Date };
+  readonly #inputReader: ObjectiveAssessmentInputReader;
   readonly #store: AssessmentStore;
 
   constructor(dependencies: AssessmentServiceDependencies) {
@@ -237,17 +259,16 @@ export class AssessmentService {
         return new Date();
       },
     };
+    this.#inputReader = dependencies.inputReader;
     this.#store = dependencies.store;
   }
 
   async gradeObjective(input: {
     actor: AssessmentActorReference;
     familySpaceId: string;
+    inputReference: ObjectiveAssessmentInputReference;
     learningProfileId: string;
     materialId: string;
-    question: QuestionVersionSnapshot;
-    response: ResponseVersionSnapshot;
-    rule: ObjectiveGradingRule | null;
   }): Promise<ObjectiveAssessment> {
     const basis = await this.#basisReader.getCurrentBasisReference({
       actor: input.actor,
@@ -257,9 +278,15 @@ export class AssessmentService {
     if (basis.materialId !== input.materialId) {
       throw new AssessmentError('BASIS_CHANGED', '当前学习依据已经变化，请刷新后重新批改');
     }
-    const question = this.#checkedQuestion(input.question);
-    const response = this.#checkedResponse(input.response);
-    const rule = checkedRule(input.rule);
+    const inputReference = this.#checkedInputReference(input.inputReference);
+    const resolved = await this.#resolveInput({
+      actor: input.actor,
+      basis,
+      inputReference,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+    });
+    const { question, response, rule } = resolved;
     const key = deduplicationKey({
       basis,
       learningProfileId: input.learningProfileId,
@@ -275,9 +302,12 @@ export class AssessmentService {
       createdAt: this.#clock.now.toISOString(),
       createdBy: { ...input.actor },
       decision: decision(question.text, response.text, rule),
+      gradingRuleVersionId: resolved.gradingRuleVersionId,
       id: randomUUID(),
+      inputReference,
       predecessorId: null,
       question,
+      requiresProfessionalReview: resolved.requiresProfessionalReview,
       response,
       revision: 1,
       rule: structuredClone(rule),
@@ -307,28 +337,32 @@ export class AssessmentService {
     learningProfileId: string;
   }): Promise<DownstreamAssessmentReference> {
     const assessment = await this.#requireAssessment(input.assessmentId, input.learningProfileId);
-    const current = assessment.versions.at(-1)!;
-    await this.#recordAccess('assessment.downstream_reference.read', input.actor, assessment);
-    await this.#requireCurrentBasis(input.actor, assessment, current.basis);
-    if (assessment.openDisputeId || current.decision.outcome === 'ungradable') {
+    const currentBasis = await this.#basisReader.getCurrentBasisReference({
+      actor: input.actor,
+      learningProfileId: assessment.learningProfileId,
+      materialId: assessment.materialId,
+    });
+    const read = await this.#store.readDownstreamReference({
+      actor: input.actor,
+      assessmentId: assessment.id,
+      currentBasis,
+      learningProfileId: assessment.learningProfileId,
+    });
+    if (read.kind === 'not_found') {
+      throw new AssessmentError('ASSESSMENT_NOT_FOUND', '没有找到这道题的批改记录');
+    }
+    if (read.kind === 'basis_changed') {
+      throw new AssessmentError('BASIS_CHANGED', '当前学习依据已经变化，请重新批改');
+    }
+    if (read.kind === 'ineligible') {
       throw new AssessmentError(
         'DOWNSTREAM_INELIGIBLE',
-        assessment.openDisputeId
+        read.reason === 'disputed'
           ? '批改质疑尚未解决，相关结论已暂停使用'
           : '暂无法批改的题目不能进入下游学习记录',
       );
     }
-    return {
-      assessmentId: assessment.id,
-      assessmentVersionId: current.id,
-      basisSelectionVersion: current.basis.selectionVersion,
-      basisSourceVersionId: current.basis.sourceVersionId,
-      basisValidityEpoch: current.basis.validityEpoch,
-      outcome: current.decision.outcome,
-      questionVersionId: current.question.versionId,
-      responseVersionId: current.response.versionId,
-      subject: current.question.subject,
-    };
+    return read.reference;
   }
 
   async getAssessment(input: {
@@ -363,6 +397,12 @@ export class AssessmentService {
       raisedAt: this.#clock.now.toISOString(),
       raisedBy: { ...input.actor },
       reason: requiredText(input.reason, '质疑原因', 500),
+      reviewRoute:
+        input.target === 'assessment' ||
+        current.requiresProfessionalReview ||
+        assessment.disputes.length > 0
+          ? 'professional'
+          : 'guardian',
       target: input.target,
     };
     const saved = await this.#store.appendDispute({
@@ -382,10 +422,8 @@ export class AssessmentService {
   async resolveDispute(input: {
     actor: AssessmentActorReference;
     assessmentId: string;
-    correctedQuestion?: QuestionVersionSnapshot;
-    correctedResponse?: ResponseVersionSnapshot;
-    correctedRule?: ObjectiveGradingRule | null;
     disputeId: string;
+    inputReference?: ObjectiveAssessmentInputReference;
     learningProfileId: string;
     reason: string;
   }): Promise<ObjectiveAssessment> {
@@ -400,29 +438,40 @@ export class AssessmentService {
     if (!dispute || assessment.openDisputeId !== dispute.id) {
       throw new AssessmentError('DISPUTE_NOT_FOUND', '没有找到待解决的批改质疑');
     }
+    if (dispute.reviewRoute === 'professional') {
+      throw new AssessmentError(
+        'PROFESSIONAL_REVIEW_REQUIRED',
+        '这次质疑涉及批改结论、来源冲突或重复质疑，需要专业复核',
+      );
+    }
     const current = assessment.versions.at(-1)!;
     const basis = await this.#basisReader.getCurrentBasisReference({
       actor: input.actor,
       learningProfileId: input.learningProfileId,
       materialId: assessment.materialId,
     });
-    const question = input.correctedQuestion
-      ? this.#checkedQuestion(input.correctedQuestion)
-      : current.question;
-    const response = input.correctedResponse
-      ? this.#checkedResponse(input.correctedResponse)
-      : current.response;
-    const rule = checkedRule(
-      input.correctedRule === undefined ? current.rule : input.correctedRule,
+    const inputReference = this.#checkedInputReference(
+      input.inputReference ?? current.inputReference,
     );
+    const resolved = await this.#resolveInput({
+      actor: input.actor,
+      basis,
+      inputReference,
+      learningProfileId: assessment.learningProfileId,
+      materialId: assessment.materialId,
+    });
+    const { question, response, rule } = resolved;
     const version = {
       basis: structuredClone(basis),
       createdAt: this.#clock.now.toISOString(),
       createdBy: { ...input.actor },
       decision: decision(question.text, response.text, rule),
+      gradingRuleVersionId: resolved.gradingRuleVersionId,
       id: randomUUID(),
+      inputReference: structuredClone(inputReference),
       predecessorId: current.id,
       question: structuredClone(question),
+      requiresProfessionalReview: resolved.requiresProfessionalReview,
       response: structuredClone(response),
       revision: current.revision + 1,
       rule: structuredClone(rule),
@@ -453,6 +502,74 @@ export class AssessmentService {
     return view(assessment);
   }
 
+  #checkedInputReference(
+    reference: ObjectiveAssessmentInputReference,
+  ): ObjectiveAssessmentInputReference {
+    return {
+      confirmedContentVersionId: requiredText(
+        reference.confirmedContentVersionId,
+        '已确认内容版本',
+        200,
+      ),
+      processingJobId: requiredText(reference.processingJobId, '识别任务', 200),
+      questionRegionId: requiredText(reference.questionRegionId, '题目区域', 200),
+      responseRegionId: requiredText(reference.responseRegionId, '作答区域', 200),
+    };
+  }
+
+  async #resolveInput(input: {
+    actor: AssessmentActorReference;
+    basis: CurrentLearningBasisReference;
+    inputReference: ObjectiveAssessmentInputReference;
+    learningProfileId: string;
+    materialId: string;
+  }): Promise<{
+    gradingRuleVersionId: string | null;
+    question: QuestionVersionSnapshot;
+    requiresProfessionalReview: boolean;
+    response: ResponseVersionSnapshot;
+    rule: ObjectiveGradingRule | null;
+  }> {
+    const resolved = await this.#inputReader.resolveObjectiveInput({
+      actor: input.actor,
+      basis: input.basis,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+      reference: input.inputReference,
+    });
+    if (!resolved) {
+      throw new AssessmentError(
+        'TRUSTED_INPUT_NOT_FOUND',
+        '没有找到与当前学习依据匹配的已确认题目和作答',
+      );
+    }
+    const questionVersionId = requiredText(resolved.question.versionId, '题目版本', 400);
+    const responseVersionId = requiredText(resolved.response.versionId, '作答版本', 400);
+    const question = this.#checkedQuestion({
+      ...resolved.question,
+      contentHash: trustedContentHash('question', questionVersionId, resolved.question.text),
+      versionId: questionVersionId,
+    });
+    const response = this.#checkedResponse({
+      ...resolved.response,
+      contentHash: trustedContentHash('response', responseVersionId, resolved.response.text),
+      versionId: responseVersionId,
+    });
+    const rule = checkedRule(resolved.rule);
+    if (Boolean(rule) !== Boolean(resolved.gradingRuleVersionId)) {
+      throw new AssessmentError('INPUT_INVALID', '受控评价规则版本与规则内容不一致');
+    }
+    return {
+      gradingRuleVersionId: resolved.gradingRuleVersionId
+        ? requiredText(resolved.gradingRuleVersionId, '评价规则版本', 200)
+        : null,
+      question,
+      requiresProfessionalReview: resolved.requiresProfessionalReview,
+      response,
+      rule,
+    };
+  }
+
   #checkedQuestion(question: QuestionVersionSnapshot): QuestionVersionSnapshot {
     const text = question.text.trim();
     if (text.length > 4_000 || !SUBJECTS.has(question.subject)) {
@@ -462,7 +579,7 @@ export class AssessmentService {
       ...question,
       contentHash: checkedHash(question.contentHash),
       text,
-      versionId: requiredText(question.versionId, '题目版本', 200),
+      versionId: requiredText(question.versionId, '题目版本', 500),
     };
   }
 
@@ -474,7 +591,7 @@ export class AssessmentService {
       ...response,
       contentHash: checkedHash(response.contentHash),
       text: response.text.trim(),
-      versionId: requiredText(response.versionId, '作答版本', 200),
+      versionId: requiredText(response.versionId, '作答版本', 500),
     };
   }
 
