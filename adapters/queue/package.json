@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@rhea/job-runtime": "workspace:*",
-    "bullmq": "6.3.4"
+    "bullmq": "6.3.4",
+    "ioredis": "6.0.0"
   },
   "devDependencies": {
     "@types/node": "24.10.13",
