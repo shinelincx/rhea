@@ -3,7 +3,11 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import type { FamilyAccess } from '@rhea/family-access';
 import type { JobClient } from '@rhea/job-runtime';
+import type { AssessmentService } from '@rhea/assessment';
 
+import { AssessmentController } from './assessment/assessment.controller.js';
+import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
+import { ASSESSMENT_SERVICE } from './assessment/assessment.provider.js';
 import { DEPENDENCY_PROBES, type DependencyProbe } from './health/dependency-probe.js';
 import { FamilyAccessController } from './family-access/family-access.controller.js';
 import { FamilyAccessExceptionFilter } from './family-access/family-access-exception.filter.js';
@@ -33,6 +37,7 @@ export class AppModule {
     dependencyProbes: DependencyProbe[],
     jobClient: JobClient,
     familyAccess: FamilyAccess,
+    assessmentService: AssessmentService,
     learningContentService: LearningContentService,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
@@ -41,6 +46,7 @@ export class AppModule {
     return {
       module: AppModule,
       controllers: [
+        AssessmentController,
         FamilyAccessController,
         HealthController,
         LearningContentController,
@@ -49,6 +55,10 @@ export class AppModule {
         TodayRouteController,
       ],
       providers: [
+        {
+          provide: APP_FILTER,
+          useClass: AssessmentExceptionFilter,
+        },
         {
           provide: APP_FILTER,
           useClass: FamilyAccessExceptionFilter,
@@ -60,6 +70,10 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: LearningContentExceptionFilter,
+        },
+        {
+          provide: ASSESSMENT_SERVICE,
+          useValue: assessmentService,
         },
         {
           provide: FAMILY_ACCESS,

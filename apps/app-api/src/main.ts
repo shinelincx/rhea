@@ -1,5 +1,6 @@
 import { createApp } from './create-app.js';
 import { createConfiguredFamilyAccess } from './family-access/create-configured-family-access.js';
+import { createConfiguredAssessment } from './assessment/create-configured-assessment.js';
 import { createConfiguredJobClient } from './jobs/create-configured-job-client.js';
 import { createConfiguredLearningContent } from './learning-content/create-configured-learning-content.js';
 import { createConfiguredSubmission } from './submission/create-configured-submission.js';
@@ -10,7 +11,12 @@ const host = process.env.HOST ?? '0.0.0.0';
 const configuredFamilyAccess = createConfiguredFamilyAccess(process.env);
 const configuredSubmission = createConfiguredSubmission(process.env);
 const configuredLearningContent = createConfiguredLearningContent(process.env);
+const configuredAssessment = createConfiguredAssessment(
+  process.env,
+  configuredLearningContent.service,
+);
 const app = await createApp({
+  assessmentService: configuredAssessment.service,
   familyAccess: configuredFamilyAccess.familyAccess,
   jobClient: createConfiguredJobClient(process.env),
   learningContentService: configuredLearningContent.service,
@@ -18,6 +24,7 @@ const app = await createApp({
     ...configuredFamilyAccess.shutdownResources,
     ...configuredSubmission.shutdownResources,
     ...configuredLearningContent.shutdownResources,
+    ...configuredAssessment.shutdownResources,
   ],
   submissionScheduler: configuredSubmission.scheduler,
   submissionService: configuredSubmission.service,

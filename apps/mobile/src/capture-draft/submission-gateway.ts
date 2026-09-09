@@ -29,7 +29,12 @@ export interface MobileProcessingJob {
     regions: MobileRecognitionRegion[];
     sourceHash: string;
   } | null;
-  completedContent: { id: string; sourceCandidateId: string; sourceHash: string } | null;
+  completedContent: {
+    id: string;
+    regions: MobileRecognitionRegion[];
+    sourceCandidateId: string;
+    sourceHash: string;
+  } | null;
   errorCode: string | null;
   id: string;
   qualityIssues: Array<{
@@ -66,6 +71,37 @@ export interface MobileLearningMaterial {
   sourceVersions: Array<{ id: string; versionLabel: string }>;
 }
 
+export type MobileObjectiveGradingRule =
+  | {
+      acceptedAnswers: string[];
+      caseSensitive: boolean;
+      collapseWhitespace: boolean;
+      kind: 'accepted_text';
+    }
+  | { correctOption: string; kind: 'single_choice' }
+  | { expected: string; kind: 'numeric' };
+
+export interface MobileObjectiveAssessment {
+  currentVersion: {
+    basis: { selectionVersion: number; sourceVersionId: string; versionLabel: string };
+    decision: {
+      expectedDisplay: string | null;
+      normalizedResponse: string | null;
+      outcome: 'correct' | 'incorrect' | 'ungradable';
+      reasonCode: string | null;
+    };
+    id: string;
+    question: { subject: MobileSubject; text: string; versionId: string };
+    response: { text: string; versionId: string };
+    revision: number;
+  };
+  disputes: Array<{ id: string }>;
+  id: string;
+  openDisputeId: string | null;
+  resolutions: Array<{ id: string }>;
+  versions: Array<{ id: string; revision: number }>;
+}
+
 export interface SubmissionGateway {
   cancel(accessToken: string, id: string): Promise<MobileProcessingJob>;
   confirm(
@@ -81,6 +117,24 @@ export interface SubmissionGateway {
     materialId: string;
     reason: string;
   }): Promise<MobileLearningMaterial>;
+  disputeAssessment(input: {
+    accessToken: string;
+    assessmentId: string;
+    correctionText: string;
+    familySpaceId: string;
+    learningProfileId: string;
+    reason: string;
+    target: 'assessment' | 'question' | 'response';
+  }): Promise<MobileObjectiveAssessment>;
+  gradeObjective(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+    materialId: string;
+    question: { subject: MobileSubject; text: string; versionId: string };
+    response: { text: string; versionId: string };
+    rule: MobileObjectiveGradingRule | null;
+  }): Promise<MobileObjectiveAssessment>;
   getJob(accessToken: string, id: string): Promise<MobileProcessingJob>;
   organize(input: {
     accessToken: string;
@@ -172,11 +226,44 @@ export function createSubmissionGateway(baseUrl: string): SubmissionGateway {
         },
       );
     },
+    disputeAssessment(input) {
+      return request(
+        `/v1/family-spaces/${encodeURIComponent(input.familySpaceId)}/learning-profiles/${encodeURIComponent(input.learningProfileId)}/objective-assessments/${encodeURIComponent(input.assessmentId)}/disputes`,
+        {
+          body: JSON.stringify({
+            correctionText: input.correctionText,
+            reason: input.reason,
+            target: input.target,
+          }),
+          headers: { ...authorization(input.accessToken), 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+      );
+    },
     getJob(accessToken, id) {
       return request(`/v1/processing-jobs/${id}`, {
         headers: authorization(accessToken),
         method: 'GET',
       });
+    },
+    async gradeObjective(input) {
+      const [questionHash, responseHash] = await Promise.all([
+        sha256(new TextEncoder().encode(input.question.text)),
+        sha256(new TextEncoder().encode(input.response.text)),
+      ]);
+      return request(
+        `/v1/family-spaces/${encodeURIComponent(input.familySpaceId)}/learning-profiles/${encodeURIComponent(input.learningProfileId)}/objective-assessments`,
+        {
+          body: JSON.stringify({
+            materialId: input.materialId,
+            question: { ...input.question, contentHash: questionHash },
+            response: { ...input.response, contentHash: responseHash },
+            rule: input.rule,
+          }),
+          headers: { ...authorization(input.accessToken), 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+      );
     },
     organize(input) {
       return request(

@@ -65,11 +65,14 @@ describe('database migration interface', () => {
       '0003',
       '0004',
       '0005',
+      '0006',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS metrics/i);
     expect(migrations[3]?.sql).toMatch(/CREATE TABLE learning\.processing_jobs/i);
     expect(migrations[3]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[5]?.sql).toMatch(/CREATE TABLE learning\.objective_assessments/i);
+    expect(migrations[5]?.sql).toMatch(/CREATE ROLE rhea_assessment_app/i);
   });
 });

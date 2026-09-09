@@ -59,8 +59,9 @@ describe('capture draft mobile flow', () => {
       />,
     );
 
+    const importButton = await first.findByRole('button', { name: '导入图片或 PDF' });
     await act(async () => {
-      fireEvent.press(await first.findByRole('button', { name: '导入图片或 PDF' }));
+      fireEvent.press(importButton);
     });
     expect(await first.findByText('第 1 页')).toBeVisible();
     expect(first.getByText('画面可能模糊，请靠近或重拍')).toBeVisible();
@@ -109,8 +110,9 @@ describe('capture draft mobile flow', () => {
         repository={repository}
       />,
     );
+    const continueButton = await view.findByRole('button', { name: '继续拍照' });
     await act(async () => {
-      fireEvent.press(await view.findByRole('button', { name: '继续拍照' }));
+      fireEvent.press(continueButton);
     });
     expect(await view.findByText('数学练习-1.jpg')).toBeVisible();
     source.takePhoto = async () => [];
@@ -155,6 +157,7 @@ describe('capture draft mobile flow', () => {
         ...awaiting,
         completedContent: {
           id: 'content-1',
+          regions: awaiting.candidate!.regions,
           sourceCandidateId: 'candidate-1',
           sourceHash: 'source-hash',
         },
@@ -174,7 +177,9 @@ describe('capture draft mobile flow', () => {
         id: 'material-1',
         sourceVersions: [{ id: 'source-1', versionLabel: 'confirmed-content-v1' }],
       })),
+      disputeAssessment: jest.fn(),
       getJob: jest.fn(async () => awaiting),
+      gradeObjective: jest.fn(),
       organize: jest.fn(async (): Promise<MobileLearningMaterial> => ({
         basis: {
           currentSourceVersionId: 'source-1',
@@ -234,11 +239,18 @@ describe('capture draft mobile flow', () => {
     );
     expect(await view.findByText('待归类')).toBeVisible();
 
-    fireEvent.press(view.getByRole('button', { name: '修改归类' }));
-    fireEvent.press(await view.findByRole('button', { name: '数学' }));
-    fireEvent.changeText(view.getByLabelText('知识点'), '两位数乘法');
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '修改归类' }));
+    });
+    const mathematicsButton = await view.findByRole('button', { name: '数学' });
+    await act(async () => {
+      fireEvent.press(mathematicsButton);
+      fireEvent.changeText(view.getByLabelText('知识点'), '两位数乘法');
+    });
     await waitFor(() => expect(view.getByRole('button', { name: '保存学习归类' })).toBeEnabled());
-    fireEvent.press(view.getByRole('button', { name: '保存学习归类' }));
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '保存学习归类' }));
+    });
     await waitFor(() =>
       expect(gateway.correctClassification).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -251,5 +263,169 @@ describe('capture draft mobile flow', () => {
         }),
       ),
     );
+    expect(await view.findByText('已整理到数学，当前学习依据版本已记录。')).toBeVisible();
+  });
+
+  it('shows a traceable objective result and lets the learner pause it with a dispute', async () => {
+    const repository = new EncryptedCaptureDraftRepository(
+      passThroughCrypto,
+      new MemoryDraftFilePort(),
+    );
+    const regions = [
+      {
+        confidence: 0.97,
+        id: 'question-1',
+        kind: 'question' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 0,
+        text: '计算：36 ÷ 4 =',
+      },
+      {
+        confidence: 0.95,
+        id: 'answer-1',
+        kind: 'answer' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 1,
+        text: '8',
+      },
+    ];
+    const awaiting: MobileProcessingJob = {
+      candidate: {
+        adapterVersion: 'fixture-v1',
+        id: 'candidate-1',
+        regions,
+        sourceHash: 'a'.repeat(64),
+      },
+      completedContent: null,
+      errorCode: null,
+      id: 'job-1',
+      qualityIssues: [],
+      status: 'awaiting_confirmation',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    };
+    const graded = {
+      currentVersion: {
+        basis: {
+          selectionVersion: 1,
+          sourceVersionId: 'source-1',
+          versionLabel: '确认内容第 1 版',
+        },
+        decision: {
+          expectedDisplay: '9',
+          normalizedResponse: '8',
+          outcome: 'incorrect' as const,
+          reasonCode: null,
+        },
+        id: 'assessment-version-1',
+        question: {
+          subject: 'mathematics' as const,
+          text: regions[0]!.text,
+          versionId: 'question-1',
+        },
+        response: { text: regions[1]!.text, versionId: 'answer-1' },
+        revision: 1,
+      },
+      disputes: [],
+      id: 'assessment-1',
+      openDisputeId: null,
+      resolutions: [],
+      versions: [],
+    };
+    const gateway = {
+      cancel: jest.fn(),
+      confirm: jest.fn(async () => ({
+        ...awaiting,
+        completedContent: {
+          id: 'content-1',
+          regions,
+          sourceCandidateId: 'candidate-1',
+          sourceHash: 'a'.repeat(64),
+        },
+        status: 'completed' as const,
+      })),
+      correctClassification: jest.fn(),
+      disputeAssessment: jest.fn(async () => ({
+        ...graded,
+        disputes: [{ id: 'dispute-1' }],
+        openDisputeId: 'dispute-1',
+      })),
+      getJob: jest.fn(async () => awaiting),
+      gradeObjective: jest.fn(async () => graded),
+      organize: jest.fn(async () => ({
+        basis: { currentSourceVersionId: 'source-1', hasConflict: false, selectionRevision: 1 },
+        currentClassification: {
+          primarySubject: 'mathematics' as const,
+          revision: 1,
+          status: 'classified' as const,
+        },
+        id: 'material-1',
+        sourceVersions: [{ id: 'source-1', versionLabel: '确认内容第 1 版' }],
+      })),
+      submit: jest.fn(async () => awaiting),
+    };
+    const view = await render(
+      <CaptureDraftScreen
+        accessToken="learner-token"
+        captureSource={captureSource()}
+        familySpaceId="family-a"
+        learningProfileId="profile-a"
+        onBack={jest.fn()}
+        repository={repository}
+        submissionGateway={gateway}
+      />,
+    );
+    const continueButton = await view.findByRole('button', { name: '继续拍照' });
+    await act(async () => {
+      fireEvent.press(continueButton);
+    });
+    const uploadButton = await view.findByRole('button', { name: '检查并继续上传' });
+    await act(async () => {
+      fireEvent.press(uploadButton);
+    });
+    const confirmButton = await view.findByRole('button', { name: '确认识别内容' });
+    await act(async () => {
+      fireEvent.press(confirmButton);
+    });
+    const mathematicsButton = await view.findByRole('button', { name: '数学' });
+    await act(async () => {
+      fireEvent.press(mathematicsButton);
+      fireEvent.changeText(view.getByLabelText('知识点'), '除法');
+    });
+    await waitFor(() => expect(view.getByRole('button', { name: '保存学习归类' })).toBeEnabled());
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '保存学习归类' }));
+    });
+
+    const acceptedAnswer = await view.findByLabelText('采用答案或规则');
+    await act(async () => {
+      fireEvent.changeText(acceptedAnswer, '9');
+    });
+    await waitFor(() => expect(view.getByRole('button', { name: '进行确定性批改' })).toBeEnabled());
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '进行确定性批改' }));
+    });
+    expect(await view.findByText('需要订正')).toBeVisible();
+    expect(view.getByText('我的作答：8')).toBeVisible();
+    expect(view.getByText('采用答案：9')).toBeVisible();
+    expect(view.getByText('当前学习依据版本：1')).toBeVisible();
+
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '我觉得批改不对' }));
+    });
+    await act(async () => {
+      fireEvent.changeText(view.getByLabelText('质疑原因'), '作答识别错误');
+      fireEvent.changeText(view.getByLabelText('补充修正信息'), '我写的是 9，请核对原稿。');
+    });
+    await waitFor(() =>
+      expect(view.getByRole('button', { name: '提交质疑并暂停结果' })).toBeEnabled(),
+    );
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '提交质疑并暂停结果' }));
+    });
+    expect(
+      await view.findByText('结果待复核，相关错题、掌握度、复习和挑战计分已暂停。'),
+    ).toBeVisible();
   });
 });
