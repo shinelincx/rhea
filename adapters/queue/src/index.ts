@@ -51,12 +51,18 @@ export class BullMqJobClient implements JobClient {
   }
 
   async get(id: string): Promise<ObservableJob | null> {
-    const job = await this.#queue.getJob(id);
+    let job = await this.#queue.getJob(id);
     if (!job) {
       return null;
     }
 
     const bullState = await job.getState();
+    if (bullState === 'completed' || bullState === 'failed') {
+      // A job can finish after getJob() reads its hash but before getState()
+      // reads the terminal set. Refresh once so terminal metadata comes from
+      // the same completed Redis state as the status we expose.
+      job = (await this.#queue.getJob(id)) ?? job;
+    }
     const status =
       bullState === 'completed'
         ? 'succeeded'
