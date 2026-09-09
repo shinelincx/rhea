@@ -42,8 +42,14 @@ describeWithDatabase('PostgreSQL migrations', () => {
       [['learning', 'metrics', 'safety']],
     );
 
-    expect(first).toEqual({ applied: ['0001', '0002', '0003', '0004', '0005'], skipped: [] });
-    expect(second).toEqual({ applied: [], skipped: ['0001', '0002', '0003', '0004', '0005'] });
+    expect(first).toEqual({
+      applied: ['0001', '0002', '0003', '0004', '0005', '0006'],
+      skipped: [],
+    });
+    expect(second).toEqual({
+      applied: [],
+      skipped: ['0001', '0002', '0003', '0004', '0005', '0006'],
+    });
     expect(schemas.rows.map(({ schema_name }) => schema_name)).toEqual([
       'learning',
       'metrics',
