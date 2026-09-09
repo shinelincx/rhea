@@ -1,6 +1,8 @@
 export const colors = {
   background: '#FAF5FF',
   border: '#E9DDFB',
+  borderStrong: '#BDA9DD',
+  error: '#B42318',
   foreground: '#1E1633',
   mutedForeground: '#5F5870',
   primary: '#6D28D9',

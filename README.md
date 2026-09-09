@@ -19,6 +19,10 @@
 5. 分别启动 API 与领域 Worker：`pnpm dev:api`、`pnpm dev:worker:domain`。
 6. 启动移动端：`pnpm dev:mobile`。
 
+本地家庭试用流程使用 `.env.example` 中的 `IDENTITY_PROVIDER_MODE=development` 与
+`EXPO_PUBLIC_DEVELOPMENT_IDENTITY_ASSERTION`。非开发环境没有已配置身份提供方时会拒绝
+监护人登录，不会把开发身份回退带入生产。
+
 AI 与安全 Worker 分别使用 `pnpm dev:worker:ai` 和 `pnpm dev:worker:safety` 启动。API
 默认监听 `http://127.0.0.1:3000`，移动端通过 `EXPO_PUBLIC_API_BASE_URL` 访问真实的
 `GET /v1/today-route` 接口。

@@ -4,6 +4,14 @@
     "slug": "rhea-learning-assistant",
     "version": "0.1.0",
     "orientation": "portrait",
+    "plugins": [
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true
+        }
+      ]
+    ],
     "userInterfaceStyle": "light",
     "web": {
       "bundler": "metro"

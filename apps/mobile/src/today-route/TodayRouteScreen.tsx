@@ -6,13 +6,19 @@ import { colors, radii, spacing } from '../design-system/tokens';
 import type { LoadTodayRoute, TodayRoute } from './types';
 
 interface TodayRouteScreenProps {
+  learningProfileName?: string;
   loadRoute: LoadTodayRoute;
+  onSwitchProfile?: () => void;
 }
 
 type ScreenState =
   { status: 'loading' } | { status: 'loaded'; route: TodayRoute } | { status: 'error' };
 
-export function TodayRouteScreen({ loadRoute }: TodayRouteScreenProps) {
+export function TodayRouteScreen({
+  learningProfileName,
+  loadRoute,
+  onSwitchProfile,
+}: TodayRouteScreenProps) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
 
   const load = useCallback(async () => {
@@ -33,9 +39,21 @@ export function TodayRouteScreen({ loadRoute }: TodayRouteScreenProps) {
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
         <View style={styles.header}>
-          <Text accessibilityRole="header" style={styles.brand}>
-            Rhea
-          </Text>
+          <View style={styles.headerTopRow}>
+            <Text style={styles.brand}>Rhea</Text>
+            {learningProfileName && onSwitchProfile ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={onSwitchProfile}
+                style={({ pressed }) => [
+                  styles.switchButton,
+                  pressed ? styles.switchButtonPressed : null,
+                ]}
+              >
+                <Text style={styles.switchButtonText}>{learningProfileName} · 切换</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <Text style={styles.title}>今天先做什么？</Text>
         </View>
 
@@ -134,6 +152,11 @@ const styles = StyleSheet.create({
   header: {
     gap: spacing.xs,
   },
+  headerTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   orbit: {
     alignItems: 'center',
     backgroundColor: colors.primarySoft,
@@ -183,6 +206,22 @@ const styles = StyleSheet.create({
     color: colors.mutedForeground,
     fontSize: 16,
     lineHeight: 24,
+  },
+  switchButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  switchButtonPressed: {
+    opacity: 0.8,
+  },
+  switchButtonText: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '700',
   },
   title: {
     color: colors.foreground,

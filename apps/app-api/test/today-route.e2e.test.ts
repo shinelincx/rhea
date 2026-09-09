@@ -56,4 +56,24 @@ describe('Today route HTTP interface', () => {
     expect(allowed.headers['access-control-allow-origin']).toBe('http://127.0.0.1:8081');
     expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
+
+  it('allows the mobile client to end a session through a CORS preflight', async () => {
+    app = await createApp({
+      allowedOrigins: ['http://127.0.0.1:8081'],
+      dependencyProbes: [],
+    });
+    await app.init();
+
+    const response = await app.inject({
+      headers: {
+        origin: 'http://127.0.0.1:8081',
+        'access-control-request-method': 'DELETE',
+      },
+      method: 'OPTIONS',
+      url: '/v1/session',
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-methods']).toContain('DELETE');
+  });
 });
