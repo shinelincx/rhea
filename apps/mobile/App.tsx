@@ -98,6 +98,7 @@ export default function App() {
           <CaptureDraftScreen
             accessToken={learnerSession.accessToken}
             captureSource={expoCaptureSource}
+            familySpaceId={learnerSession.profile.familySpaceId}
             learningProfileId={learnerSession.profile.id}
             onBack={() => setLearnerRoute('today')}
             repository={captureDraftRepository}

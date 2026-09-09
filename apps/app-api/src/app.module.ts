@@ -10,6 +10,12 @@ import { FamilyAccessExceptionFilter } from './family-access/family-access-excep
 import { FAMILY_ACCESS } from './family-access/family-access.provider.js';
 import { HealthController } from './health/health.controller.js';
 import { JOB_CLIENT } from './jobs/job-client.js';
+import { LearningContentController } from './learning-content/learning-content.controller.js';
+import { LearningContentExceptionFilter } from './learning-content/learning-content-exception.filter.js';
+import {
+  LEARNING_CONTENT_SERVICE,
+  type LearningContentService,
+} from './learning-content/learning-content.provider.js';
 import { ProbeJobsController } from './jobs/probe-jobs.controller.js';
 import { SubmissionController } from './submission/submission.controller.js';
 import { SubmissionExceptionFilter } from './submission/submission-exception.filter.js';
@@ -27,6 +33,7 @@ export class AppModule {
     dependencyProbes: DependencyProbe[],
     jobClient: JobClient,
     familyAccess: FamilyAccess,
+    learningContentService: LearningContentService,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
     shutdownResources: Array<{ close(): Promise<void> }>,
@@ -36,6 +43,7 @@ export class AppModule {
       controllers: [
         FamilyAccessController,
         HealthController,
+        LearningContentController,
         ProbeJobsController,
         SubmissionController,
         TodayRouteController,
@@ -50,6 +58,10 @@ export class AppModule {
           useClass: SubmissionExceptionFilter,
         },
         {
+          provide: APP_FILTER,
+          useClass: LearningContentExceptionFilter,
+        },
+        {
           provide: FAMILY_ACCESS,
           useValue: familyAccess,
         },
@@ -60,6 +72,10 @@ export class AppModule {
         {
           provide: JOB_CLIENT,
           useValue: jobClient,
+        },
+        {
+          provide: LEARNING_CONTENT_SERVICE,
+          useValue: learningContentService,
         },
         {
           provide: SUBMISSION_SERVICE,

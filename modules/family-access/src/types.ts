@@ -84,6 +84,12 @@ export interface RegisteredDeviceGrant {
 
 export interface FamilyAccess {
   authorize(input: { accessToken: string; capability: Capability }): Promise<Actor>;
+  authorizeLearningProfile(input: {
+    accessToken: string;
+    capability: 'learning.read' | 'learning.submit';
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<Actor>;
   authorizeSensitive(input: {
     accessToken: string;
     capability: 'data.erase' | 'data.export' | 'support_access.manage';

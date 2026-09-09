@@ -27,7 +27,12 @@ import {
   type DraftQualityWarning,
 } from './model';
 import type { CaptureDraftRepository } from './repository';
-import type { MobileProcessingJob, SubmissionGateway } from './submission-gateway';
+import type {
+  MobileLearningMaterial,
+  MobileProcessingJob,
+  MobileSubject,
+  SubmissionGateway,
+} from './submission-gateway';
 
 const warningLabels: Record<DraftQualityWarning, string> = {
   blurry: '画面可能模糊，请靠近或重拍',
@@ -36,9 +41,17 @@ const warningLabels: Record<DraftQualityWarning, string> = {
   too_dark: '画面太暗，请到明亮处重拍',
 };
 
+const subjectLabels: Record<MobileSubject, string> = {
+  chinese: '语文',
+  english: '英语',
+  mathematics: '数学',
+  science: '科学',
+};
+
 interface CaptureDraftScreenProps {
   accessToken?: string;
   captureSource: CaptureSource;
+  familySpaceId?: string;
   learningProfileId: string;
   onBack: () => void;
   repository: CaptureDraftRepository;
@@ -93,6 +106,7 @@ function ActionButton({
 export function CaptureDraftScreen({
   accessToken,
   captureSource,
+  familySpaceId,
   learningProfileId,
   onBack,
   repository,
@@ -106,6 +120,11 @@ export function CaptureDraftScreen({
   const [working, setWorking] = useState(false);
   const [job, setJob] = useState<MobileProcessingJob | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [selectedSubject, setSelectedSubject] = useState<MobileSubject | null>(null);
+  const [coursePathName, setCoursePathName] = useState('');
+  const [unitName, setUnitName] = useState('');
+  const [knowledgePointNames, setKnowledgePointNames] = useState('');
+  const [learningMaterial, setLearningMaterial] = useState<MobileLearningMaterial | null>(null);
   const pageContents = useRef(new Map<string, Uint8Array>());
 
   useEffect(() => {
@@ -339,6 +358,51 @@ export function CaptureDraftScreen({
     }
   }
 
+  async function organizeConfirmedContent(asPending: boolean) {
+    if (!accessToken || !familySpaceId || !submissionGateway || !job?.completedContent) {
+      return;
+    }
+    const subject = asPending ? null : selectedSubject;
+    if (!asPending && !subject) {
+      setError('请选择主学科，或先放入待归类。');
+      return;
+    }
+    const points = asPending
+      ? []
+      : knowledgePointNames
+          .split(/[，,]/)
+          .map((name) => name.trim())
+          .filter(Boolean);
+    setWorking(true);
+    setError(null);
+    try {
+      const material = await submissionGateway.organize({
+        accessToken,
+        classification: {
+          coursePathName: asPending ? null : coursePathName.trim() || null,
+          knowledgePointNames: points,
+          primaryKnowledgePointName: points[0] ?? null,
+          primarySubject: subject,
+          relatedSubjects: [],
+          unitName: asPending ? null : unitName.trim() || null,
+        },
+        familySpaceId,
+        learningProfileId,
+        processingJobId: job.id,
+      });
+      setLearningMaterial(material);
+      setNotice(
+        material.currentClassification.status === 'pending'
+          ? '已放入待归类，系统不会猜测学科或知识点。'
+          : `已整理到${subjectLabels[material.currentClassification.primarySubject!]}，后续批改会引用当前学习依据。`,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '学习内容暂时无法整理，请稍后重试。');
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.screen}>
@@ -446,6 +510,91 @@ export function CaptureDraftScreen({
                   onPress={() => void confirmRecognition()}
                   primary
                 />
+              </View>
+            ) : null}
+
+            {job?.status === 'completed' && familySpaceId && !learningMaterial ? (
+              <View style={styles.classificationCard}>
+                <Text style={styles.guideTitle}>整理到哪里？</Text>
+                <Text style={styles.guideText}>
+                  确定时选择学科并补充路径；不确定就先放入待归类，系统不会替你猜。
+                </Text>
+                <View style={styles.subjectRow}>
+                  {(Object.keys(subjectLabels) as MobileSubject[]).map((subject) => (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={subject}
+                      onPress={() => setSelectedSubject(subject)}
+                      style={[
+                        styles.subjectButton,
+                        selectedSubject === subject ? styles.subjectButtonSelected : null,
+                      ]}
+                    >
+                      <Text
+                        style={
+                          selectedSubject === subject
+                            ? styles.subjectButtonSelectedText
+                            : styles.subjectButtonText
+                        }
+                      >
+                        {subjectLabels[subject]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  accessibilityLabel="课程路径"
+                  onChangeText={setCoursePathName}
+                  placeholder="课程路径（可选，例如沪教版三年级上册）"
+                  style={styles.taxonomyInput}
+                  value={coursePathName}
+                />
+                <TextInput
+                  accessibilityLabel="学习单元"
+                  onChangeText={setUnitName}
+                  placeholder="学习单元（可选）"
+                  style={styles.taxonomyInput}
+                  value={unitName}
+                />
+                <TextInput
+                  accessibilityLabel="知识点"
+                  onChangeText={setKnowledgePointNames}
+                  placeholder="知识点（可用逗号分开，第一个为主要知识点）"
+                  style={styles.taxonomyInput}
+                  value={knowledgePointNames}
+                />
+                <View style={styles.primaryActions}>
+                  <ActionButton
+                    disabled={working || !selectedSubject}
+                    label="保存学习归类"
+                    onPress={() => void organizeConfirmedContent(false)}
+                    primary
+                  />
+                  <ActionButton
+                    disabled={working}
+                    label="先放入待归类"
+                    onPress={() => void organizeConfirmedContent(true)}
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            {learningMaterial ? (
+              <View style={styles.classificationCard}>
+                <Text style={styles.guideTitle}>
+                  {learningMaterial.currentClassification.status === 'pending'
+                    ? '待归类'
+                    : `已归入${subjectLabels[learningMaterial.currentClassification.primarySubject!]}`}
+                </Text>
+                <Text style={styles.guideText}>
+                  归类版本 {learningMaterial.currentClassification.revision} · 当前学习依据版本{' '}
+                  {learningMaterial.basis.selectionRevision}
+                </Text>
+                {learningMaterial.basis.hasConflict ? (
+                  <Text style={styles.warningText}>
+                    学习来源存在冲突，已明确保留当前采用的依据。
+                  </Text>
+                ) : null}
               </View>
             ) : null}
 
@@ -563,6 +712,14 @@ const styles = StyleSheet.create({
   actionButtonPrimaryText: { color: colors.surface, fontSize: 15, fontWeight: '700' },
   actionButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
   confirmationCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  classificationCard: {
     backgroundColor: colors.surface,
     borderColor: colors.borderStrong,
     borderRadius: radii.lg,
@@ -689,6 +846,29 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   securityText: { color: colors.mutedForeground, fontSize: 13, textAlign: 'center' },
+  subjectButton: {
+    backgroundColor: colors.background,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    minHeight: 44,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  subjectButtonSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  subjectButtonSelectedText: { color: colors.surface, fontSize: 15, fontWeight: '700' },
+  subjectButtonText: { color: colors.foreground, fontSize: 15, fontWeight: '700' },
+  subjectRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  taxonomyInput: {
+    backgroundColor: colors.background,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: colors.foreground,
+    fontSize: 15,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
   title: { color: colors.foreground, fontSize: 25, fontWeight: '800' },
   warningText: { color: '#B54708', fontSize: 14, fontWeight: '600', lineHeight: 21 },
 });

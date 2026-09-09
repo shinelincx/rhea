@@ -221,6 +221,43 @@ describe('FamilyAccess public interface', () => {
     expect(firstActor).not.toMatchObject({ learningProfileId: secondProfile.id });
   });
 
+  it('authorizes profile-scoped learning changes for its learner or managing guardian only', async () => {
+    const clock = new MutableClock();
+    const familyAccess = createInMemoryFamilyAccess({ clock });
+    const first = await createFamilyFixture('guardian-scope-a', clock, familyAccess);
+    const second = await createFamilyFixture('guardian-scope-b', clock, familyAccess);
+    const learner = await familyAccess.issueLearnerSession({
+      deviceAccessToken: first.device.accessToken,
+      learningProfileId: first.profile.id,
+      pin: '2468',
+    });
+
+    await expect(
+      familyAccess.authorizeLearningProfile({
+        accessToken: learner.accessToken,
+        capability: 'learning.submit',
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toMatchObject({ type: 'learner' });
+    await expect(
+      familyAccess.authorizeLearningProfile({
+        accessToken: first.guardian.accessToken,
+        capability: 'learning.submit',
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toMatchObject({ type: 'guardian' });
+    await expect(
+      familyAccess.authorizeLearningProfile({
+        accessToken: first.guardian.accessToken,
+        capability: 'learning.read',
+        familySpaceId: second.family.id,
+        learningProfileId: second.profile.id,
+      }),
+    ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+  });
+
   it('does not reveal profiles from a different family space to a registered device', async () => {
     const clock = new MutableClock();
     const familyAccess = createInMemoryFamilyAccess({ clock });

@@ -8,6 +8,7 @@ import {
   type DraftCryptoPort,
 } from '../src/capture-draft/repository';
 import type {
+  MobileLearningMaterial,
   MobileProcessingJob,
   SubmissionGateway,
 } from '../src/capture-draft/submission-gateway';
@@ -160,12 +161,23 @@ describe('capture draft mobile flow', () => {
         status: 'completed',
       })),
       getJob: jest.fn(async () => awaiting),
+      organize: jest.fn(async (): Promise<MobileLearningMaterial> => ({
+        basis: {
+          currentSourceVersionId: 'source-1',
+          hasConflict: false,
+          selectionRevision: 1,
+        },
+        currentClassification: { primarySubject: null, revision: 1, status: 'pending' },
+        id: 'material-1',
+        sourceVersions: [{ id: 'source-1', versionLabel: 'confirmed-content-v1' }],
+      })),
       submit: jest.fn(async () => awaiting),
     };
     const view = await render(
       <CaptureDraftScreen
         accessToken="learner-token"
         captureSource={captureSource()}
+        familySpaceId="family-a"
         learningProfileId="profile-a"
         onBack={jest.fn()}
         repository={repository}
@@ -191,5 +203,18 @@ describe('capture draft mobile flow', () => {
     expect(gateway.confirm).toHaveBeenCalledWith('learner-token', 'job-1', { 'region-1': '9' });
     expect(await view.findByText('识别内容已确认，原始整页文件已进入删除流程。')).toBeVisible();
     await expect(repository.loadLatest('profile-a')).resolves.toBeNull();
+
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '先放入待归类' }));
+    });
+    expect(gateway.organize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        classification: expect.objectContaining({ primarySubject: null }),
+        familySpaceId: 'family-a',
+        learningProfileId: 'profile-a',
+        processingJobId: 'job-1',
+      }),
+    );
+    expect(await view.findByText('待归类')).toBeVisible();
   });
 });

@@ -87,6 +87,31 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/postgres-learning-content:
+    dependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@rhea/learning-content':
+        specifier: workspace:*
+        version: link:../../modules/learning-content
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/postgres-submission:
     dependencies:
       '@rhea/database':
@@ -151,6 +176,9 @@ importers:
       '@rhea/job-runtime':
         specifier: workspace:*
         version: link:../../packages/job-runtime
+      '@rhea/learning-content':
+        specifier: workspace:*
+        version: link:../../modules/learning-content
       '@rhea/media-inspection-adapter':
         specifier: workspace:*
         version: link:../../adapters/media-inspection
@@ -160,6 +188,9 @@ importers:
       '@rhea/postgres-family-access':
         specifier: workspace:*
         version: link:../../adapters/postgres-family-access
+      '@rhea/postgres-learning-content':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-learning-content
       '@rhea/postgres-submission':
         specifier: workspace:*
         version: link:../../adapters/postgres-submission
@@ -273,6 +304,18 @@ importers:
         version: 6.0.3
 
   modules/family-access:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/learning-content:
     devDependencies:
       '@types/node':
         specifier: 24.10.13

@@ -40,6 +40,32 @@ export interface MobileProcessingJob {
   updatedAt: string;
 }
 
+export type MobileSubject = 'chinese' | 'mathematics' | 'english' | 'science';
+
+export interface MobileClassificationDraft {
+  coursePathName: string | null;
+  knowledgePointNames: string[];
+  primaryKnowledgePointName: string | null;
+  primarySubject: MobileSubject | null;
+  relatedSubjects: MobileSubject[];
+  unitName: string | null;
+}
+
+export interface MobileLearningMaterial {
+  basis: {
+    currentSourceVersionId: string;
+    hasConflict: boolean;
+    selectionRevision: number;
+  };
+  currentClassification: {
+    primarySubject: MobileSubject | null;
+    revision: number;
+    status: 'classified' | 'pending';
+  };
+  id: string;
+  sourceVersions: Array<{ id: string; versionLabel: string }>;
+}
+
 export interface SubmissionGateway {
   cancel(accessToken: string, id: string): Promise<MobileProcessingJob>;
   confirm(
@@ -48,6 +74,13 @@ export interface SubmissionGateway {
     edits: Record<string, string>,
   ): Promise<MobileProcessingJob>;
   getJob(accessToken: string, id: string): Promise<MobileProcessingJob>;
+  organize(input: {
+    accessToken: string;
+    classification: MobileClassificationDraft;
+    familySpaceId: string;
+    learningProfileId: string;
+    processingJobId: string;
+  }): Promise<MobileLearningMaterial>;
   submit(input: {
     accessToken: string;
     draft: CaptureDraft;
@@ -123,6 +156,19 @@ export function createSubmissionGateway(baseUrl: string): SubmissionGateway {
         headers: authorization(accessToken),
         method: 'GET',
       });
+    },
+    organize(input) {
+      return request(
+        `/v1/family-spaces/${encodeURIComponent(input.familySpaceId)}/learning-profiles/${encodeURIComponent(input.learningProfileId)}/learning-materials`,
+        {
+          body: JSON.stringify({
+            classification: input.classification,
+            processingJobId: input.processingJobId,
+          }),
+          headers: { ...authorization(input.accessToken), 'Content-Type': 'application/json' },
+          method: 'POST',
+        },
+      );
     },
     async submit(input) {
       const pages = await Promise.all(

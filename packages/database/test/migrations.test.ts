@@ -59,7 +59,13 @@ describe('database migration interface', () => {
   it('ships an initial migration that owns the three approved data schemas', async () => {
     const migrations = await loadDefaultMigrations();
 
-    expect(migrations.map(({ version }) => version)).toEqual(['0001', '0002', '0003', '0004']);
+    expect(migrations.map(({ version }) => version)).toEqual([
+      '0001',
+      '0002',
+      '0003',
+      '0004',
+      '0005',
+    ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS metrics/i);

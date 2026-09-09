@@ -252,6 +252,32 @@ export class FamilyAccessService implements FamilyAccess {
     return actor;
   }
 
+  async authorizeLearningProfile(input: {
+    accessToken: string;
+    capability: 'learning.read' | 'learning.submit';
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<Actor> {
+    const actor = await this.authorize(input);
+    if (actor.type === 'learner') {
+      if (
+        actor.familySpaceId !== input.familySpaceId ||
+        actor.learningProfileId !== input.learningProfileId
+      ) {
+        throw new FamilyAccessError('CAPABILITY_DENIED', '不能访问其他学习档案的内容');
+      }
+      return actor;
+    }
+    const [managesFamily, profile] = await Promise.all([
+      this.#store.isManagingGuardian(actor.guardianId, input.familySpaceId),
+      this.#store.findLearningProfile(input.learningProfileId, input.familySpaceId),
+    ]);
+    if (!managesFamily || !profile) {
+      throw new FamilyAccessError('CAPABILITY_DENIED', '该监护人无权访问此学习档案');
+    }
+    return actor;
+  }
+
   async authorizeSensitive(input: {
     accessToken: string;
     capability: 'data.erase' | 'data.export' | 'support_access.manage';

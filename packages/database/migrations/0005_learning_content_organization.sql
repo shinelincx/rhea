@@ -1,0 +1,166 @@
+CREATE TABLE learning.course_paths (
+  id uuid PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  subject text NOT NULL CHECK (subject IN ('chinese', 'mathematics', 'english', 'science')),
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (learning_profile_id, subject, name)
+);
+
+CREATE TABLE learning.learning_units (
+  id uuid PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  subject text NOT NULL CHECK (subject IN ('chinese', 'mathematics', 'english', 'science')),
+  course_path_id uuid REFERENCES learning.course_paths(id),
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX learning_units_identity_idx
+  ON learning.learning_units (
+    learning_profile_id, subject, COALESCE(course_path_id, '00000000-0000-0000-0000-000000000000'::uuid), name
+  );
+
+CREATE TABLE learning.knowledge_points (
+  id uuid PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  subject text NOT NULL CHECK (subject IN ('chinese', 'mathematics', 'english', 'science')),
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (learning_profile_id, subject, name)
+);
+
+CREATE TABLE learning.learning_materials (
+  id uuid PRIMARY KEY,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  confirmed_content_version_id uuid NOT NULL REFERENCES learning.confirmed_content_versions(id),
+  source_hash text NOT NULL CHECK (source_hash ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz NOT NULL,
+  UNIQUE (learning_profile_id, confirmed_content_version_id)
+);
+
+CREATE TABLE learning.classification_versions (
+  id uuid PRIMARY KEY,
+  material_id uuid NOT NULL REFERENCES learning.learning_materials(id) ON DELETE CASCADE,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  revision integer NOT NULL CHECK (revision > 0),
+  status text NOT NULL CHECK (status IN ('pending', 'classified')),
+  primary_subject text CHECK (
+    primary_subject IS NULL OR primary_subject IN ('chinese', 'mathematics', 'english', 'science')
+  ),
+  related_subjects text[] NOT NULL DEFAULT '{}',
+  course_path_id uuid REFERENCES learning.course_paths(id),
+  unit_id uuid REFERENCES learning.learning_units(id),
+  source text NOT NULL CHECK (source IN ('initial', 'correction')),
+  predecessor_id uuid REFERENCES learning.classification_versions(id),
+  reason text,
+  changed_by_type text NOT NULL CHECK (changed_by_type IN ('guardian', 'learner')),
+  changed_by_id uuid NOT NULL,
+  changed_at timestamptz NOT NULL,
+  UNIQUE (material_id, revision),
+  CHECK (
+    (status = 'pending' AND primary_subject IS NULL AND course_path_id IS NULL AND unit_id IS NULL)
+    OR (status = 'classified' AND primary_subject IS NOT NULL)
+  )
+);
+
+CREATE TABLE learning.classification_knowledge_points (
+  classification_version_id uuid NOT NULL REFERENCES learning.classification_versions(id) ON DELETE CASCADE,
+  knowledge_point_id uuid NOT NULL REFERENCES learning.knowledge_points(id),
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  is_primary boolean NOT NULL,
+  position integer NOT NULL CHECK (position >= 0),
+  PRIMARY KEY (classification_version_id, knowledge_point_id),
+  UNIQUE (classification_version_id, position)
+);
+
+CREATE UNIQUE INDEX classification_one_primary_knowledge_point_idx
+  ON learning.classification_knowledge_points (classification_version_id)
+  WHERE is_primary;
+
+CREATE TABLE learning.learning_source_versions (
+  id uuid PRIMARY KEY,
+  material_id uuid NOT NULL REFERENCES learning.learning_materials(id) ON DELETE CASCADE,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN ('learning_material', 'question', 'answer', 'grading_basis')),
+  version_number integer NOT NULL CHECK (version_number > 0),
+  label text NOT NULL CHECK (char_length(label) BETWEEN 1 AND 120),
+  version_label text NOT NULL CHECK (char_length(version_label) BETWEEN 1 AND 120),
+  content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+  source_confirmed_content_version_id uuid REFERENCES learning.confirmed_content_versions(id),
+  created_by_type text NOT NULL CHECK (created_by_type IN ('guardian', 'learner')),
+  created_by_id uuid NOT NULL,
+  created_at timestamptz NOT NULL,
+  UNIQUE (material_id, kind, version_number)
+);
+
+CREATE TABLE learning.basis_selection_versions (
+  id uuid PRIMARY KEY,
+  material_id uuid NOT NULL REFERENCES learning.learning_materials(id) ON DELETE CASCADE,
+  family_space_id uuid NOT NULL REFERENCES learning.family_spaces(id) ON DELETE CASCADE,
+  learning_profile_id uuid NOT NULL REFERENCES learning.learning_profiles(id) ON DELETE CASCADE,
+  version integer NOT NULL CHECK (version > 0),
+  source_version_id uuid NOT NULL REFERENCES learning.learning_source_versions(id),
+  reason text NOT NULL CHECK (char_length(reason) BETWEEN 1 AND 120),
+  selected_by_type text NOT NULL CHECK (selected_by_type IN ('guardian', 'learner')),
+  selected_by_id uuid NOT NULL,
+  selected_at timestamptz NOT NULL,
+  UNIQUE (material_id, version)
+);
+
+CREATE INDEX learning_materials_profile_time_idx
+  ON learning.learning_materials (learning_profile_id, created_at DESC);
+CREATE INDEX classifications_material_revision_idx
+  ON learning.classification_versions (material_id, revision DESC);
+CREATE INDEX source_versions_material_kind_idx
+  ON learning.learning_source_versions (material_id, kind, version_number DESC);
+CREATE INDEX basis_selections_material_version_idx
+  ON learning.basis_selection_versions (material_id, version DESC);
+
+ALTER TABLE learning.course_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.course_paths FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_units ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_units FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.knowledge_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.knowledge_points FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_materials FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.classification_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.classification_versions FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.classification_knowledge_points ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.classification_knowledge_points FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_source_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.learning_source_versions FORCE ROW LEVEL SECURITY;
+ALTER TABLE learning.basis_selection_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE learning.basis_selection_versions FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY course_paths_profile_isolation ON learning.course_paths
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY learning_units_profile_isolation ON learning.learning_units
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY knowledge_points_profile_isolation ON learning.knowledge_points
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY learning_materials_profile_isolation ON learning.learning_materials
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY classification_versions_profile_isolation ON learning.classification_versions
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY classification_knowledge_points_profile_isolation ON learning.classification_knowledge_points
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY learning_source_versions_profile_isolation ON learning.learning_source_versions
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
+CREATE POLICY basis_selection_versions_profile_isolation ON learning.basis_selection_versions
+  USING (learning_profile_id::text = current_setting('rhea.learning_profile_id', true))
+  WITH CHECK (learning_profile_id::text = current_setting('rhea.learning_profile_id', true));
