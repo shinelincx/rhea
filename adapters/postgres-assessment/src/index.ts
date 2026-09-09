@@ -312,6 +312,18 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       if (!stored || !current || current.id !== assessment.current_version_id) {
         return { kind: 'not_found' };
       }
+      await client.query(
+        `INSERT INTO learning.assessment_access_audit
+          (family_space_id, learning_profile_id, actor_type, actor_id, action, assessment_id)
+         VALUES ($1, $2, $3, $4, 'assessment.downstream_reference.read', $5)`,
+        [
+          assessment.family_space_id,
+          assessment.learning_profile_id,
+          input.actor.type,
+          input.actor.id,
+          assessment.id,
+        ],
+      );
       if (
         !(await this.#basisIsCurrent(
           client,
@@ -332,18 +344,6 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       if (current.decision.outcome === 'ungradable') {
         return { kind: 'ineligible', reason: 'ungradable' };
       }
-      await client.query(
-        `INSERT INTO learning.assessment_access_audit
-          (family_space_id, learning_profile_id, actor_type, actor_id, action, assessment_id)
-         VALUES ($1, $2, $3, $4, 'assessment.downstream_reference.read', $5)`,
-        [
-          assessment.family_space_id,
-          assessment.learning_profile_id,
-          input.actor.type,
-          input.actor.id,
-          assessment.id,
-        ],
-      );
       return {
         kind: 'eligible',
         reference: {
