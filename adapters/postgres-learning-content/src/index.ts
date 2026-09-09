@@ -130,7 +130,13 @@ export class PostgresLearningContentStore implements LearningContentStore {
   ): Promise<boolean> {
     return this.#withProfile(input.learningProfileId, async (client) => {
       const material = await this.#lockMaterial(client, input.materialId, input.learningProfileId);
-      if (!material) return false;
+      if (
+        !material ||
+        material.invalidated_at ||
+        material.validity_epoch !== input.expectedValidityEpoch
+      ) {
+        return false;
+      }
       const revision = await this.#count(
         client,
         'learning.classification_versions',
@@ -158,7 +164,13 @@ export class PostgresLearningContentStore implements LearningContentStore {
   ): Promise<boolean> {
     return this.#withProfile(input.learningProfileId, async (client) => {
       const material = await this.#lockMaterial(client, input.materialId, input.learningProfileId);
-      if (!material) return false;
+      if (
+        !material ||
+        material.invalidated_at ||
+        material.validity_epoch !== input.expectedValidityEpoch
+      ) {
+        return false;
+      }
       const count = await this.#count(
         client,
         'learning.learning_source_versions',
@@ -190,7 +202,13 @@ export class PostgresLearningContentStore implements LearningContentStore {
   ): Promise<boolean> {
     return this.#withProfile(input.learningProfileId, async (client) => {
       const material = await this.#lockMaterial(client, input.materialId, input.learningProfileId);
-      if (!material) return false;
+      if (
+        !material ||
+        material.invalidated_at ||
+        material.validity_epoch !== input.expectedValidityEpoch
+      ) {
+        return false;
+      }
       const count = await this.#count(
         client,
         'learning.basis_selection_versions',

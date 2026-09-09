@@ -413,6 +413,7 @@ export class LearningContentService {
     const saved = await this.#store.appendClassification({
       classification,
       expectedRevision: current.revision,
+      expectedValidityEpoch: material.validityEpoch,
       learningProfileId: input.learningProfileId,
       materialId: input.materialId,
     });
@@ -471,6 +472,7 @@ export class LearningContentService {
     };
     const saved = await this.#store.appendSourceVersion({
       expectedSourceCount: material.sourceVersions.length,
+      expectedValidityEpoch: material.validityEpoch,
       learningProfileId: input.learningProfileId,
       materialId: input.materialId,
       sourceVersion,
@@ -510,6 +512,7 @@ export class LearningContentService {
     };
     const saved = await this.#store.appendBasisSelection({
       expectedSelectionRevision: material.basisSelectionHistory.length,
+      expectedValidityEpoch: material.validityEpoch,
       learningProfileId: input.learningProfileId,
       materialId: input.materialId,
       selection,

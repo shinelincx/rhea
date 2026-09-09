@@ -8,6 +8,7 @@ import type {
 export interface LearningContentStore {
   appendBasisSelection(input: {
     expectedSelectionRevision: number;
+    expectedValidityEpoch: number;
     learningProfileId: string;
     materialId: string;
     selection: BasisSelectionVersion;
@@ -15,11 +16,13 @@ export interface LearningContentStore {
   appendClassification(input: {
     classification: ClassificationVersion;
     expectedRevision: number;
+    expectedValidityEpoch: number;
     learningProfileId: string;
     materialId: string;
   }): Promise<boolean>;
   appendSourceVersion(input: {
     expectedSourceCount: number;
+    expectedValidityEpoch: number;
     learningProfileId: string;
     materialId: string;
     sourceVersion: LearningSourceVersion;

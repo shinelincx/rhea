@@ -5,6 +5,7 @@ import {
   LearningContentService,
   MemoryLearningContentStore,
   type ClassificationDraft,
+  type LearningContentStore,
 } from '../src/index.js';
 
 const learner = { id: 'profile-1', type: 'learner' as const };
@@ -24,6 +25,23 @@ function classified(overrides: Partial<ClassificationDraft> = {}): Classificatio
 function setup() {
   const service = new LearningContentService({ store: new MemoryLearningContentStore() });
   return { service };
+}
+
+class InvalidatingBeforeClassificationAppendStore extends MemoryLearningContentStore {
+  override async appendClassification(
+    input: Parameters<LearningContentStore['appendClassification']>[0],
+  ): Promise<boolean> {
+    await this.invalidateMaterial({
+      actor: learner,
+      eventId: 'concurrent-invalidation',
+      expectedValidityEpoch: input.expectedValidityEpoch,
+      invalidatedAt: '2026-09-09T12:00:00.000Z',
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+      reason: '确认内容被并发替换',
+    });
+    return super.appendClassification(input);
+  }
 }
 
 describe('learning content organization', () => {
@@ -248,5 +266,30 @@ describe('learning content organization', () => {
         sourceHash: 'a'.repeat(64),
       }),
     ).rejects.toEqual(expect.any(LearningContentError));
+  });
+
+  it('fails closed when upstream invalidation wins the race with an append', async () => {
+    const service = new LearningContentService({
+      store: new InvalidatingBeforeClassificationAppendStore(),
+    });
+    const material = await service.organizeConfirmedContent({
+      actor: learner,
+      classification: classified(),
+      confirmedContentVersion: 1,
+      confirmedContentVersionId: 'confirmed-race',
+      familySpaceId: 'family-1',
+      learningProfileId: 'profile-1',
+      sourceHash: 'f'.repeat(64),
+    });
+
+    await expect(
+      service.correctClassification({
+        actor: learner,
+        classification: classified({ unitName: '乘法复习' }),
+        learningProfileId: 'profile-1',
+        materialId: material.id,
+        reason: '修正单元',
+      }),
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
   });
 });

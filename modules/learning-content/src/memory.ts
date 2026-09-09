@@ -12,7 +12,12 @@ export class MemoryLearningContentStore implements LearningContentStore {
     input: Parameters<LearningContentStore['appendBasisSelection']>[0],
   ): Promise<boolean> {
     const material = this.#matching(input.materialId, input.learningProfileId);
-    if (!material || material.basisSelectionHistory.length !== input.expectedSelectionRevision) {
+    if (
+      !material ||
+      material.invalidatedAt ||
+      material.validityEpoch !== input.expectedValidityEpoch ||
+      material.basisSelectionHistory.length !== input.expectedSelectionRevision
+    ) {
       return false;
     }
     material.basisSelectionHistory.push(clone(input.selection));
@@ -23,7 +28,12 @@ export class MemoryLearningContentStore implements LearningContentStore {
     input: Parameters<LearningContentStore['appendClassification']>[0],
   ): Promise<boolean> {
     const material = this.#matching(input.materialId, input.learningProfileId);
-    if (!material || material.classificationHistory.length !== input.expectedRevision) {
+    if (
+      !material ||
+      material.invalidatedAt ||
+      material.validityEpoch !== input.expectedValidityEpoch ||
+      material.classificationHistory.length !== input.expectedRevision
+    ) {
       return false;
     }
     material.classificationHistory.push(clone(input.classification));
@@ -34,7 +44,12 @@ export class MemoryLearningContentStore implements LearningContentStore {
     input: Parameters<LearningContentStore['appendSourceVersion']>[0],
   ): Promise<boolean> {
     const material = this.#matching(input.materialId, input.learningProfileId);
-    if (!material || material.sourceVersions.length !== input.expectedSourceCount) {
+    if (
+      !material ||
+      material.invalidatedAt ||
+      material.validityEpoch !== input.expectedValidityEpoch ||
+      material.sourceVersions.length !== input.expectedSourceCount
+    ) {
       return false;
     }
     material.sourceVersions.push(clone(input.sourceVersion));
