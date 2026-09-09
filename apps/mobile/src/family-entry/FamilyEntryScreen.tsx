@@ -29,6 +29,7 @@ interface FamilyEntryScreenProps {
   credentialStore: DeviceCredentialStore;
   gateway: FamilyEntryGateway;
   initialNotice?: string | null;
+  onOpenGuardianSettings?(familySpaceId: string): void;
   onSessionReady(input: {
     accessToken: string;
     expiresAt: string;
@@ -74,6 +75,7 @@ export function FamilyEntryScreen({
   credentialStore,
   gateway,
   initialNotice,
+  onOpenGuardianSettings,
   onSessionReady,
 }: FamilyEntryScreenProps) {
   const [state, setState] = useState<EntryState>({ status: 'loading' });
@@ -229,6 +231,15 @@ export function FamilyEntryScreen({
               <Text accessibilityLiveRegion="polite" style={styles.notice}>
                 {state.notice ?? initialNotice}
               </Text>
+            ) : null}
+            {onOpenGuardianSettings && state.profiles[0] ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onOpenGuardianSettings(state.profiles[0]!.familySpaceId)}
+                style={({ pressed }) => [styles.guardianButton, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.guardianButtonText}>监护人设置</Text>
+              </Pressable>
             ) : null}
             <View style={styles.profileList}>
               {state.profiles.map((profile) => (
@@ -398,6 +409,20 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: spacing.xs,
+  },
+  guardianButton: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  guardianButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '800',
   },
   input: {
     backgroundColor: colors.background,

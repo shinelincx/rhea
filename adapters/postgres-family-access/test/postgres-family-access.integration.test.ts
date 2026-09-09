@@ -46,7 +46,8 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
       store,
     });
     const suffix = randomUUID();
-    const guardian = await familyAccess.loginGuardian({ identityAssertion: `guardian-${suffix}` });
+    const assertion = `guardian-${suffix}`;
+    const guardian = await familyAccess.loginGuardian({ identityAssertion: assertion });
     const family = await familyAccess.createFamilySpace({
       accessToken: guardian.accessToken,
       name: '数据库测试家庭',
@@ -63,6 +64,16 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
       familySpaceId: family.id,
       label: '家庭平板',
     });
+    await familyAccess.reverifyGuardian({
+      accessToken: guardian.accessToken,
+      identityAssertion: assertion,
+    });
+    await familyAccess.changeConsent({
+      accessToken: guardian.accessToken,
+      familySpaceId: family.id,
+      granted: true,
+      kind: 'photo_processing',
+    });
 
     await expect(
       familyAccess.listDeviceProfiles({ deviceAccessToken: device.accessToken }),
@@ -78,6 +89,13 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
         capability: 'data.export',
       }),
     ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+    await expect(
+      familyAccess.requireConsent({
+        accessToken: learner.accessToken,
+        familySpaceId: family.id,
+        kind: 'photo_processing',
+      }),
+    ).resolves.toMatchObject({ revision: 1, status: 'granted' });
   });
 
   it('enforces family-space RLS for a non-owner database role', async () => {
@@ -88,9 +106,8 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
       identityProvider: { verify: async (assertion) => ({ subject: assertion }) },
       store,
     });
-    const guardian = await familyAccess.loginGuardian({
-      identityAssertion: `rls-${randomUUID()}`,
-    });
+    const identityAssertion = `rls-${randomUUID()}`;
+    const guardian = await familyAccess.loginGuardian({ identityAssertion });
     const firstFamily = await familyAccess.createFamilySpace({
       accessToken: guardian.accessToken,
       name: '可见家庭',
@@ -106,12 +123,28 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
       grade: 2,
       pin: '2468',
     });
+    await familyAccess.reverifyGuardian({
+      accessToken: guardian.accessToken,
+      identityAssertion,
+    });
     await familyAccess.createLearningProfile({
       accessToken: guardian.accessToken,
       displayName: '不可见档案',
       familySpaceId: secondFamily.id,
       grade: 2,
       pin: '2468',
+    });
+    await familyAccess.changeConsent({
+      accessToken: guardian.accessToken,
+      familySpaceId: firstFamily.id,
+      granted: true,
+      kind: 'photo_processing',
+    });
+    await familyAccess.changeConsent({
+      accessToken: guardian.accessToken,
+      familySpaceId: secondFamily.id,
+      granted: true,
+      kind: 'ai_processing',
     });
 
     await pool.query(`DO $$ BEGIN
@@ -120,6 +153,7 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
     END $$`);
     await pool.query('GRANT USAGE ON SCHEMA learning TO rhea_rls_test');
     await pool.query('GRANT SELECT ON learning.learning_profiles TO rhea_rls_test');
+    await pool.query('GRANT SELECT ON learning.family_consents TO rhea_rls_test');
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -129,6 +163,12 @@ describeWithDatabase('PostgreSQL FamilyAccess adapter', () => {
         'SELECT family_space_id FROM learning.learning_profiles',
       );
       expect(visible.rows.map(({ family_space_id }) => family_space_id)).toEqual([firstFamily.id]);
+      const visibleConsents = await client.query<{ family_space_id: string }>(
+        'SELECT family_space_id FROM learning.family_consents',
+      );
+      expect(visibleConsents.rows.map(({ family_space_id }) => family_space_id)).toEqual([
+        firstFamily.id,
+      ]);
     } finally {
       await client.query('ROLLBACK');
       client.release();

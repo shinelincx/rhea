@@ -5,8 +5,26 @@ export interface MobileLearningProfile {
   id: string;
 }
 
+export type MobileConsentKind =
+  'photo_processing' | 'ai_processing' | 'peer_challenge' | 'notifications';
+
+export type MobileConsentStatus = 'not_decided' | 'granted' | 'denied' | 'withdrawn';
+
+export interface MobileConsent {
+  dataScope: string[];
+  familySpaceId: string;
+  kind: MobileConsentKind;
+  purpose: string;
+  revision: number;
+  statementVersion: string;
+  status: MobileConsentStatus;
+  updatedAt: string | null;
+}
+
 export type FamilyEntryErrorCode =
+  | 'CONSENT_REQUIRED'
   | 'DEVICE_INVALID'
+  | 'GUARDIAN_REVERIFICATION_REQUIRED'
   | 'IDENTITY_INVALID'
   | 'PIN_INVALID'
   | 'PIN_LOCKED'
@@ -40,12 +58,22 @@ export interface FamilySetupInput {
 }
 
 export interface FamilyEntryGateway {
+  changeConsent(input: {
+    accessToken: string;
+    familySpaceId: string;
+    granted: boolean;
+    kind: MobileConsentKind;
+  }): Promise<MobileConsent>;
   enterProfile(input: {
     deviceAccessToken: string;
     learningProfileId: string;
     pin: string;
   }): Promise<{ accessToken: string; expiresAt: string }>;
   listProfiles(deviceAccessToken: string): Promise<MobileLearningProfile[]>;
+  openGuardianSettings(familySpaceId: string): Promise<{
+    accessToken: string;
+    consents: MobileConsent[];
+  }>;
   logout(accessToken: string): Promise<void>;
   setupFamily(input: FamilySetupInput): Promise<{
     deviceAccessToken: string;
@@ -63,7 +91,9 @@ interface ApiErrorEnvelope {
 }
 
 function knownErrorCode(value: string | undefined): FamilyEntryErrorCode {
-  return value === 'DEVICE_INVALID' ||
+  return value === 'CONSENT_REQUIRED' ||
+    value === 'DEVICE_INVALID' ||
+    value === 'GUARDIAN_REVERIFICATION_REQUIRED' ||
     value === 'IDENTITY_INVALID' ||
     value === 'PIN_INVALID' ||
     value === 'PIN_LOCKED' ||
@@ -112,6 +142,47 @@ export function createFamilyEntryGateway(
   }
 
   return {
+    async openGuardianSettings(familySpaceId) {
+      if (!identityAssertion) {
+        throw new FamilyEntryGatewayError('IDENTITY_INVALID', '监护人登录服务尚未配置，请稍后再试');
+      }
+      const guardian = await request<{ accessToken: string }>('/v1/guardian-sessions', {
+        body: JSON.stringify({ identityAssertion }),
+        method: 'POST',
+      });
+      try {
+        const consents = await request<MobileConsent[]>(
+          `/v1/family-spaces/${familySpaceId}/consents`,
+          { headers: { Authorization: `Bearer ${guardian.accessToken}` } },
+        );
+        return { accessToken: guardian.accessToken, consents };
+      } catch (error) {
+        await request<void>('/v1/session', {
+          headers: { Authorization: `Bearer ${guardian.accessToken}` },
+          method: 'DELETE',
+        }).catch(() => undefined);
+        throw error;
+      }
+    },
+    async changeConsent(input) {
+      if (!identityAssertion) {
+        throw new FamilyEntryGatewayError('IDENTITY_INVALID', '监护人登录服务尚未配置，请稍后再试');
+      }
+      const authorization = { Authorization: `Bearer ${input.accessToken}` };
+      await request('/v1/guardian-reverification', {
+        body: JSON.stringify({ identityAssertion }),
+        headers: authorization,
+        method: 'POST',
+      });
+      return request<MobileConsent>(
+        `/v1/family-spaces/${input.familySpaceId}/consents/${input.kind}`,
+        {
+          body: JSON.stringify({ granted: input.granted }),
+          headers: authorization,
+          method: 'PUT',
+        },
+      );
+    },
     async setupFamily(input) {
       if (!identityAssertion) {
         throw new FamilyEntryGatewayError('IDENTITY_INVALID', '监护人登录服务尚未配置，请稍后再试');

@@ -37,6 +37,113 @@ async function createFamilyFixture(
 }
 
 describe('FamilyAccess public interface', () => {
+  it('keeps each controlled purpose off until a recently reverified guardian decides it', async () => {
+    const fixture = await createFamilyFixture('guardian-consent');
+
+    const initial = await fixture.familyAccess.listConsents({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+    });
+
+    expect(initial.map(({ kind, status }) => ({ kind, status }))).toEqual([
+      { kind: 'photo_processing', status: 'not_decided' },
+      { kind: 'ai_processing', status: 'not_decided' },
+      { kind: 'peer_challenge', status: 'not_decided' },
+      { kind: 'notifications', status: 'not_decided' },
+    ]);
+    expect(
+      initial.every(({ dataScope, purpose }) => dataScope.length > 0 && purpose.length > 0),
+    ).toBe(true);
+    await expect(
+      fixture.familyAccess.changeConsent({
+        accessToken: fixture.guardian.accessToken,
+        familySpaceId: fixture.family.id,
+        granted: true,
+        kind: 'photo_processing',
+      }),
+    ).rejects.toMatchObject({ code: 'GUARDIAN_REVERIFICATION_REQUIRED' });
+
+    await fixture.familyAccess.reverifyGuardian({
+      accessToken: fixture.guardian.accessToken,
+      identityAssertion: 'guardian-consent',
+    });
+    await expect(
+      fixture.familyAccess.authorizeSensitive({
+        accessToken: fixture.guardian.accessToken,
+        capability: 'data.export',
+        familySpaceId: fixture.family.id,
+      }),
+    ).resolves.toMatchObject({ type: 'guardian' });
+    const granted = await fixture.familyAccess.changeConsent({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      granted: true,
+      kind: 'photo_processing',
+    });
+
+    expect(granted).toMatchObject({ revision: 1, status: 'granted' });
+    fixture.clock.advance(6);
+    await expect(
+      fixture.familyAccess.authorizeSensitive({
+        accessToken: fixture.guardian.accessToken,
+        capability: 'data.erase',
+        familySpaceId: fixture.family.id,
+      }),
+    ).rejects.toMatchObject({ code: 'GUARDIAN_REVERIFICATION_REQUIRED' });
+    await expect(
+      fixture.familyAccess.requireConsent({
+        accessToken: fixture.guardian.accessToken,
+        familySpaceId: fixture.family.id,
+        kind: 'ai_processing',
+      }),
+    ).rejects.toMatchObject({ code: 'CONSENT_REQUIRED' });
+  });
+
+  it('records denial and withdrawal without presenting withdrawal as historical deletion', async () => {
+    const fixture = await createFamilyFixture('guardian-withdrawal');
+    await fixture.familyAccess.reverifyGuardian({
+      accessToken: fixture.guardian.accessToken,
+      identityAssertion: 'guardian-withdrawal',
+    });
+
+    await fixture.familyAccess.changeConsent({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      granted: false,
+      kind: 'notifications',
+    });
+    await fixture.familyAccess.changeConsent({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      granted: true,
+      kind: 'ai_processing',
+    });
+    const withdrawn = await fixture.familyAccess.changeConsent({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      granted: false,
+      kind: 'ai_processing',
+    });
+    const history = await fixture.familyAccess.listConsentHistory({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      kind: 'ai_processing',
+    });
+
+    expect(withdrawn).toMatchObject({ revision: 2, status: 'withdrawn' });
+    expect(history.map(({ status }) => status)).toEqual(['granted', 'withdrawn']);
+    expect(
+      history.every(({ occurredAt, statementVersion }) => occurredAt && statementVersion),
+    ).toBe(true);
+    await expect(
+      fixture.familyAccess.requireConsent({
+        accessToken: fixture.guardian.accessToken,
+        familySpaceId: fixture.family.id,
+        kind: 'ai_processing',
+      }),
+    ).rejects.toMatchObject({ code: 'CONSENT_REQUIRED' });
+  });
+
   it('lets a verified guardian create a family, learning profile, and restricted learner session', async () => {
     const fixture = await createFamilyFixture('guardian-a');
 

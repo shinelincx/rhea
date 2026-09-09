@@ -1,4 +1,7 @@
 import type {
+  ConsentEventRecord,
+  ConsentKind,
+  ConsentRecord,
   DeviceRecord,
   FamilyAccessStore,
   GuardianRecord,
@@ -21,7 +24,18 @@ interface SessionRow extends QueryResultRow {
   id: string;
   learning_profile_id: string | null;
   revoked_at: Date | null;
+  reverified_at: Date | null;
   token_hash: string;
+}
+
+interface ConsentRow extends QueryResultRow {
+  family_space_id: string;
+  kind: ConsentKind;
+  revision: number;
+  statement_version: string;
+  status: ConsentRecord['status'];
+  updated_at: Date;
+  updated_by_guardian_id: string;
 }
 
 interface LearningProfileRow extends QueryResultRow {
@@ -49,6 +63,18 @@ function toProfile(row: LearningProfileRow): LearningProfileRecord {
     id: row.id,
     pinHash: row.pin_hash,
     pinLockedUntil: row.pin_locked_until,
+  };
+}
+
+function toConsent(row: ConsentRow): ConsentRecord {
+  return {
+    familySpaceId: row.family_space_id,
+    guardianId: row.updated_by_guardian_id,
+    kind: row.kind,
+    revision: row.revision,
+    statementVersion: row.statement_version,
+    status: row.status,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -119,8 +145,8 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
       await client.query(
         `INSERT INTO learning.sessions
           (id, token_hash, actor_type, guardian_id, family_space_id,
-           learning_profile_id, device_id, expires_at, revoked_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+           learning_profile_id, device_id, expires_at, revoked_at, reverified_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           session.id,
           session.tokenHash,
@@ -131,8 +157,22 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
           session.actor.type === 'learner' ? session.actor.deviceId : null,
           session.expiresAt,
           session.revokedAt,
+          session.reverifiedAt,
         ],
       );
+    });
+  }
+
+  async findConsent(familySpaceId: string, kind: ConsentKind): Promise<ConsentRecord | null> {
+    return this.#withContext({ family_space_id: familySpaceId }, async (client) => {
+      const result = await client.query<ConsentRow>(
+        `SELECT family_space_id, kind, status, statement_version, revision,
+                updated_by_guardian_id, updated_at
+         FROM learning.family_consents
+         WHERE family_space_id = $1 AND kind = $2`,
+        [familySpaceId, kind],
+      );
+      return result.rows[0] ? toConsent(result.rows[0]) : null;
     });
   }
 
@@ -163,6 +203,19 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     });
   }
 
+  async findGuardianByIdentitySubject(identitySubject: string): Promise<GuardianRecord | null> {
+    return this.#withContext({ identity_subject: identitySubject }, async (client) => {
+      const result = await client.query<{ id: string; identity_subject: string }>(
+        `SELECT id, identity_subject
+         FROM learning.guardians
+         WHERE identity_subject = $1`,
+        [identitySubject],
+      );
+      const guardian = result.rows[0];
+      return guardian ? { id: guardian.id, identitySubject: guardian.identity_subject } : null;
+    });
+  }
+
   async findLearningProfile(
     id: string,
     familySpaceId: string,
@@ -183,7 +236,7 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     return this.#withContext({ session_token_hash: tokenHash }, async (client) => {
       const result = await client.query<SessionRow>(
         `SELECT id, token_hash, actor_type, guardian_id, family_space_id,
-                learning_profile_id, device_id, expires_at, revoked_at
+                learning_profile_id, device_id, expires_at, revoked_at, reverified_at
          FROM learning.sessions
          WHERE token_hash = $1`,
         [tokenHash],
@@ -210,6 +263,7 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
         actor,
         expiresAt: row.expires_at,
         id: row.id,
+        reverifiedAt: row.reverified_at,
         revokedAt: row.revoked_at,
         tokenHash: row.token_hash,
       };
@@ -254,6 +308,56 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
     });
   }
 
+  async listConsentEvents(familySpaceId: string, kind: ConsentKind): Promise<ConsentEventRecord[]> {
+    return this.#withContext({ family_space_id: familySpaceId }, async (client) => {
+      const result = await client.query<
+        ConsentRow & {
+          changed_by_guardian_id: string;
+          id: string;
+          previous_status: ConsentEventRecord['previousStatus'];
+        }
+      >(
+        `SELECT id, family_space_id, kind, previous_status, status, statement_version,
+                revision, changed_by_guardian_id, occurred_at AS updated_at,
+                changed_by_guardian_id AS updated_by_guardian_id
+         FROM learning.consent_events
+         WHERE family_space_id = $1 AND kind = $2
+         ORDER BY revision`,
+        [familySpaceId, kind],
+      );
+      return result.rows.map((row) => ({
+        ...toConsent(row),
+        guardianId: row.changed_by_guardian_id,
+        id: row.id,
+        previousStatus: row.previous_status,
+      }));
+    });
+  }
+
+  async listConsentRecords(familySpaceId: string): Promise<ConsentRecord[]> {
+    return this.#withContext({ family_space_id: familySpaceId }, async (client) => {
+      const result = await client.query<ConsentRow>(
+        `SELECT family_space_id, kind, status, statement_version, revision,
+                updated_by_guardian_id, updated_at
+         FROM learning.family_consents
+         WHERE family_space_id = $1`,
+        [familySpaceId],
+      );
+      return result.rows.map(toConsent);
+    });
+  }
+
+  async markSessionReverified(tokenHash: string, reverifiedAt: Date): Promise<boolean> {
+    return this.#withContext({ session_token_hash: tokenHash }, async (client) => {
+      const result = await client.query(
+        `UPDATE learning.sessions SET reverified_at = $2
+         WHERE token_hash = $1 AND revoked_at IS NULL AND actor_type = 'guardian'`,
+        [tokenHash, reverifiedAt],
+      );
+      return result.rowCount === 1;
+    });
+  }
+
   async revokeSession(tokenHash: string, revokedAt: Date): Promise<boolean> {
     return this.#withContext({ session_token_hash: tokenHash }, async (client) => {
       const result = await client.query(
@@ -284,6 +388,56 @@ export class PostgresFamilyAccessStore implements FamilyAccessStore {
         ],
       );
     });
+  }
+
+  async saveConsentDecision(record: ConsentRecord, event: ConsentEventRecord): Promise<void> {
+    await this.#withContext(
+      { family_space_id: record.familySpaceId, guardian_id: record.guardianId },
+      async (client) => {
+        const result = await client.query(
+          `INSERT INTO learning.family_consents
+            (family_space_id, kind, status, statement_version, revision,
+             updated_by_guardian_id, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (family_space_id, kind) DO UPDATE SET
+             status = EXCLUDED.status,
+             statement_version = EXCLUDED.statement_version,
+             revision = EXCLUDED.revision,
+             updated_by_guardian_id = EXCLUDED.updated_by_guardian_id,
+             updated_at = EXCLUDED.updated_at
+           WHERE learning.family_consents.revision = EXCLUDED.revision - 1`,
+          [
+            record.familySpaceId,
+            record.kind,
+            record.status,
+            record.statementVersion,
+            record.revision,
+            record.guardianId,
+            record.updatedAt,
+          ],
+        );
+        if (result.rowCount !== 1) {
+          throw new Error('Consent decision changed concurrently');
+        }
+        await client.query(
+          `INSERT INTO learning.consent_events
+            (id, family_space_id, kind, previous_status, status, statement_version,
+             revision, changed_by_guardian_id, occurred_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            event.id,
+            event.familySpaceId,
+            event.kind,
+            event.previousStatus,
+            event.status,
+            event.statementVersion,
+            event.revision,
+            event.guardianId,
+            event.updatedAt,
+          ],
+        );
+      },
+    );
   }
 
   async upsertGuardian(identitySubject: string, proposedId: string): Promise<GuardianRecord> {

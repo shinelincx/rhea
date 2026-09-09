@@ -1,12 +1,16 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { FamilyAccessError } from './error.js';
+import { CONSENT_CATALOG, consentStatement } from './consent-catalog.js';
 import { createScryptPinHasher, type PinHasher } from './pin-hasher.js';
 import type { FamilyAccessStore, SessionRecord } from './store.js';
 import type {
   Actor,
   Capability,
   Clock,
+  ConsentHistoryEntry,
+  ConsentKind,
+  ConsentView,
   FamilyAccess,
   Grade,
   IdentityProviderPort,
@@ -15,6 +19,7 @@ import type {
 } from './types.js';
 
 const SESSION_DURATION_MS = 30 * 60_000;
+const REVERIFICATION_DURATION_MS = 5 * 60_000;
 const PIN_LOCK_DURATION_MS = 5 * 60_000;
 const MAX_PIN_ATTEMPTS = 5;
 const LEARNER_CAPABILITIES = new Set<Capability>([
@@ -247,6 +252,132 @@ export class FamilyAccessService implements FamilyAccess {
     return actor;
   }
 
+  async authorizeSensitive(input: {
+    accessToken: string;
+    capability: 'data.erase' | 'data.export' | 'support_access.manage';
+    familySpaceId: string;
+  }) {
+    void input.capability;
+    return this.#requireRecentlyReverifiedManagingGuardian(input.accessToken, input.familySpaceId);
+  }
+
+  async reverifyGuardian(input: { accessToken: string; identityAssertion: string }) {
+    const session = await this.#requireSession(input.accessToken);
+    if (session.actor.type !== 'guardian') {
+      throw new FamilyAccessError('CAPABILITY_DENIED', '此操作需要监护人进入监护模式后完成');
+    }
+    let identity: { subject: string };
+    try {
+      identity = await this.#identityProvider.verify(
+        requiredIdentityAssertion(input.identityAssertion),
+      );
+    } catch (error) {
+      if (error instanceof FamilyAccessError) {
+        throw error;
+      }
+      throw new FamilyAccessError('IDENTITY_INVALID', '监护人重新验证失败，请再次登录');
+    }
+    const verifiedGuardian = await this.#store.findGuardianByIdentitySubject(identity.subject);
+    if (!verifiedGuardian || verifiedGuardian.id !== session.actor.guardianId) {
+      throw new FamilyAccessError('IDENTITY_INVALID', '重新验证的监护人与当前会话不一致');
+    }
+    const reverifiedAt = this.#clock.now;
+    const marked = await this.#store.markSessionReverified(session.tokenHash, reverifiedAt);
+    if (!marked) {
+      throw new FamilyAccessError('SESSION_INVALID', '会话无效，请重新进入');
+    }
+    return {
+      reverifiedAt: reverifiedAt.toISOString(),
+      validUntil: new Date(reverifiedAt.getTime() + REVERIFICATION_DURATION_MS).toISOString(),
+    };
+  }
+
+  async listConsents(input: {
+    accessToken: string;
+    familySpaceId: string;
+  }): Promise<ConsentView[]> {
+    await this.#requireManagingGuardian(input.accessToken, input.familySpaceId);
+    const records = new Map(
+      (await this.#store.listConsentRecords(input.familySpaceId)).map((record) => [
+        record.kind,
+        record,
+      ]),
+    );
+    return CONSENT_CATALOG.map((statement) =>
+      this.#consentView(input.familySpaceId, statement.kind, records.get(statement.kind) ?? null),
+    );
+  }
+
+  async changeConsent(input: {
+    accessToken: string;
+    familySpaceId: string;
+    granted: boolean;
+    kind: ConsentKind;
+  }): Promise<ConsentView> {
+    const { guardianId } = await this.#requireRecentlyReverifiedManagingGuardian(
+      input.accessToken,
+      input.familySpaceId,
+    );
+    const statement = consentStatement(input.kind);
+    const existing = await this.#store.findConsent(input.familySpaceId, input.kind);
+    const status = input.granted
+      ? ('granted' as const)
+      : existing?.status === 'granted'
+        ? ('withdrawn' as const)
+        : ('denied' as const);
+    const updatedAt = this.#clock.now;
+    const record = {
+      familySpaceId: input.familySpaceId,
+      guardianId,
+      kind: input.kind,
+      revision: (existing?.revision ?? 0) + 1,
+      statementVersion: statement.statementVersion,
+      status,
+      updatedAt,
+    };
+    await this.#store.saveConsentDecision(record, {
+      ...record,
+      id: randomUUID(),
+      previousStatus: existing?.status ?? null,
+    });
+    return this.#consentView(input.familySpaceId, input.kind, record);
+  }
+
+  async listConsentHistory(input: {
+    accessToken: string;
+    familySpaceId: string;
+    kind: ConsentKind;
+  }): Promise<ConsentHistoryEntry[]> {
+    await this.#requireManagingGuardian(input.accessToken, input.familySpaceId);
+    return (await this.#store.listConsentEvents(input.familySpaceId, input.kind)).map((event) => ({
+      occurredAt: event.updatedAt.toISOString(),
+      previousStatus: event.previousStatus,
+      revision: event.revision,
+      statementVersion: event.statementVersion,
+      status: event.status,
+    }));
+  }
+
+  async requireConsent(input: {
+    accessToken: string;
+    familySpaceId: string;
+    kind: ConsentKind;
+  }): Promise<ConsentView> {
+    const { actor } = await this.#requireSession(input.accessToken);
+    if (actor.type === 'guardian') {
+      if (!(await this.#store.isManagingGuardian(actor.guardianId, input.familySpaceId))) {
+        throw new FamilyAccessError('FAMILY_ACCESS_DENIED', '无法访问该家庭空间');
+      }
+    } else if (actor.familySpaceId !== input.familySpaceId) {
+      throw new FamilyAccessError('FAMILY_ACCESS_DENIED', '无法访问该家庭空间');
+    }
+    const record = await this.#store.findConsent(input.familySpaceId, input.kind);
+    if (record?.status !== 'granted') {
+      throw new FamilyAccessError('CONSENT_REQUIRED', '此功能尚未获得对应分项授权，请进入监护设置');
+    }
+    return this.#consentView(input.familySpaceId, input.kind, record);
+  }
+
   async #createSession(actor: Actor): Promise<SessionGrant> {
     const accessToken = newToken();
     const expiresAt = new Date(this.#clock.now.getTime() + SESSION_DURATION_MS);
@@ -254,6 +385,7 @@ export class FamilyAccessService implements FamilyAccess {
       actor,
       expiresAt,
       id: randomUUID(),
+      reverifiedAt: null,
       revokedAt: null,
       tokenHash: tokenHash(accessToken),
     });
@@ -287,6 +419,26 @@ export class FamilyAccessService implements FamilyAccess {
     return guardian;
   }
 
+  async #requireRecentlyReverifiedManagingGuardian(accessToken: string, familySpaceId: string) {
+    const session = await this.#requireSession(accessToken);
+    if (session.actor.type !== 'guardian') {
+      throw new FamilyAccessError('CAPABILITY_DENIED', '此操作需要监护人进入监护模式后完成');
+    }
+    if (!(await this.#store.isManagingGuardian(session.actor.guardianId, familySpaceId))) {
+      throw new FamilyAccessError('FAMILY_ACCESS_DENIED', '无法管理该家庭空间');
+    }
+    if (
+      !session.reverifiedAt ||
+      session.reverifiedAt.getTime() + REVERIFICATION_DURATION_MS <= this.#clock.now.getTime()
+    ) {
+      throw new FamilyAccessError(
+        'GUARDIAN_REVERIFICATION_REQUIRED',
+        '请重新验证监护人身份后再修改授权',
+      );
+    }
+    return session.actor;
+  }
+
   async #requireDevice(accessToken: string) {
     const device = await this.#store.findDeviceByTokenHash(tokenHash(accessToken));
     if (!device || device.revokedAt) {
@@ -299,5 +451,23 @@ export class FamilyAccessService implements FamilyAccess {
     return new FamilyAccessError('PIN_LOCKED', 'PIN 尝试次数过多，请稍后再试', {
       retryAfterSeconds: Math.max(1, Math.ceil((pinLockedUntil.getTime() - now.getTime()) / 1_000)),
     });
+  }
+
+  #consentView(
+    familySpaceId: string,
+    kind: ConsentKind,
+    record: import('./store.js').ConsentRecord | null,
+  ): ConsentView {
+    const statement = consentStatement(kind);
+    return {
+      dataScope: [...statement.dataScope],
+      familySpaceId,
+      kind,
+      purpose: statement.purpose,
+      revision: record?.revision ?? 0,
+      statementVersion: record?.statementVersion ?? statement.statementVersion,
+      status: record?.status ?? 'not_decided',
+      updatedAt: record?.updatedAt.toISOString() ?? null,
+    };
   }
 }

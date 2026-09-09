@@ -25,9 +25,19 @@ const profiles = [
   { displayName: '小满', familySpaceId: 'family-1', grade: 5, id: 'profile-2' },
 ];
 
+const unusedGuardianMethods: Pick<FamilyEntryGateway, 'changeConsent' | 'openGuardianSettings'> = {
+  changeConsent: async () => {
+    throw new Error('not used');
+  },
+  openGuardianSettings: async () => {
+    throw new Error('not used');
+  },
+};
+
 describe('shared-device family entry interface', () => {
   it('shows only device-scoped profiles and gives recoverable PIN feedback before entry', async () => {
     const gateway: FamilyEntryGateway = {
+      ...unusedGuardianMethods,
       enterProfile: jest
         .fn()
         .mockRejectedValueOnce(
@@ -74,6 +84,7 @@ describe('shared-device family entry interface', () => {
   it('lets a guardian complete trial setup and stores only the device credential', async () => {
     const credentialStore = createCredentialStore(null);
     const gateway: FamilyEntryGateway = {
+      ...unusedGuardianMethods,
       enterProfile: async () => ({
         accessToken: 'unused',
         expiresAt: '2026-09-09T08:00:00.000Z',
@@ -112,6 +123,7 @@ describe('shared-device family entry interface', () => {
 
   it('explains how to recover after a session ends', async () => {
     const gateway: FamilyEntryGateway = {
+      ...unusedGuardianMethods,
       enterProfile: async () => ({
         accessToken: 'unused',
         expiresAt: '2026-09-09T08:00:00.000Z',

@@ -3,11 +3,14 @@ import { FamilyAccessService } from './service.js';
 import type { Clock, IdentityProviderPort } from './types.js';
 
 export { FamilyAccessError, type FamilyAccessErrorCode } from './error.js';
+export { CONSENT_CATALOG, consentStatement, type ConsentStatement } from './consent-catalog.js';
 export { MemoryFamilyAccessStore } from './memory-store.js';
 export { createScryptPinHasher, type PinHasher } from './pin-hasher.js';
 export { FamilyAccessService, type FamilyAccessServiceDependencies } from './service.js';
 export type {
   DeviceRecord,
+  ConsentEventRecord,
+  ConsentRecord,
   FamilyAccessStore,
   GuardianRecord,
   LearningProfileRecord,
@@ -16,6 +19,10 @@ export type {
 export type {
   Actor,
   Capability,
+  ConsentHistoryEntry,
+  ConsentKind,
+  ConsentStatus,
+  ConsentView,
   Clock,
   FamilyAccess,
   FamilySpace,

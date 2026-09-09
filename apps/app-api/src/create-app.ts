@@ -44,7 +44,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
     },
   );
   app.enableCors({
-    methods: ['GET', 'HEAD', 'POST', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     origin: options.allowedOrigins ?? configuredOrigins(),
   });
   return app;

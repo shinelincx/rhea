@@ -1,13 +1,17 @@
 import type {
   DeviceRecord,
+  ConsentEventRecord,
+  ConsentRecord,
   FamilyAccessStore,
   GuardianRecord,
   LearningProfileRecord,
   SessionRecord,
 } from './store.js';
-import type { FamilySpace, LearningProfile } from './types.js';
+import type { ConsentKind, FamilySpace, LearningProfile } from './types.js';
 
 export class MemoryFamilyAccessStore implements FamilyAccessStore {
+  readonly #consentEvents: ConsentEventRecord[] = [];
+  readonly #consents = new Map<string, ConsentRecord>();
   readonly #devices = new Map<string, DeviceRecord>();
   readonly #families = new Map<string, FamilySpace>();
   readonly #guardiansBySubject = new Map<string, GuardianRecord>();
@@ -35,9 +39,19 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
     this.#sessions.set(session.tokenHash, { ...session, actor: { ...session.actor } });
   }
 
+  async findConsent(familySpaceId: string, kind: ConsentKind): Promise<ConsentRecord | null> {
+    const record = this.#consents.get(`${familySpaceId}:${kind}`);
+    return record ? { ...record } : null;
+  }
+
   async findDeviceByTokenHash(tokenHash: string): Promise<DeviceRecord | null> {
     const device = this.#devices.get(tokenHash);
     return device ? { ...device } : null;
+  }
+
+  async findGuardianByIdentitySubject(identitySubject: string): Promise<GuardianRecord | null> {
+    const guardian = this.#guardiansBySubject.get(identitySubject);
+    return guardian ? { ...guardian } : null;
   }
 
   async findLearningProfile(
@@ -68,6 +82,28 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
       }));
   }
 
+  async listConsentEvents(familySpaceId: string, kind: ConsentKind): Promise<ConsentEventRecord[]> {
+    return this.#consentEvents
+      .filter((event) => event.familySpaceId === familySpaceId && event.kind === kind)
+      .sort((left, right) => left.revision - right.revision)
+      .map((event) => ({ ...event }));
+  }
+
+  async listConsentRecords(familySpaceId: string): Promise<ConsentRecord[]> {
+    return [...this.#consents.values()]
+      .filter((record) => record.familySpaceId === familySpaceId)
+      .map((record) => ({ ...record }));
+  }
+
+  async markSessionReverified(tokenHash: string, reverifiedAt: Date): Promise<boolean> {
+    const session = this.#sessions.get(tokenHash);
+    if (!session || session.revokedAt || session.actor.type !== 'guardian') {
+      return false;
+    }
+    session.reverifiedAt = reverifiedAt;
+    return true;
+  }
+
   async revokeSession(tokenHash: string, revokedAt: Date): Promise<boolean> {
     const session = this.#sessions.get(tokenHash);
     if (!session || session.revokedAt) {
@@ -89,6 +125,11 @@ export class MemoryFamilyAccessStore implements FamilyAccessStore {
     }
     profile.failedPinAttempts = input.failedPinAttempts;
     profile.pinLockedUntil = input.pinLockedUntil;
+  }
+
+  async saveConsentDecision(record: ConsentRecord, event: ConsentEventRecord): Promise<void> {
+    this.#consents.set(`${record.familySpaceId}:${record.kind}`, { ...record });
+    this.#consentEvents.push({ ...event });
   }
 
   async upsertGuardian(identitySubject: string, proposedId: string): Promise<GuardianRecord> {

@@ -8,8 +8,9 @@ import {
   Inject,
   Param,
   Post,
+  Put,
 } from '@nestjs/common';
-import { FamilyAccessError } from '@rhea/family-access';
+import { CONSENT_CATALOG, FamilyAccessError, type ConsentKind } from '@rhea/family-access';
 
 import { FAMILY_ACCESS, type FamilyAccess } from './family-access.provider.js';
 
@@ -31,6 +32,14 @@ function deviceToken(authorization: string | undefined): string {
   return authorization.slice(7);
 }
 
+function consentKind(value: string): ConsentKind {
+  const kind = CONSENT_CATALOG.find((statement) => statement.kind === value)?.kind;
+  if (!kind) {
+    throw new FamilyAccessError('INPUT_INVALID', '未知的分项授权类型');
+  }
+  return kind;
+}
+
 @Controller('v1')
 export class FamilyAccessController {
   constructor(@Inject(FAMILY_ACCESS) private readonly familyAccess: FamilyAccess) {}
@@ -39,6 +48,19 @@ export class FamilyAccessController {
   async loginGuardian(@Body() body: { identityAssertion?: unknown }) {
     return {
       data: await this.familyAccess.loginGuardian({
+        identityAssertion: stringBody(body.identityAssertion),
+      }),
+    };
+  }
+
+  @Post('guardian-reverification')
+  async reverifyGuardian(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: { identityAssertion?: unknown },
+  ) {
+    return {
+      data: await this.familyAccess.reverifyGuardian({
+        accessToken: bearerToken(authorization),
         identityAssertion: stringBody(body.identityAssertion),
       }),
     };
@@ -85,6 +107,54 @@ export class FamilyAccessController {
         accessToken: bearerToken(authorization),
         familySpaceId,
         label: stringBody(body.label),
+      }),
+    };
+  }
+
+  @Get('family-spaces/:familySpaceId/consents')
+  async listConsents(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+  ) {
+    return {
+      data: await this.familyAccess.listConsents({
+        accessToken: bearerToken(authorization),
+        familySpaceId,
+      }),
+    };
+  }
+
+  @Get('family-spaces/:familySpaceId/consents/:kind/history')
+  async listConsentHistory(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('kind') kind: string,
+  ) {
+    return {
+      data: await this.familyAccess.listConsentHistory({
+        accessToken: bearerToken(authorization),
+        familySpaceId,
+        kind: consentKind(kind),
+      }),
+    };
+  }
+
+  @Put('family-spaces/:familySpaceId/consents/:kind')
+  async changeConsent(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('kind') kind: string,
+    @Body() body: { granted?: unknown },
+  ) {
+    if (typeof body.granted !== 'boolean') {
+      throw new FamilyAccessError('INPUT_INVALID', '授权决定必须是同意或拒绝');
+    }
+    return {
+      data: await this.familyAccess.changeConsent({
+        accessToken: bearerToken(authorization),
+        familySpaceId,
+        granted: body.granted,
+        kind: consentKind(kind),
       }),
     };
   }

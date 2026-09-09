@@ -9,9 +9,11 @@ interface ErrorResponse {
 
 const STATUS_BY_CODE: Record<FamilyAccessErrorCode, number> = {
   CAPABILITY_DENIED: 403,
+  CONSENT_REQUIRED: 403,
   DEVICE_INVALID: 401,
   DEVICE_PROFILE_NOT_FOUND: 404,
   FAMILY_ACCESS_DENIED: 403,
+  GUARDIAN_REVERIFICATION_REQUIRED: 401,
   IDENTITY_INVALID: 401,
   INPUT_INVALID: 400,
   PIN_INVALID: 401,
@@ -26,6 +28,12 @@ function recoveryFor(code: FamilyAccessErrorCode): string {
   }
   if (code === 'CAPABILITY_DENIED' || code === 'FAMILY_ACCESS_DENIED') {
     return 'ENTER_GUARDIAN_MODE';
+  }
+  if (code === 'CONSENT_REQUIRED') {
+    return 'OPEN_GUARDIAN_CONSENT';
+  }
+  if (code === 'GUARDIAN_REVERIFICATION_REQUIRED') {
+    return 'REVERIFY_GUARDIAN';
   }
   if (code === 'SESSION_EXPIRED' || code === 'SESSION_INVALID') {
     return 'REENTER_SESSION';

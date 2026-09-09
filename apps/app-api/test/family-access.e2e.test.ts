@@ -11,6 +11,87 @@ describe('FamilyAccess HTTP interface', () => {
     await app?.close();
   });
 
+  it('requires guardian reverification for separate, auditable consent decisions', async () => {
+    const familyAccess = createInMemoryFamilyAccess();
+    app = await createApp({ dependencyProbes: [], familyAccess });
+    await app.init();
+    const login = await app.inject({
+      method: 'POST',
+      payload: { identityAssertion: 'consent-guardian' },
+      url: '/v1/guardian-sessions',
+    });
+    const guardian = login.json<{ data: { accessToken: string } }>().data;
+    const familyResponse = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: { name: '授权测试家庭' },
+      url: '/v1/family-spaces',
+    });
+    const family = familyResponse.json<{ data: { id: string } }>().data;
+
+    const beforeReverification = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'PUT',
+      payload: { granted: true },
+      url: `/v1/family-spaces/${family.id}/consents/photo_processing`,
+    });
+    expect(beforeReverification.statusCode).toBe(401);
+    expect(beforeReverification.json()).toMatchObject({
+      error: {
+        code: 'GUARDIAN_REVERIFICATION_REQUIRED',
+        recovery: 'REVERIFY_GUARDIAN',
+      },
+    });
+
+    const reverification = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: { identityAssertion: 'consent-guardian' },
+      url: '/v1/guardian-reverification',
+    });
+    expect(reverification.statusCode).toBe(201);
+    expect(reverification.json()).toMatchObject({
+      data: { reverifiedAt: expect.any(String), validUntil: expect.any(String) },
+    });
+
+    const granted = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'PUT',
+      payload: { granted: true },
+      url: `/v1/family-spaces/${family.id}/consents/photo_processing`,
+    });
+    expect(granted.statusCode).toBe(200);
+    expect(granted.json()).toMatchObject({
+      data: {
+        dataScope: [expect.any(String)],
+        purpose: expect.any(String),
+        revision: 1,
+        statementVersion: 'family-consent-v1',
+        status: 'granted',
+        updatedAt: expect.any(String),
+      },
+    });
+
+    const withdrawn = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'PUT',
+      payload: { granted: false },
+      url: `/v1/family-spaces/${family.id}/consents/photo_processing`,
+    });
+    expect(withdrawn.json()).toMatchObject({ data: { revision: 2, status: 'withdrawn' } });
+    const history = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'GET',
+      url: `/v1/family-spaces/${family.id}/consents/photo_processing/history`,
+    });
+    expect(history.json()).toMatchObject({
+      data: [
+        { revision: 1, status: 'granted' },
+        { previousStatus: 'granted', revision: 2, status: 'withdrawn' },
+      ],
+    });
+  });
+
   it('completes guardian setup and a restricted shared-device learner entry', async () => {
     const familyAccess = createInMemoryFamilyAccess();
     app = await createApp({ dependencyProbes: [], familyAccess });

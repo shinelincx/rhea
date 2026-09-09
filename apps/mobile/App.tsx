@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { deviceCredentialStore } from './src/family-entry/device-credential-store';
 import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
+import { GuardianConsentScreen } from './src/guardian-consent/GuardianConsentScreen';
 import { TodayRouteScreen } from './src/today-route/TodayRouteScreen';
 import { createTodayRouteLoader } from './src/today-route/load-today-route';
 
@@ -25,6 +26,7 @@ interface LearnerSession {
 export default function App() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [guardianFamilySpaceId, setGuardianFamilySpaceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!learnerSession) {
@@ -64,7 +66,13 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      {learnerSession ? (
+      {guardianFamilySpaceId ? (
+        <GuardianConsentScreen
+          familySpaceId={guardianFamilySpaceId}
+          gateway={familyEntryGateway}
+          onClose={() => setGuardianFamilySpaceId(null)}
+        />
+      ) : learnerSession ? (
         <TodayRouteScreen
           learningProfileName={learnerSession.profile.displayName}
           loadRoute={loadTodayRoute}
@@ -75,6 +83,7 @@ export default function App() {
           credentialStore={deviceCredentialStore}
           gateway={familyEntryGateway}
           initialNotice={sessionNotice}
+          onOpenGuardianSettings={setGuardianFamilySpaceId}
           onSessionReady={startLearnerSession}
         />
       )}
