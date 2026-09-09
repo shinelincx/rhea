@@ -3,8 +3,7 @@ import { randomUUID } from 'expo-crypto';
 import { File as ExpoFile } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 
-import { inferQualityWarnings, type DraftPage } from './model';
-import { analyzeImageQuality } from './image-quality-analyzer';
+import type { DraftPage } from './model';
 
 export interface CapturedDraftPage {
   bytes: Uint8Array;
@@ -38,7 +37,7 @@ function imagePage(input: {
     height: input.height || null,
     id: input.id,
     mimeType: input.mimeType,
-    qualityWarnings: inferQualityWarnings({ height: input.height, width: input.width }),
+    qualityWarnings: [],
     rotation: 0,
     sizeBytes: input.sizeBytes,
     width: input.width || null,
@@ -55,11 +54,6 @@ async function fromImagePickerAsset(
     id: randomUUID(),
     mimeType: asset.mimeType ?? 'image/jpeg',
     sizeBytes: asset.fileSize ?? bytes.byteLength,
-    width: asset.width,
-  });
-  page.qualityWarnings = await analyzeImageQuality({
-    height: asset.height,
-    uri: asset.uri,
     width: asset.width,
   });
   return {
@@ -96,9 +90,6 @@ async function importFiles(): Promise<CapturedDraftPage[]> {
     result.assets.map(async (asset) => {
       const bytes = await bytesFromAsset(asset.uri, asset.file);
       const mimeType = asset.mimeType ?? 'application/octet-stream';
-      const qualityWarnings = mimeType.startsWith('image/')
-        ? await analyzeImageQuality({ uri: asset.uri })
-        : [];
       return {
         bytes,
         page: {
@@ -107,7 +98,7 @@ async function importFiles(): Promise<CapturedDraftPage[]> {
           height: null,
           id: randomUUID(),
           mimeType,
-          qualityWarnings,
+          qualityWarnings: [],
           rotation: 0,
           sizeBytes: asset.size ?? bytes.byteLength,
           width: null,

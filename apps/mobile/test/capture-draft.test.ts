@@ -3,14 +3,12 @@ import {
   createCaptureDraft,
   cropDraftPage,
   deleteDraftPage,
-  inferQualityWarnings,
   moveDraftPage,
   replaceDraftPage,
   rotateDraftPage,
   validateDraft,
   type DraftPage,
 } from '../src/capture-draft/model';
-import { deriveImageQualityMetrics } from '../src/capture-draft/image-quality-analyzer';
 import {
   EncryptedCaptureDraftRepository,
   MemoryDraftFilePort,
@@ -59,37 +57,6 @@ describe('capture draft model', () => {
     expect(moved.pages.map(({ id }) => id)).toEqual(['b', 'a']);
     expect(replaced.pages[1]).toMatchObject({ fileName: 'new.jpg', id: 'a', rotation: 0 });
     expect(deleted.pages.map(({ id }) => id)).toEqual(['a']);
-  });
-
-  it('turns obvious capture metrics into understandable quality categories', () => {
-    expect(
-      inferQualityWarnings({
-        brightness: 0.1,
-        edgeCoverage: 0.6,
-        glareRatio: 0.4,
-        height: 600,
-        width: 800,
-      }),
-    ).toEqual(['blurry', 'too_dark', 'glare', 'missing_edge']);
-  });
-
-  it('derives dark, clipped, soft, and edge-cut signals from a thumbnail', () => {
-    const data = new Uint8Array(10 * 10 * 4);
-    for (let pixel = 0; pixel < 100; pixel += 1) {
-      const offset = pixel * 4;
-      const x = pixel % 10;
-      const y = Math.floor(pixel / 10);
-      const bright = x === 0 || x === 9 || y === 0 || y === 9 ? 255 : 12;
-      data[offset] = bright;
-      data[offset + 1] = bright;
-      data[offset + 2] = bright;
-      data[offset + 3] = 255;
-    }
-
-    const metrics = deriveImageQualityMetrics({ data, height: 10, width: 10 });
-    expect(metrics.brightness).toBeLessThan(0.4);
-    expect(metrics.glareRatio).toBeGreaterThan(0.25);
-    expect(metrics.edgeCoverage).toBeLessThan(0.85);
   });
 
   it('validates page count, file type, individual size, and total size without deleting the draft', async () => {

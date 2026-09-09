@@ -20,14 +20,6 @@ export interface CaptureDraft {
   updatedAt: string;
 }
 
-export interface QualityMetrics {
-  brightness?: number;
-  edgeCoverage?: number;
-  glareRatio?: number;
-  height?: number;
-  width?: number;
-}
-
 export interface DraftValidation {
   errors: string[];
   valid: boolean;
@@ -45,27 +37,6 @@ const SUPPORTED_MIME_TYPES = new Set([
 export const MAX_DRAFT_PAGES = 30;
 export const MAX_PAGE_BYTES = 15 * 1024 * 1024;
 export const MAX_DRAFT_BYTES = 50 * 1024 * 1024;
-
-export function inferQualityWarnings(metrics: QualityMetrics): DraftQualityWarning[] {
-  const warnings: DraftQualityWarning[] = [];
-  if (
-    metrics.width !== undefined &&
-    metrics.height !== undefined &&
-    Math.min(metrics.width, metrics.height) < 900
-  ) {
-    warnings.push('blurry');
-  }
-  if (metrics.brightness !== undefined && metrics.brightness < 0.2) {
-    warnings.push('too_dark');
-  }
-  if (metrics.glareRatio !== undefined && metrics.glareRatio > 0.25) {
-    warnings.push('glare');
-  }
-  if (metrics.edgeCoverage !== undefined && metrics.edgeCoverage < 0.85) {
-    warnings.push('missing_edge');
-  }
-  return warnings;
-}
 
 export function createCaptureDraft(input: {
   id: string;
