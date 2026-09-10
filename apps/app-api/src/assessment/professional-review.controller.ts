@@ -1,7 +1,16 @@
 import { Body, Controller, Headers, Inject, Param, Post } from '@nestjs/common';
 
-import { ASSESSMENT_SERVICE, type AssessmentService } from './assessment.provider.js';
-import { assessmentCorrection, stringValue } from './assessment-request.js';
+import {
+  ASSESSMENT_SERVICE,
+  SUGGESTED_ASSESSMENT_SERVICE,
+  type AssessmentService,
+  type SuggestedAssessmentService,
+} from './assessment.provider.js';
+import {
+  assessmentCorrection,
+  openAssessmentReviewDecisions,
+  stringValue,
+} from './assessment-request.js';
 import {
   PROFESSIONAL_REVIEW_ACCESS,
   type ProfessionalReviewAccess,
@@ -15,7 +24,34 @@ export class ProfessionalReviewController {
     @Inject(PROFESSIONAL_REVIEW_ACCESS)
     private readonly access: ProfessionalReviewAccess,
     @Inject(ASSESSMENT_SERVICE) private readonly assessments: AssessmentService,
+    @Inject(SUGGESTED_ASSESSMENT_SERVICE)
+    private readonly suggestedAssessments: SuggestedAssessmentService,
   ) {}
+
+  @Post('open-assessment-suggestions/:suggestionId/review')
+  async reviewOpenAssessmentSuggestion(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Param('suggestionId') suggestionId: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const reviewer = await this.access.authorize({
+      authorization,
+      familySpaceId,
+      learningProfileId,
+    });
+    return {
+      data: await this.suggestedAssessments.review({
+        decisions: openAssessmentReviewDecisions(body.decisions),
+        expectedStateRevision:
+          typeof body.expectedStateRevision === 'number' ? body.expectedStateRevision : 0,
+        learningProfileId,
+        reviewer,
+        suggestionId,
+      }),
+    };
+  }
 
   @Post('objective-assessments/:assessmentId/disputes/:disputeId/resolution')
   async resolve(

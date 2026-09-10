@@ -8,7 +8,7 @@ import {
   type FamilyAccess,
 } from '@rhea/family-access';
 import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
-import type { AssessmentService } from '@rhea/assessment';
+import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 import type { SubmissionService } from '@rhea/submission';
@@ -16,6 +16,7 @@ import type { SubmissionService } from '@rhea/submission';
 import { AppModule } from './app.module.js';
 import type { DependencyProbe } from './health/dependency-probe.js';
 import { createLocalAssessment } from './assessment/create-local-assessment.js';
+import { createLocalSuggestedAssessment } from './assessment/create-local-suggested-assessment.js';
 import {
   type ProfessionalReviewAccess,
   unavailableProfessionalReviewAccess,
@@ -30,6 +31,7 @@ import type { GeneratedLearningScheduler } from './generated-learning/generated-
 export interface CreateAppOptions {
   allowedOrigins?: string[];
   assessmentService?: AssessmentService;
+  suggestedAssessmentService?: SuggestedAssessmentService;
   dependencyProbes?: DependencyProbe[];
   familyAccess?: FamilyAccess;
   generatedLearningConsentReader?: AiProcessingConsentPublicationReader;
@@ -72,13 +74,15 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const learningContent = options.learningContentService ?? createLocalLearningContent();
   const assessment =
     options.assessmentService ?? createLocalAssessment(learningContent, submissions);
-  const generatedLearning = createLocalGeneratedLearning(
-    learningContent,
+  const consentReader =
     options.generatedLearningConsentReader ??
-      (isConsentPublicationReader(familyAccess)
-        ? familyAccess
-        : { getAiProcessingConsentSnapshotForPublication: async () => null }),
-  );
+    (isConsentPublicationReader(familyAccess)
+      ? familyAccess
+      : { getAiProcessingConsentSnapshotForPublication: async () => null });
+  const suggestedAssessment =
+    options.suggestedAssessmentService ??
+    createLocalSuggestedAssessment(learningContent, submissions, consentReader);
+  const generatedLearning = createLocalGeneratedLearning(learningContent, consentReader);
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
     .getInstance()
@@ -94,6 +98,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       jobClient,
       familyAccess,
       assessment,
+      suggestedAssessment,
       options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
       submissions,

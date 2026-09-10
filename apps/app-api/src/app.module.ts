@@ -3,12 +3,15 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import type { FamilyAccess } from '@rhea/family-access';
 import type { JobClient } from '@rhea/job-runtime';
-import type { AssessmentService } from '@rhea/assessment';
+import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
-import { ASSESSMENT_SERVICE } from './assessment/assessment.provider.js';
+import {
+  ASSESSMENT_SERVICE,
+  SUGGESTED_ASSESSMENT_SERVICE,
+} from './assessment/assessment.provider.js';
 import { ProfessionalReviewController } from './assessment/professional-review.controller.js';
 import {
   PROFESSIONAL_REVIEW_ACCESS,
@@ -51,6 +54,7 @@ export class AppModule {
     jobClient: JobClient,
     familyAccess: FamilyAccess,
     assessmentService: AssessmentService,
+    suggestedAssessmentService: SuggestedAssessmentService,
     professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
     submissionService: SubmissionService,
@@ -96,6 +100,10 @@ export class AppModule {
         {
           provide: ASSESSMENT_SERVICE,
           useValue: assessmentService,
+        },
+        {
+          provide: SUGGESTED_ASSESSMENT_SERVICE,
+          useValue: suggestedAssessmentService,
         },
         {
           provide: PROFESSIONAL_REVIEW_ACCESS,

@@ -1,13 +1,19 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { AssessmentService, type ObjectiveGradingRule } from '@rhea/assessment';
+import {
+  AssessmentService,
+  SuggestedAssessmentService,
+  type ObjectiveGradingRule,
+  type OpenAssessmentTaskType,
+} from '@rhea/assessment';
+import type { AuthorizationDecision, CapabilityVersion } from '@rhea/quality-control';
 import { applyMigrations, loadDefaultMigrations } from '@rhea/database';
 import { LearningContentService, type Subject } from '@rhea/learning-content';
 import { PostgresLearningContentStore } from '@rhea/postgres-learning-content';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { PostgresAssessmentStore } from '../src/index.js';
+import { PostgresAssessmentStore, PostgresSuggestedAssessmentStore } from '../src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = databaseUrl ? describe : describe.skip;
@@ -30,6 +36,23 @@ const recognitionCapability = {
   templateVersion: 'not-applicable-v1',
 } as const;
 const recognitionReleaseId = 'assessment-fixture-ocr-release-v1';
+const openAssessmentCapability: CapabilityVersion = {
+  adapter: { id: 'open-assessment-fixture', version: 'test-v1' },
+  artifactHash: 'f'.repeat(64),
+  capabilityKey: 'ai.open-assessment-suggestion',
+  id: 'open-assessment-fixture-v1',
+  implementedBy: 'assessment-integration-test',
+  kind: 'ai',
+  modelOrEngine: { id: 'fixture-model', version: 'model-v1' },
+  policyVersion: 'fixture-policy-v1',
+  promptOrConfig: { kind: 'prompt', version: 'open-assessment-prompt-v1' },
+  provider: { id: 'fixture-provider', version: 'provider-v1' },
+  region: 'cn-shanghai',
+  registeredAt: '2026-09-10T08:00:00.000Z',
+  requiredSlicePolicyVersion: 'open-assessment-fixture-policy-v1',
+  templateVersion: 'open-assessment-template-v1',
+};
+const openAssessmentReleaseId = 'open-assessment-fixture-release-v1';
 
 beforeAll(async () => {
   if (pool) await applyMigrations(pool, await loadDefaultMigrations());
@@ -49,6 +72,7 @@ async function createLearningMaterial(
   const subject = input.subject ?? 'mathematics';
   const knowledgePointName = input.knowledgePointName ?? '乘法';
   const familySpaceId = randomUUID();
+  const guardianId = randomUUID();
   const learningProfileId = randomUUID();
   const uploadSessionId = randomUUID();
   const processingJobId = randomUUID();
@@ -96,15 +120,33 @@ async function createLearningMaterial(
   try {
     await setup.query('BEGIN');
     await setup.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [familySpaceId]);
+    await setup.query(`SELECT set_config('rhea.guardian_id', $1, true)`, [guardianId]);
+    await setup.query(`INSERT INTO learning.guardians (id, identity_subject) VALUES ($1, $2)`, [
+      guardianId,
+      `assessment-test:${guardianId}`,
+    ]);
     await setup.query('INSERT INTO learning.family_spaces (id, name) VALUES ($1, $2)', [
       familySpaceId,
       '客观题批改测试家庭',
     ]);
     await setup.query(
+      `INSERT INTO learning.guardian_memberships
+        (family_space_id, guardian_id, role, status)
+       VALUES ($1, $2, 'managing', 'active')`,
+      [familySpaceId, guardianId],
+    );
+    await setup.query(
       `INSERT INTO learning.learning_profiles
         (id, family_space_id, display_name, grade, pin_hash)
        VALUES ($1, $2, '小禾', 3, 'test-hash')`,
       [learningProfileId, familySpaceId],
+    );
+    await setup.query(
+      `INSERT INTO learning.family_consents
+        (family_space_id, kind, status, statement_version, revision,
+         updated_by_guardian_id, updated_at)
+       VALUES ($1, 'ai_processing', 'granted', 'ai-v1', 1, $2, now())`,
+      [familySpaceId, guardianId],
     );
     await setup.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
       learningProfileId,
@@ -280,7 +322,314 @@ async function createLearningMaterial(
   };
 }
 
+async function authorizeOpenAssessment(familySpaceId: string, subject: Subject) {
+  if (!pool) throw new Error('Database is not configured');
+  const decisionId = randomUUID();
+  const familySpaceHash = createHash('sha256').update(familySpaceId).digest('hex');
+  const epochResult = await pool.query<{ containment_epoch: string }>(
+    'SELECT containment_epoch FROM metrics.quality_control_epoch WHERE singleton',
+  );
+  const containmentEpoch = Number(epochResult.rows[0]!.containment_epoch);
+  const slice = {
+    basisState: 'current' as const,
+    gradeBand: 'middle_primary' as const,
+    imageQuality: 'not_applicable' as const,
+    questionType: subject === 'mathematics' ? ('process' as const) : ('open_response' as const),
+    riskLevel: 'medium' as const,
+    subject,
+  };
+  const setup = await pool.connect();
+  await setup.query('BEGIN');
+  try {
+    await setup.query(
+      `INSERT INTO metrics.quality_gate_policies
+        (version, minimum_sample_size, required_signoff_roles, registered_at)
+       VALUES ($1, 1, ARRAY['quality_owner', 'domain_reviewer', 'child_safety'], $2)
+       ON CONFLICT (version) DO NOTHING`,
+      [openAssessmentCapability.requiredSlicePolicyVersion, openAssessmentCapability.registeredAt],
+    );
+    await setup.query(
+      `INSERT INTO metrics.capability_versions
+        (id, capability_key, kind, implemented_by, provider_id, provider_version,
+         model_or_engine_id, model_or_engine_version, adapter_id, adapter_version,
+         prompt_or_config_kind, prompt_or_config_version, template_version, policy_version,
+         required_slice_policy_version, region, registered_at, artifact_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+               $15, $16, $17, $18)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        openAssessmentCapability.id,
+        openAssessmentCapability.capabilityKey,
+        openAssessmentCapability.kind,
+        openAssessmentCapability.implementedBy,
+        openAssessmentCapability.provider.id,
+        openAssessmentCapability.provider.version,
+        openAssessmentCapability.modelOrEngine.id,
+        openAssessmentCapability.modelOrEngine.version,
+        openAssessmentCapability.adapter.id,
+        openAssessmentCapability.adapter.version,
+        openAssessmentCapability.promptOrConfig.kind,
+        openAssessmentCapability.promptOrConfig.version,
+        openAssessmentCapability.templateVersion,
+        openAssessmentCapability.policyVersion,
+        openAssessmentCapability.requiredSlicePolicyVersion,
+        openAssessmentCapability.region,
+        openAssessmentCapability.registeredAt,
+        openAssessmentCapability.artifactHash,
+      ],
+    );
+    await setup.query(
+      `INSERT INTO metrics.capability_release_revisions
+        (id, capability_key, kind, revision, stage, capability_version_id,
+         fallback_version_id, rollout_basis_points, allowed_use_slices, predecessor_id,
+         action, reason_code, changed_by, changed_at)
+       VALUES ($1, $2, $3, 1, 'general', $4, NULL, 10000, $5, NULL,
+               'advance', 'fixture', 'integration-test', $6)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        openAssessmentReleaseId,
+        openAssessmentCapability.capabilityKey,
+        openAssessmentCapability.kind,
+        openAssessmentCapability.id,
+        JSON.stringify([slice]),
+        openAssessmentCapability.registeredAt,
+      ],
+    );
+    await setup.query(
+      `INSERT INTO metrics.capability_current_releases
+        (capability_key, kind, primary_release_id, shadow_release_id,
+         containment_epoch, updated_at)
+       VALUES ($1, $2, $3, NULL, $4, $5)
+       ON CONFLICT (capability_key, kind) DO UPDATE SET
+         primary_release_id = EXCLUDED.primary_release_id,
+         shadow_release_id = NULL,
+         containment_epoch = EXCLUDED.containment_epoch,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        openAssessmentCapability.capabilityKey,
+        openAssessmentCapability.kind,
+        openAssessmentReleaseId,
+        containmentEpoch,
+        openAssessmentCapability.registeredAt,
+      ],
+    );
+    await setup.query(
+      `INSERT INTO metrics.authorization_decisions
+        (id, capability_key, kind, family_space_hash, subject, grade_band, question_type,
+         image_quality, risk_level, basis_state, rollout_bucket, containment_epoch,
+         primary_release_id, primary_version_id, status, degraded_reason, issued_at)
+       VALUES ($1, $2, $3, $4, $5, 'middle_primary', $6,
+               'not_applicable', 'medium', 'current', 0, $7, $8, $9,
+               'authorized', NULL, $10)`,
+      [
+        decisionId,
+        openAssessmentCapability.capabilityKey,
+        openAssessmentCapability.kind,
+        familySpaceHash,
+        subject,
+        slice.questionType,
+        containmentEpoch,
+        openAssessmentReleaseId,
+        openAssessmentCapability.id,
+        openAssessmentCapability.registeredAt,
+      ],
+    );
+    await setup.query('COMMIT');
+  } catch (error) {
+    await setup.query('ROLLBACK');
+    throw error;
+  } finally {
+    setup.release();
+  }
+  const decision: AuthorizationDecision = {
+    containmentEpoch,
+    decisionId,
+    degradedReason: null,
+    issuedAt: openAssessmentCapability.registeredAt,
+    primary: { capabilityVersion: openAssessmentCapability, rolloutStage: 'general' },
+    rolloutBucket: 0,
+    scope: {
+      capabilityKey: openAssessmentCapability.capabilityKey,
+      kind: 'ai',
+      slice,
+    },
+    shadow: null,
+    status: 'authorized',
+  };
+  return decision;
+}
+
 describeWithDatabase('PostgreSQL assessment adapter', () => {
+  it.each<Array<{ subject: Subject; taskType: OpenAssessmentTaskType }>[number]>([
+    { subject: 'chinese', taskType: 'chinese_expression' },
+    { subject: 'mathematics', taskType: 'mathematics_process' },
+    { subject: 'english', taskType: 'english_expression' },
+    { subject: 'science', taskType: 'science_inquiry' },
+  ])(
+    'resolves the professionally reviewed $subject open-assessment rubric',
+    async ({ subject, taskType }) => {
+      if (!pool) return;
+      const fixture = await createLearningMaterial({
+        answerText: '我先观察叶片，然后记录颜色变化，并说明前后差别。',
+        knowledgePointName: '开放表达',
+        questionText: '请说明你的观察和理由。',
+        subject,
+      });
+      const actor = { id: fixture.learningProfileId, type: 'learner' as const };
+      const basis = await fixture.learningContent.getCurrentBasisReference({
+        actor,
+        learningProfileId: fixture.learningProfileId,
+        materialId: fixture.material.id,
+      });
+      const store = new PostgresSuggestedAssessmentStore(pool);
+
+      const resolved = await store.resolveOpenAssessmentInput({
+        actor,
+        ageBand: 'middle_primary',
+        basis,
+        learningProfileId: fixture.learningProfileId,
+        materialId: fixture.material.id,
+        reference: {
+          confirmedContentVersionId: fixture.confirmedContentVersionId,
+          processingJobId: fixture.processingJobId,
+          questionRegionId: fixture.questionRegionId,
+          responseRegionId: fixture.responseRegionId,
+        },
+        taskType,
+      });
+
+      expect(resolved).toMatchObject({
+        question: { subject },
+        rubric: {
+          ageBand: 'middle_primary',
+          source: { authority: 'rhea_professionally_reviewed' },
+          subject,
+          taskType,
+          version: '1.0.0',
+        },
+      });
+      expect(resolved?.rubric?.dimensions.length).toBeGreaterThanOrEqual(2);
+    },
+  );
+
+  it('atomically publishes only a human-accepted suggestion with immutable provenance', async () => {
+    if (!pool) return;
+    const fixture = await createLearningMaterial({
+      answerText: '我先观察叶片，然后记录颜色变化，并说明前后差别。',
+      knowledgePointName: '科学观察',
+      questionText: '请说明你的观察和理由。',
+      subject: 'science',
+    });
+    const actor = { id: fixture.learningProfileId, type: 'learner' as const };
+    const decision = await authorizeOpenAssessment(fixture.familySpaceId, 'science');
+    const store = new PostgresSuggestedAssessmentStore(pool);
+    const service = new SuggestedAssessmentService({
+      basisReader: fixture.learningContent,
+      inputReader: store,
+      modelGateway: {
+        async runStructured(task) {
+          return {
+            candidate: {
+              confidence: 0.93,
+              dimensions: task.rubric.dimensions.map(({ key }, index) => ({
+                confidence: 0.91,
+                dimensionKey: key,
+                evidenceExcerpt: index === 0 ? '观察叶片' : '说明前后差别',
+                improvementSuggestion: `补充${key}的具体细节。`,
+                observation: `作答呈现了${key}证据。`,
+                state: index === 0 ? 'demonstrated' : 'partially_demonstrated',
+              })),
+              improvementDimensionKey: task.rubric.dimensions.at(-1)!.key,
+              nextAction: '再补充一句前后变化的具体内容。',
+              strengthEvidence: '作答写出了观察叶片和记录颜色变化。',
+            },
+            externalTraceId: 'postgres-open-assessment-trace-1',
+            inputTokens: 100,
+            outputTokens: 180,
+            provider: openAssessmentCapability.provider.id,
+          };
+        },
+      },
+      qualityControl: {
+        authorizeCapability: async ({ slice }) => ({
+          ...structuredClone(decision),
+          scope: { ...structuredClone(decision.scope), slice: structuredClone(slice) },
+        }),
+        revalidateAuthorization: async () => ({
+          capabilityVersion: openAssessmentCapability,
+          containmentEpoch: decision.containmentEpoch,
+          decisionId: decision.decisionId,
+          status: 'authorized',
+        }),
+      },
+      publicationGate: store,
+      store,
+    });
+    const pending = await service.suggest({
+      actor,
+      ageBand: 'middle_primary',
+      consentRevision: 1,
+      familySpaceId: fixture.familySpaceId,
+      inputReference: {
+        confirmedContentVersionId: fixture.confirmedContentVersionId,
+        processingJobId: fixture.processingJobId,
+        questionRegionId: fixture.questionRegionId,
+        responseRegionId: fixture.responseRegionId,
+      },
+      learningProfileId: fixture.learningProfileId,
+      materialId: fixture.material.id,
+      taskType: 'science_inquiry',
+    });
+
+    expect(pending.status).toBe('pending_review');
+    const before = await pool.query(
+      `SELECT count(*)::integer AS count FROM learning.derived_artifacts
+       WHERE artifact_kind = 'assessment' AND artifact_id = $1`,
+      [pending.id],
+    );
+    expect(before.rows[0]?.count).toBe(0);
+
+    const accepted = await service.review({
+      decisions: pending.suggestion!.dimensions.map(({ dimensionKey }) => ({
+        action: 'accept' as const,
+        dimensionKey,
+      })),
+      expectedStateRevision: pending.stateRevision,
+      learningProfileId: fixture.learningProfileId,
+      reviewer: { id: randomUUID(), type: 'guardian' },
+      suggestionId: pending.id,
+    });
+
+    expect(accepted).toMatchObject({
+      acceptedResult: { capabilityVersionId: openAssessmentCapability.id },
+      status: 'accepted',
+    });
+    const lineage = await pool.query(
+      `SELECT artifact.version, artifact.status, count(edge.*)::integer AS edge_count
+       FROM learning.derived_artifacts artifact
+       JOIN learning.derivation_edges edge
+         ON edge.family_space_id = artifact.family_space_id
+        AND edge.learning_profile_id = artifact.learning_profile_id
+        AND edge.artifact_kind = artifact.artifact_kind
+        AND edge.artifact_id = artifact.artifact_id
+        AND edge.artifact_version = artifact.version
+       WHERE artifact.artifact_kind = 'assessment' AND artifact.artifact_id = $1
+       GROUP BY artifact.version, artifact.status`,
+      [pending.id],
+    );
+    expect(lineage.rows).toEqual([
+      { edge_count: 6, status: 'current', version: accepted.acceptedResult!.id },
+    ]);
+    const persisted = await store.findById(pending.id, fixture.learningProfileId);
+    expect(persisted).toMatchObject({
+      review: {
+        capabilityVersionId: openAssessmentCapability.id,
+        rubricVersion: '1.0.0',
+      },
+      suggestion: pending.suggestion,
+    });
+  });
+
   it.each<{
     answerText: string;
     knowledgePointName: string;
@@ -650,16 +999,34 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
            'learning.resolve_objective_assessment_basis(uuid,uuid,uuid,uuid,integer,integer)',
            'EXECUTE'
          ) AS can_resolve_basis_directly,
+         has_table_privilege(
+           'rhea_assessment_app',
+           'learning.suggested_assessments',
+           'INSERT'
+         ) AS can_insert_suggestion_directly,
+         has_function_privilege(
+           'rhea_assessment_app',
+           'learning.create_suggested_assessment(jsonb)',
+           'EXECUTE'
+         ) AS can_create_pending_suggestion,
+         has_function_privilege(
+           'rhea_assessment_app',
+           'learning.review_suggested_assessment(uuid,uuid,integer,text,jsonb,jsonb,timestamp with time zone)',
+           'EXECUTE'
+         ) AS can_review_suggestion,
          has_schema_privilege('rhea_assessment_app', 'safety', 'USAGE') AS can_use_safety`,
     );
     expect(evidence.rows[0]).toEqual({
       can_confirm_rule: true,
+      can_create_pending_suggestion: true,
+      can_insert_suggestion_directly: false,
       can_insert_rule_directly: false,
       can_lock_current_basis: true,
       can_mutate_material: false,
       can_read_material: false,
       can_resolve_basis_directly: false,
       can_resolve_regions_directly: false,
+      can_review_suggestion: true,
       can_use_safety: false,
     });
   });

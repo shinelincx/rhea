@@ -20,6 +20,7 @@ const configuredAssessment = createConfiguredAssessment(
   process.env,
   configuredLearningContent.service,
   configuredSubmission.service,
+  configuredFamilyAccess.familyAccess,
 );
 const configuredGeneratedLearning = createConfiguredGeneratedLearning(
   process.env,
@@ -30,6 +31,7 @@ const aiJobClient = createConfiguredAiJobClient(process.env);
 const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<void> };
 const app = await createApp({
   assessmentService: configuredAssessment.service,
+  suggestedAssessmentService: configuredAssessment.suggestedService,
   familyAccess: configuredFamilyAccess.familyAccess,
   generatedLearningConsentReader: configuredFamilyAccess.familyAccess,
   generatedLearningScheduler: createQueuedGeneratedLearningScheduler(aiJobClient),

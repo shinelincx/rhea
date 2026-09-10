@@ -102,6 +102,9 @@ importers:
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../postgres-learning-content
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../../modules/quality-control
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
@@ -487,6 +490,9 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../learning-content
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../quality-control
     devDependencies:
       '@types/node':
         specifier: 24.10.13

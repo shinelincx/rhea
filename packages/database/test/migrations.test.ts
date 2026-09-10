@@ -76,6 +76,7 @@ describe('database migration interface', () => {
       '0014',
       '0015',
       '0016',
+      '0017',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -173,6 +174,16 @@ describe('database migration interface', () => {
     expect(migrations[15]?.sql).toMatch(/FUNCTION learning\.claim_lineage_rebuild/i);
     expect(migrations[15]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
     expect(migrations[15]?.sql).toMatch(/CREATE ROLE rhea_lineage_runtime/i);
+    expect(migrations[16]?.sql).toMatch(/CREATE TABLE learning\.open_assessment_rubric_versions/i);
+    expect(migrations[16]?.sql).toMatch(/CREATE TABLE learning\.suggested_assessments/i);
+    expect(migrations[16]?.sql).toMatch(/FUNCTION learning\.resolve_open_assessment_input/i);
+    expect(migrations[16]?.sql).toMatch(
+      /FUNCTION learning\.create_suggested_assessment[\s\S]*v_status NOT IN \('pending_review', 'unavailable'\)/i,
+    );
+    expect(migrations[16]?.sql).toMatch(
+      /FUNCTION learning\.review_suggested_assessment[\s\S]*metrics\.lock_current_family_capability_authorization/i,
+    );
+    expect(migrations[16]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -196,9 +207,10 @@ describe('database migration interface', () => {
         '0014',
         '0015',
         '0016',
+        '0017',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(11);
+    expect(database.executedMigrationSql).toHaveLength(12);
   });
 });

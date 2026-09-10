@@ -1,4 +1,7 @@
+import { createHash, randomUUID } from 'node:crypto';
+
 import type {
+  AcceptedOpenAssessmentResultReference,
   AssessmentDispute,
   AssessmentDisputeResolution,
   AssessmentStore,
@@ -8,10 +11,15 @@ import type {
   QuestionVersionSnapshot,
   ResponseVersionSnapshot,
   StoredObjectiveAssessment,
+  StoredSuggestedAssessment,
+  SuggestedAssessmentStore,
 } from '@rhea/assessment';
 import {
   deriveTrustedBuiltInRule,
   type DownstreamAssessmentRead,
+  type OpenAssessmentInputReader,
+  type OpenAssessmentPublicationGate,
+  type ResolvedOpenAssessmentInput,
   type ObjectiveAssessmentInputReader,
   type ObjectiveAssessmentInputReference,
   type ResolvedObjectiveAssessmentInput,
@@ -100,6 +108,43 @@ function timestamp(value: Date): string {
 
 function basisLineageVersion(basis: CurrentLearningBasisReference): string {
   return `${basis.sourceVersionId}:${basis.selectionVersion}:${basis.validityEpoch}`;
+}
+
+interface SuggestedAssessmentRow extends QueryResultRow {
+  accepted_result: unknown | null;
+  age_band: StoredSuggestedAssessment['ageBand'];
+  actor: unknown;
+  authorization_snapshot: unknown | null;
+  basis: unknown;
+  capability_snapshot: unknown | null;
+  consent_revision: number;
+  created_at: Date;
+  deduplication_key: string;
+  family_space_id: string;
+  id: string;
+  input_reference: unknown;
+  learning_profile_id: string;
+  material_id: string;
+  model_run: unknown | null;
+  question: unknown;
+  requires_professional_review: boolean;
+  response: unknown;
+  review: unknown | null;
+  rubric: unknown | null;
+  state_revision: number;
+  status: StoredSuggestedAssessment['status'];
+  suggestion: unknown | null;
+  task_type: StoredSuggestedAssessment['taskType'];
+  unavailable_reason: StoredSuggestedAssessment['unavailableReason'];
+  updated_at: Date;
+}
+
+interface OpenAssessmentInputRow extends QueryResultRow {
+  question_text: string;
+  requires_professional_review: boolean;
+  response_text: string;
+  rubric: unknown | null;
+  subject: ResolvedOpenAssessmentInput['question']['subject'];
 }
 
 export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssessmentInputReader {
@@ -855,7 +900,366 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
   }
 }
 
+export class PostgresSuggestedAssessmentStore
+  implements SuggestedAssessmentStore, OpenAssessmentInputReader, OpenAssessmentPublicationGate
+{
+  constructor(private readonly pool: Pool) {}
+
+  async create(assessment: StoredSuggestedAssessment): Promise<boolean> {
+    return this.#withProfile(assessment.learningProfileId, async (client) => {
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        assessment.familySpaceId,
+      ]);
+      const familySpaceHash = createHash('sha256').update(assessment.familySpaceId).digest('hex');
+      const result = await client.query<{ created: boolean }>(
+        `SELECT learning.create_suggested_assessment($1::jsonb) AS created`,
+        [
+          JSON.stringify({
+            actor: assessment.actor,
+            ageBand: assessment.ageBand,
+            authorization: assessment.authorization,
+            authorizationContainmentEpoch: assessment.authorization?.containmentEpoch ?? null,
+            authorizationDecisionId: assessment.authorization?.decisionId ?? null,
+            basis: assessment.basis,
+            capability: assessment.capability,
+            capabilityVersionId: assessment.capability?.id ?? null,
+            consentRevision: assessment.consentRevision,
+            createdAt: assessment.createdAt,
+            deduplicationKey: assessment.deduplicationKey,
+            eventId: randomUUID(),
+            familySpaceHash,
+            familySpaceId: assessment.familySpaceId,
+            id: assessment.id,
+            inputReference: assessment.inputReference,
+            learningProfileId: assessment.learningProfileId,
+            materialId: assessment.materialId,
+            modelRun: assessment.modelRun,
+            question: assessment.question,
+            requiresProfessionalReview: assessment.requiresProfessionalReview,
+            response: assessment.response,
+            rubric: assessment.rubric,
+            status: assessment.status,
+            suggestion: assessment.suggestion,
+            taskType: assessment.taskType,
+            unavailableReason: assessment.unavailableReason,
+            updatedAt: assessment.updatedAt,
+          }),
+        ],
+      );
+      return result.rows[0]?.created === true;
+    });
+  }
+
+  async authorize(
+    input: Parameters<OpenAssessmentPublicationGate['authorize']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        input.familySpaceId,
+      ]);
+      const result = await client.query<{ state: string }>(
+        `SELECT learning.lock_current_generated_learning_eligibility(
+           $1, $2, $3, $4
+         ) AS state`,
+        [input.learningProfileId, input.familySpaceId, input.consentRevision, input.ageBand],
+      );
+      return result.rows[0]?.state === 'authorized';
+    });
+  }
+
+  async findByDeduplicationKey(
+    deduplicationKey: string,
+    learningProfileId: string,
+  ): Promise<StoredSuggestedAssessment | null> {
+    return this.#withProfile(learningProfileId, async (client) => {
+      const result = await client.query<SuggestedAssessmentRow>(
+        `${this.#select()} WHERE learning_profile_id = $1 AND deduplication_key = $2`,
+        [learningProfileId, deduplicationKey],
+      );
+      return result.rows[0] ? this.#hydrate(result.rows[0]) : null;
+    });
+  }
+
+  async findById(id: string, learningProfileId: string): Promise<StoredSuggestedAssessment | null> {
+    return this.#withProfile(learningProfileId, async (client) => {
+      const result = await client.query<SuggestedAssessmentRow>(
+        `${this.#select()} WHERE learning_profile_id = $1 AND id = $2`,
+        [learningProfileId, id],
+      );
+      return result.rows[0] ? this.#hydrate(result.rows[0]) : null;
+    });
+  }
+
+  async readAcceptedResultReference(input: {
+    learningProfileId: string;
+    suggestionId: string;
+  }): Promise<AcceptedOpenAssessmentResultReference | null> {
+    const item = await this.findById(input.suggestionId, input.learningProfileId);
+    if (!item?.acceptedResult || !item.rubric) return null;
+    return {
+      assessmentId: item.id,
+      assessmentVersionId: item.acceptedResult.id,
+      basisSelectionVersion: item.basis.selectionVersion,
+      basisSourceVersionId: item.basis.sourceVersionId,
+      basisValidityEpoch: item.basis.validityEpoch,
+      questionVersionId: item.question.versionId,
+      responseVersionId: item.response.versionId,
+      rubricId: item.rubric.id,
+      rubricVersion: item.rubric.version,
+      subject: item.question.subject,
+    };
+  }
+
+  async resolveOpenAssessmentInput(
+    input: Parameters<OpenAssessmentInputReader['resolveOpenAssessmentInput']>[0],
+  ): Promise<ResolvedOpenAssessmentInput | null> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const result = await client.query<OpenAssessmentInputRow>(
+        `SELECT question_text, response_text, subject, rubric, requires_professional_review
+         FROM learning.resolve_open_assessment_input(
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+         )`,
+        [
+          input.learningProfileId,
+          input.materialId,
+          input.reference.processingJobId,
+          input.reference.confirmedContentVersionId,
+          input.reference.questionRegionId,
+          input.reference.responseRegionId,
+          input.basis.sourceVersionId,
+          input.basis.selectionVersion,
+          input.basis.validityEpoch,
+          input.ageBand,
+          input.taskType,
+        ],
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        question: {
+          subject: row.subject,
+          text: row.question_text,
+          versionId: `${input.reference.confirmedContentVersionId}:${input.reference.questionRegionId}`,
+        },
+        requiresProfessionalReview: row.requires_professional_review,
+        response: {
+          text: row.response_text,
+          versionId: `${input.reference.confirmedContentVersionId}:${input.reference.responseRegionId}`,
+        },
+        rubric: row.rubric
+          ? json<NonNullable<ResolvedOpenAssessmentInput['rubric']>>(row.rubric)
+          : null,
+      };
+    });
+  }
+
+  async review(input: Parameters<SuggestedAssessmentStore['review']>[0]): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const current = await client.query<SuggestedAssessmentRow>(
+        `${this.#select()} WHERE learning_profile_id = $1 AND id = $2`,
+        [input.learningProfileId, input.suggestionId],
+      );
+      const row = current.rows[0];
+      if (!row) return false;
+      const item = this.#hydrate(row);
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        item.familySpaceId,
+      ]);
+      const result = await client.query<{ reviewed: boolean }>(
+        `SELECT learning.review_suggested_assessment(
+           $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7
+         ) AS reviewed`,
+        [
+          input.suggestionId,
+          input.learningProfileId,
+          input.expectedStateRevision,
+          input.status,
+          JSON.stringify(input.review),
+          input.acceptedResult ? JSON.stringify(input.acceptedResult) : null,
+          input.updatedAt,
+        ],
+      );
+      if (result.rows[0]?.reviewed !== true) return false;
+      if (input.acceptedResult) {
+        await this.#publishAcceptedLineage(client, item, input.acceptedResult.id, input.updatedAt);
+      }
+      return true;
+    });
+  }
+
+  async #publishAcceptedLineage(
+    client: PoolClient,
+    item: StoredSuggestedAssessment,
+    acceptedVersionId: string,
+    occurredAt: string,
+  ): Promise<void> {
+    if (!item.rubric || !item.capability) {
+      throw new Error('Accepted suggested assessment is missing immutable provenance');
+    }
+    await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [item.familySpaceId]);
+    const scope = {
+      familySpaceId: item.familySpaceId,
+      learningProfileId: item.learningProfileId,
+    };
+    const dependencies: SourceDependency[] = [];
+    const sync = async (
+      id: string,
+      kind: Parameters<typeof syncSourceRevisionInTransaction>[1]['source']['kind'],
+      version: string,
+      reason: string,
+      usage: string,
+    ) => {
+      const source = await syncSourceRevisionInTransaction(client, {
+        occurredAt,
+        reason,
+        source: { ...scope, id, kind },
+        version,
+      });
+      dependencies.push({ source, usage });
+    };
+    await sync(
+      item.materialId,
+      'confirmed_content',
+      item.inputReference.confirmedContentVersionId,
+      'suggested assessment confirmed content snapshot',
+      'confirmed_content',
+    );
+    await sync(
+      item.materialId,
+      'current_learning_basis',
+      basisLineageVersion(item.basis),
+      'suggested assessment current learning basis snapshot',
+      'current_learning_basis',
+    );
+    await sync(
+      `${item.materialId}:${item.inputReference.questionRegionId}`,
+      'question',
+      item.question.versionId,
+      'suggested assessment question version',
+      'question',
+    );
+    await sync(
+      `${item.materialId}:${item.inputReference.responseRegionId}`,
+      'response',
+      item.response.versionId,
+      'suggested assessment response version',
+      'response',
+    );
+    await sync(
+      item.rubric.id,
+      'grading_basis',
+      item.rubric.version,
+      'suggested assessment rubric version',
+      'grading_basis',
+    );
+    await sync(
+      item.capability.id,
+      'capability',
+      item.capability.artifactHash,
+      'suggested assessment capability version',
+      'capability',
+    );
+    const publication = {
+      artifact: {
+        ...scope,
+        id: item.id,
+        kind: 'assessment' as const,
+        rebuildable: true,
+        version: acceptedVersionId,
+      },
+      commandId: `lineage:suggested-assessment:${acceptedVersionId}`,
+      dependencies,
+      expectedPreviousVersion: null,
+      occurredAt,
+    };
+    const saved = await publishArtifactInTransaction(client, publication, {
+      commandId: publication.commandId,
+      fingerprint: sourceLineageFingerprint(publication),
+    });
+    if (saved.status === 'conflict' || saved.status === 'idempotency_conflict') {
+      throw new Error('Suggested assessment lineage publication conflicted');
+    }
+  }
+
+  #hydrate(row: SuggestedAssessmentRow): StoredSuggestedAssessment {
+    return {
+      acceptedResult: row.accepted_result
+        ? json<StoredSuggestedAssessment['acceptedResult']>(row.accepted_result)
+        : null,
+      actor: json<StoredSuggestedAssessment['actor']>(row.actor),
+      ageBand: row.age_band,
+      authorization: row.authorization_snapshot
+        ? json<StoredSuggestedAssessment['authorization']>(row.authorization_snapshot)
+        : null,
+      basis: json<StoredSuggestedAssessment['basis']>(row.basis),
+      capability: row.capability_snapshot
+        ? json<StoredSuggestedAssessment['capability']>(row.capability_snapshot)
+        : null,
+      consentRevision: row.consent_revision,
+      createdAt: timestamp(row.created_at),
+      deduplicationKey: row.deduplication_key,
+      familySpaceId: row.family_space_id,
+      id: row.id,
+      inputReference: json<StoredSuggestedAssessment['inputReference']>(row.input_reference),
+      learningProfileId: row.learning_profile_id,
+      materialId: row.material_id,
+      modelRun: row.model_run ? json<StoredSuggestedAssessment['modelRun']>(row.model_run) : null,
+      question: json<StoredSuggestedAssessment['question']>(row.question),
+      requiresProfessionalReview: row.requires_professional_review,
+      response: json<StoredSuggestedAssessment['response']>(row.response),
+      review: row.review ? json<StoredSuggestedAssessment['review']>(row.review) : null,
+      rubric: row.rubric ? json<StoredSuggestedAssessment['rubric']>(row.rubric) : null,
+      stateRevision: row.state_revision,
+      status: row.status,
+      suggestion: row.suggestion
+        ? json<StoredSuggestedAssessment['suggestion']>(row.suggestion)
+        : null,
+      taskType: row.task_type,
+      unavailableReason: row.unavailable_reason,
+      updatedAt: timestamp(row.updated_at),
+    };
+  }
+
+  #select(): string {
+    return `SELECT id, family_space_id, learning_profile_id, material_id,
+                   deduplication_key, actor, age_band, consent_revision, task_type,
+                   input_reference, basis, question, response, rubric,
+                   requires_professional_review,
+                   authorization_snapshot, capability_snapshot, model_run, suggestion,
+                   status, unavailable_reason, state_revision, review, accepted_result,
+                   created_at, updated_at
+            FROM learning.suggested_assessments`;
+  }
+
+  async #withProfile<Value>(
+    learningProfileId: string,
+    operation: (client: PoolClient) => Promise<Value>,
+  ): Promise<Value> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL ROLE rhea_assessment_app');
+      await client.query('SET LOCAL search_path TO pg_catalog, learning');
+      await client.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
+        learningProfileId,
+      ]);
+      const result = await operation(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+}
+
 export function createPostgresAssessmentStore(databaseUrl: string) {
   const pool = new Pool({ connectionString: databaseUrl });
-  return { pool, store: new PostgresAssessmentStore(pool) };
+  return {
+    pool,
+    store: new PostgresAssessmentStore(pool),
+    suggestedStore: new PostgresSuggestedAssessmentStore(pool),
+  };
 }

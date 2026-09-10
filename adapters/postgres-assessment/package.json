@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@rhea/postgres-learning-content": "workspace:*",
+    "@rhea/quality-control": "workspace:*",
     "@types/node": "24.10.13",
     "@types/pg": "8.16.0",
     "typescript": "6.0.3",

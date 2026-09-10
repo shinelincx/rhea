@@ -1,8 +1,11 @@
 import {
   AssessmentError,
+  type DimensionEvidenceState,
   type AssessmentCorrection,
   type ObjectiveAssessmentInputReference,
   type ObjectiveGradingRule,
+  type OpenAssessmentReviewDecision,
+  type OpenAssessmentTaskType,
 } from '@rhea/assessment';
 
 function recordValue(value: unknown, label: string): Record<string, unknown> {
@@ -10,6 +13,64 @@ function recordValue(value: unknown, label: string): Record<string, unknown> {
     throw new AssessmentError('INPUT_INVALID', `${label}格式不正确`);
   }
   return value as Record<string, unknown>;
+}
+
+const OPEN_TASK_TYPES = new Set<OpenAssessmentTaskType>([
+  'chinese_expression',
+  'mathematics_process',
+  'english_expression',
+  'science_inquiry',
+]);
+
+export function openAssessmentTaskType(value: unknown): OpenAssessmentTaskType {
+  const taskType = stringValue(value, '开放题评价任务') as OpenAssessmentTaskType;
+  if (!OPEN_TASK_TYPES.has(taskType)) {
+    throw new AssessmentError('INPUT_INVALID', '暂不支持这种开放题评价任务');
+  }
+  return taskType;
+}
+
+export function openAssessmentReviewDecisions(value: unknown): OpenAssessmentReviewDecision[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 12) {
+    throw new AssessmentError('INPUT_INVALID', '请逐维提交 1 到 12 个复核决定');
+  }
+  return value.map((entry) => {
+    const body = recordValue(entry, '评价维度决定');
+    const action = stringValue(body.action, '复核动作');
+    const dimensionKey = stringValue(body.dimensionKey, '评价维度');
+    if (action === 'accept') return { action, dimensionKey };
+    const reason = stringValue(body.reason, '复核原因');
+    if (action === 'reject') return { action, dimensionKey, reason };
+    if (action !== 'modify') {
+      throw new AssessmentError('INPUT_INVALID', '复核动作必须是接受、修改或拒绝');
+    }
+    const modification = recordValue(body.modification, '修改后的维度结论');
+    const state = stringValue(modification.state, '维度证据状态');
+    if (
+      ![
+        'demonstrated',
+        'partially_demonstrated',
+        'not_demonstrated',
+        'insufficient_evidence',
+      ].includes(state)
+    ) {
+      throw new AssessmentError('INPUT_INVALID', '维度证据状态无效');
+    }
+    return {
+      action,
+      dimensionKey,
+      modification: {
+        evidenceExcerpt:
+          modification.evidenceExcerpt === null
+            ? null
+            : stringValue(modification.evidenceExcerpt, '作答证据'),
+        improvementSuggestion: stringValue(modification.improvementSuggestion, '改进建议'),
+        observation: stringValue(modification.observation, '维度观察'),
+        state: state as DimensionEvidenceState,
+      },
+      reason,
+    } as OpenAssessmentReviewDecision;
+  });
 }
 
 export function stringValue(value: unknown, label: string): string {
