@@ -6,7 +6,12 @@ import type {
 } from './types.js';
 
 export type GenerationCompletionResult =
-  'completed' | 'conflict' | 'consent_withdrawn' | 'source_changed';
+  | 'capability_contained'
+  | 'capability_unavailable'
+  | 'completed'
+  | 'conflict'
+  | 'consent_withdrawn'
+  | 'source_changed';
 
 export interface GeneratedLearningStore {
   cancel(input: {

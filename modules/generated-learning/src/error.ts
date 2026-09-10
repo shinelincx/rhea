@@ -1,4 +1,5 @@
 export type GeneratedLearningErrorCode =
+  | 'CAPABILITY_UNAVAILABLE'
   | 'GENERATION_NOT_READY'
   | 'GENERATION_REQUEST_NOT_FOUND'
   | 'INPUT_INVALID'

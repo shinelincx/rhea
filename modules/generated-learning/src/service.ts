@@ -1,4 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import type {
+  AuthorizationDecision,
+  AuthorizationPhase,
+  CapabilityUseSlice,
+  DegradedReason,
+} from '@rhea/quality-control';
 
 import { GeneratedLearningError } from './error.js';
 import { hasPrematureAnswerLeakage, verifyDeterministicContent } from './quality.js';
@@ -6,6 +13,7 @@ import { generatedLearningSourceKey, stableGeneratedLearningHash } from './sourc
 import type {
   CurrentGenerationBasisReader,
   GenerationPublicationGate,
+  GenerationQualityControlPort,
   ModelGatewayPort,
 } from './ports.js';
 import type { GeneratedLearningStore } from './store.js';
@@ -20,6 +28,7 @@ import type {
   GenerationUnavailableReason,
   ModelRunRecord,
   ModelTask,
+  ModelTaskResult,
   StoredGenerationRequest,
 } from './types.js';
 
@@ -29,10 +38,10 @@ const AI_DISCLOSURE = '我是 AI 学习助手，内容由 AI 生成并经过发�
 
 export interface GeneratedLearningServiceDependencies {
   basisReader: CurrentGenerationBasisReader;
-  capability: GeneratedLearningCapability;
   clock?: { readonly now: Date };
   modelGateway: ModelGatewayPort;
   publicationGate: GenerationPublicationGate;
+  qualityControl: GenerationQualityControlPort;
   store: GeneratedLearningStore;
 }
 
@@ -46,6 +55,85 @@ function requiredText(value: string, field: string, maxLength = 500): string {
 
 function hash(value: unknown): string {
   return stableGeneratedLearningHash(value);
+}
+
+function modelRun(
+  request: StoredGenerationRequest,
+  capability: GeneratedLearningCapability,
+  attempt: number,
+  succeeded: boolean,
+  result: ModelTaskResult | null,
+  finishedAt: string,
+): ModelRunRecord {
+  return {
+    attempt,
+    authorizationDecisionId: request.authorization.decisionId,
+    capabilityVersionId: capability.id,
+    externalTraceId: result?.externalTraceId ?? null,
+    finishedAt,
+    inputTokens: result?.inputTokens ?? null,
+    modelOrEngineVersion: capability.modelOrEngine.version,
+    observedProvider: result?.provider ?? null,
+    outputTokens: result?.outputTokens ?? null,
+    promptOrConfigVersion: capability.promptOrConfig.version,
+    provider: capability.provider.id,
+    providerVersion: capability.provider.version,
+    succeeded,
+  };
+}
+
+function capabilityUseSlice(source: GenerationSourceSnapshot): CapabilityUseSlice {
+  return {
+    basisState: source.basisHasConflict ? 'conflicted' : 'current',
+    gradeBand: source.ageBand,
+    imageQuality: 'not_applicable',
+    questionType: 'process',
+    riskLevel: 'medium',
+    subject: source.subject,
+  };
+}
+
+function authorizationSnapshot(decision: AuthorizationDecision) {
+  return {
+    containmentEpoch: decision.containmentEpoch,
+    degradedReason: decision.degradedReason,
+    decisionId: decision.decisionId,
+    issuedAt: decision.issuedAt,
+  };
+}
+
+function authorizedCapability(
+  decision: AuthorizationDecision,
+  expectedSlice: CapabilityUseSlice,
+): GeneratedLearningCapability | null {
+  if (
+    decision.scope.capabilityKey !== 'ai.generated-learning' ||
+    decision.scope.kind !== 'ai' ||
+    !isDeepStrictEqual(decision.scope.slice, expectedSlice) ||
+    !Number.isInteger(decision.containmentEpoch) ||
+    decision.containmentEpoch < 0 ||
+    !decision.decisionId.trim() ||
+    Number.isNaN(Date.parse(decision.issuedAt))
+  ) {
+    throw new GeneratedLearningError('CAPABILITY_UNAVAILABLE', '能力授权决策无效');
+  }
+  if (decision.status !== 'authorized') {
+    if (!decision.degradedReason || decision.primary) {
+      throw new GeneratedLearningError('CAPABILITY_UNAVAILABLE', '降级决策缺少明确原因');
+    }
+    return null;
+  }
+  const capability = decision.primary?.capabilityVersion;
+  if (
+    !capability ||
+    decision.degradedReason !== null ||
+    capability.kind !== 'ai' ||
+    capability.capabilityKey !== 'ai.generated-learning' ||
+    capability.promptOrConfig.kind !== 'prompt'
+  ) {
+    throw new GeneratedLearningError('CAPABILITY_UNAVAILABLE', '能力授权版本无效');
+  }
+  return structuredClone(capability);
 }
 
 function basisMatches(
@@ -76,6 +164,9 @@ function sanitizeSourceText(value: string): string {
 }
 
 function taskFor(request: StoredGenerationRequest): ModelTask {
+  if (!request.capability) {
+    throw new GeneratedLearningError('CAPABILITY_UNAVAILABLE', '当前没有可用的生成能力');
+  }
   return {
     ageBand: request.source.ageBand,
     capability: structuredClone(request.capability),
@@ -299,7 +390,7 @@ function generationChecks(
 }
 
 function requestFingerprint(input: {
-  capability: GeneratedLearningCapability;
+  capability: GeneratedLearningCapability | null;
   familySpaceId: string;
   learningProfileId: string;
   materialId: string;
@@ -321,6 +412,17 @@ function unavailableView(
   return view(request, { reason });
 }
 
+function degradedReason(
+  request: StoredGenerationRequest,
+  override?: GenerationUnavailableReason,
+): DegradedReason | null {
+  if (override === 'CAPABILITY_CONTAINED') return 'CAPABILITY_CONTAINED';
+  if (override === 'CAPABILITY_UNAVAILABLE') {
+    return request.authorization.degradedReason ?? 'NO_APPLICABLE_CAPABILITY';
+  }
+  return request.authorization.degradedReason;
+}
+
 function view(
   request: StoredGenerationRequest,
   override?: { reason: GenerationUnavailableReason },
@@ -330,9 +432,16 @@ function view(
     : (request.versions.find(({ id }) => id === request.currentVersionId) ?? null);
   const isReady = request.status === 'ready' && version !== null;
   const level = request.revealedHintLevel;
+  const unavailableReason = override?.reason ?? request.unavailableReason;
+  const capabilityDegradedReason = degradedReason(request, override?.reason);
   return {
     aiDisclosure: AI_DISCLOSURE,
-    capabilityVersion: structuredClone(request.capability),
+    authorizationDecision: {
+      containmentEpoch: request.authorization.containmentEpoch,
+      id: request.authorization.decisionId,
+      issuedAt: request.authorization.issuedAt,
+    },
+    capabilityVersion: request.capability ? structuredClone(request.capability) : null,
     contentState: override
       ? 'unavailable'
       : (version?.contentState ??
@@ -340,6 +449,9 @@ function view(
           ? 'unavailable'
           : 'unavailable')),
     createdAt: request.createdAt,
+    degraded: capabilityDegradedReason
+      ? { nextAction: 'retry_later', reason: capabilityDegradedReason, retryable: true }
+      : null,
     familySpaceId: request.familySpaceId,
     generatedContent: isReady
       ? {
@@ -367,22 +479,21 @@ function view(
       versionLabel: request.source.basis.versionLabel,
     },
     status: override ? 'unavailable' : request.status,
-    unavailableReason: override?.reason ?? request.unavailableReason,
+    unavailableReason,
     updatedAt: request.updatedAt,
   };
 }
 
 export class GeneratedLearningService {
   readonly #basisReader: CurrentGenerationBasisReader;
-  readonly #capability: GeneratedLearningCapability;
   readonly #clock: { readonly now: Date };
   readonly #modelGateway: ModelGatewayPort;
   readonly #publicationGate: GenerationPublicationGate;
+  readonly #qualityControl: GenerationQualityControlPort;
   readonly #store: GeneratedLearningStore;
 
   constructor(dependencies: GeneratedLearningServiceDependencies) {
     this.#basisReader = dependencies.basisReader;
-    this.#capability = structuredClone(dependencies.capability);
     this.#clock =
       dependencies.clock ??
       ({
@@ -392,6 +503,7 @@ export class GeneratedLearningService {
       } as const);
     this.#modelGateway = dependencies.modelGateway;
     this.#publicationGate = dependencies.publicationGate;
+    this.#qualityControl = dependencies.qualityControl;
     this.#store = dependencies.store;
   }
 
@@ -414,8 +526,16 @@ export class GeneratedLearningService {
     ) {
       throw new GeneratedLearningError('INPUT_INVALID', '学习依据快照与生成请求不一致');
     }
+    const useSlice = capabilityUseSlice(input.source);
+    const decision = await this.#qualityControl.authorizeCapability({
+      capabilityKey: 'ai.generated-learning',
+      familySpaceId: input.familySpaceId,
+      kind: 'ai',
+      slice: useSlice,
+    });
+    const capability = authorizedCapability(decision, useSlice);
     const fingerprint = requestFingerprint({
-      capability: this.#capability,
+      capability,
       familySpaceId: input.familySpaceId,
       learningProfileId: input.learningProfileId,
       materialId: input.materialId,
@@ -432,15 +552,15 @@ export class GeneratedLearningService {
       return this.#freshView(existing);
     }
     const createdAt = this.#clock.now.toISOString();
-    const unavailableReason =
-      this.#capability.availability !== 'approved'
-        ? ('CAPABILITY_UNAVAILABLE' as const)
-        : input.source.basisHasConflict
-          ? ('SOURCE_UNAVAILABLE' as const)
-          : null;
+    const unavailableReason = input.source.basisHasConflict
+      ? ('SOURCE_UNAVAILABLE' as const)
+      : capability
+        ? null
+        : ('CAPABILITY_UNAVAILABLE' as const);
     const request: StoredGenerationRequest = {
       actor: { ...input.actor },
-      capability: structuredClone(this.#capability),
+      authorization: authorizationSnapshot(decision),
+      capability,
       consentRevision: input.consentRevision,
       createdAt,
       currentVersionId: null,
@@ -498,7 +618,11 @@ export class GeneratedLearningService {
     request.status = 'generating';
     const expectedStateRevision = request.stateRevision;
 
-    if (!(await this.#canPublish(request))) {
+    if (!request.capability) {
+      return this.#fail(request, expectedStateRevision, 'CAPABILITY_UNAVAILABLE', [], []);
+    }
+    const capability = request.capability;
+    if (!(await this.#consentCanPublish(request))) {
       return this.#fail(request, expectedStateRevision, 'CONSENT_WITHDRAWN', [], []);
     }
     if (!(await this.#sourceIsCurrent(request))) {
@@ -510,36 +634,58 @@ export class GeneratedLearningService {
     let candidate: GeneratedLearningPackCandidate | null = null;
     let hadCandidate = false;
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt += 1) {
+      const beforeSendRejection = await this.#capabilityRejection(request, 'before_send');
+      if (beforeSendRejection) {
+        return this.#fail(
+          request,
+          expectedStateRevision,
+          beforeSendRejection,
+          latestChecks,
+          modelRuns,
+        );
+      }
+      let result: ModelTaskResult;
       try {
-        const result = await this.#modelGateway.runStructured(taskFor(request));
+        result = await this.#modelGateway.runStructured(taskFor(request));
+      } catch {
+        modelRuns.push(
+          modelRun(request, capability, attempt, false, null, this.#clock.now.toISOString()),
+        );
+        continue;
+      }
+      if (result.provider !== capability.provider.id) {
+        modelRuns.push(
+          modelRun(request, capability, attempt, false, result, this.#clock.now.toISOString()),
+        );
+        continue;
+      }
+      try {
         candidate = normalizeCandidateReferences(
           result.candidate,
           request.source,
         ) as GeneratedLearningPackCandidate;
         hadCandidate = true;
         latestChecks = generationChecks(candidate, request.source);
-        modelRuns.push({
-          attempt,
-          externalTraceId: result.externalTraceId,
-          finishedAt: this.#clock.now.toISOString(),
-          inputTokens: result.inputTokens,
-          outputTokens: result.outputTokens,
-          provider: requiredText(result.provider, '模型提供方', 120),
-          succeeded: true,
-        });
-        if (latestChecks.every(({ passed }) => passed)) break;
-        candidate = null;
       } catch {
-        modelRuns.push({
-          attempt,
-          externalTraceId: null,
-          finishedAt: this.#clock.now.toISOString(),
-          inputTokens: null,
-          outputTokens: null,
-          provider: 'unavailable',
-          succeeded: false,
-        });
+        modelRuns.push(
+          modelRun(request, capability, attempt, false, result, this.#clock.now.toISOString()),
+        );
+        continue;
       }
+      modelRuns.push(
+        modelRun(request, capability, attempt, true, result, this.#clock.now.toISOString()),
+      );
+      let afterReceiveRejection: 'CAPABILITY_CONTAINED' | 'CAPABILITY_UNAVAILABLE' | null;
+      try {
+        afterReceiveRejection = await this.#capabilityRejection(request, 'after_receive');
+      } catch {
+        return this.#fail(request, expectedStateRevision, 'CAPABILITY_UNAVAILABLE', [], modelRuns);
+      }
+      if (afterReceiveRejection) {
+        return this.#fail(request, expectedStateRevision, afterReceiveRejection, [], modelRuns);
+      }
+      if (latestChecks.every(({ passed }) => passed)) break;
+      candidate = null;
     }
     if (!candidate) {
       return this.#fail(
@@ -550,7 +696,7 @@ export class GeneratedLearningService {
         modelRuns,
       );
     }
-    if (!(await this.#canPublish(request))) {
+    if (!(await this.#consentCanPublish(request))) {
       return this.#fail(
         request,
         expectedStateRevision,
@@ -562,6 +708,16 @@ export class GeneratedLearningService {
     if (!(await this.#sourceIsCurrent(request))) {
       return this.#fail(request, expectedStateRevision, 'SOURCE_CHANGED', latestChecks, modelRuns);
     }
+    const publicationRejection = await this.#capabilityRejection(request, 'before_publish');
+    if (publicationRejection) {
+      return this.#fail(
+        request,
+        expectedStateRevision,
+        publicationRejection,
+        latestChecks,
+        modelRuns,
+      );
+    }
     const predecessor = await this.#store.findLatestReadyForSource(
       generatedLearningSourceKey(request.source),
       request.learningProfileId,
@@ -571,6 +727,7 @@ export class GeneratedLearningService {
     );
     const createdAt = this.#clock.now.toISOString();
     const version: GeneratedLearningContentVersion = {
+      authorization: structuredClone(request.authorization),
       capability: structuredClone(request.capability),
       checks: structuredClone(latestChecks),
       contentState:
@@ -605,6 +762,15 @@ export class GeneratedLearningService {
     if (completion === 'source_changed') {
       return this.#fail(request, expectedStateRevision, 'SOURCE_CHANGED', latestChecks, modelRuns);
     }
+    if (completion === 'capability_contained' || completion === 'capability_unavailable') {
+      return this.#fail(
+        request,
+        expectedStateRevision,
+        completion === 'capability_contained' ? 'CAPABILITY_CONTAINED' : 'CAPABILITY_UNAVAILABLE',
+        latestChecks,
+        modelRuns,
+      );
+    }
     if (completion === 'conflict') {
       return this.#freshView(await this.#requireRequest(request.id, request.learningProfileId));
     }
@@ -632,11 +798,13 @@ export class GeneratedLearningService {
     requestId: string;
   }): Promise<GeneratedLearningRequestView> {
     const request = await this.#requireRequest(input.requestId, input.learningProfileId);
+    const capabilityRejection = await this.#capabilityRejection(request, 'before_publish');
     if (
       request.status !== 'ready' ||
       !request.currentVersionId ||
-      !(await this.#canPublish(request)) ||
-      !(await this.#sourceIsCurrent(request))
+      !(await this.#consentCanPublish(request)) ||
+      !(await this.#sourceIsCurrent(request)) ||
+      capabilityRejection
     ) {
       throw new GeneratedLearningError('GENERATION_NOT_READY', '当前内容暂不可展开，请重新生成');
     }
@@ -660,6 +828,12 @@ export class GeneratedLearningService {
     }
     if (saved === 'source_changed') {
       return unavailableView(request, 'SOURCE_CHANGED');
+    }
+    if (saved === 'capability_contained' || saved === 'capability_unavailable') {
+      return unavailableView(
+        request,
+        saved === 'capability_contained' ? 'CAPABILITY_CONTAINED' : 'CAPABILITY_UNAVAILABLE',
+      );
     }
     if (saved === 'conflict') {
       const latest = await this.#requireRequest(request.id, request.learningProfileId);
@@ -696,17 +870,36 @@ export class GeneratedLearningService {
     return view(request);
   }
 
-  async #canPublish(request: StoredGenerationRequest): Promise<boolean> {
-    return (
-      request.capability.availability === 'approved' &&
-      this.#publicationGate.authorize({
-        ageBand: request.source.ageBand,
-        capability: request.capability,
-        consentRevision: request.consentRevision,
-        familySpaceId: request.familySpaceId,
-        learningProfileId: request.learningProfileId,
-      })
-    );
+  async #consentCanPublish(request: StoredGenerationRequest): Promise<boolean> {
+    return this.#publicationGate.authorize({
+      ageBand: request.source.ageBand,
+      consentRevision: request.consentRevision,
+      familySpaceId: request.familySpaceId,
+      learningProfileId: request.learningProfileId,
+    });
+  }
+
+  async #capabilityRejection(
+    request: StoredGenerationRequest,
+    phase: AuthorizationPhase,
+  ): Promise<'CAPABILITY_CONTAINED' | 'CAPABILITY_UNAVAILABLE' | null> {
+    if (!request.capability) return 'CAPABILITY_UNAVAILABLE';
+    const result = await this.#qualityControl.revalidateAuthorization({
+      decisionId: request.authorization.decisionId,
+      expectedContainmentEpoch: request.authorization.containmentEpoch,
+      phase,
+      route: 'primary',
+    });
+    if (result.status === 'rejected') {
+      return result.reason === 'CAPABILITY_CONTAINED'
+        ? 'CAPABILITY_CONTAINED'
+        : 'CAPABILITY_UNAVAILABLE';
+    }
+    return result.decisionId === request.authorization.decisionId &&
+      isDeepStrictEqual(result.capabilityVersion, request.capability) &&
+      result.containmentEpoch === request.authorization.containmentEpoch
+      ? null
+      : 'CAPABILITY_UNAVAILABLE';
   }
 
   async #fail(
@@ -740,12 +933,14 @@ export class GeneratedLearningService {
 
   async #freshView(request: StoredGenerationRequest): Promise<GeneratedLearningRequestView> {
     if (request.status !== 'ready') return view(request);
-    if (!(await this.#canPublish(request))) {
+    if (!(await this.#consentCanPublish(request))) {
       return unavailableView(request, 'CONSENT_WITHDRAWN');
     }
-    return (await this.#sourceIsCurrent(request))
-      ? view(request)
-      : unavailableView(request, 'SOURCE_CHANGED');
+    if (!(await this.#sourceIsCurrent(request))) {
+      return unavailableView(request, 'SOURCE_CHANGED');
+    }
+    const capabilityRejection = await this.#capabilityRejection(request, 'before_publish');
+    return capabilityRejection ? unavailableView(request, capabilityRejection) : view(request);
   }
 
   async #sourceIsCurrent(request: StoredGenerationRequest): Promise<boolean> {

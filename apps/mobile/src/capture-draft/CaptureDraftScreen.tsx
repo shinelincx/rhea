@@ -180,7 +180,9 @@ export function CaptureDraftScreen({
       !accessToken ||
       !submissionGateway ||
       !job ||
-      ['awaiting_confirmation', 'completed', 'failed', 'canceled'].includes(job.status)
+      ['awaiting_confirmation', 'completed', 'unavailable', 'failed', 'canceled'].includes(
+        job.status,
+      )
     ) {
       return;
     }
@@ -296,21 +298,10 @@ export function CaptureDraftScreen({
     void persist(deleteDraftPage(draft, pageId, now()));
   }
 
-  async function validate() {
-    if (!draft) {
-      return;
-    }
-    const result = validateDraft(draft);
-    setError(result.valid ? null : result.errors.join('\n'));
-    if (!result.valid) {
-      setNotice(null);
-      return;
-    }
-    if (!submissionGateway || !accessToken) {
-      setNotice('草稿检查通过，下一步将安全上传并批改。');
-      return;
-    }
+  async function submitDraftForRecognition() {
+    if (!draft || !submissionGateway || !accessToken) return;
     setWorking(true);
+    setError(null);
     setNotice('正在创建安全上传…');
     try {
       const submitted = await submissionGateway.submit({
@@ -327,6 +318,23 @@ export function CaptureDraftScreen({
     } finally {
       setWorking(false);
     }
+  }
+
+  async function validate() {
+    if (!draft) {
+      return;
+    }
+    const result = validateDraft(draft);
+    setError(result.valid ? null : result.errors.join('\n'));
+    if (!result.valid) {
+      setNotice(null);
+      return;
+    }
+    if (!submissionGateway || !accessToken) {
+      setNotice('草稿检查通过，下一步将安全上传并批改。');
+      return;
+    }
+    await submitDraftForRecognition();
   }
 
   async function confirmRecognition() {
@@ -480,12 +488,26 @@ export function CaptureDraftScreen({
                     {warningLabels[issue]}
                   </Text>
                 ))}
-                {!['completed', 'failed', 'canceled'].includes(job.status) ? (
+                {!['completed', 'unavailable', 'failed', 'canceled'].includes(job.status) ? (
                   <ActionButton
                     disabled={working}
                     label="取消处理"
                     onPress={() => void cancelProcessing()}
                   />
+                ) : null}
+                {job.status === 'unavailable' ? (
+                  <>
+                    <Text accessibilityLiveRegion="assertive" style={styles.warningText}>
+                      当前没有已签署且可用的识别能力，照片草稿仍保留在本机。
+                    </Text>
+                    {job.retryable && job.nextAction === 'retry' ? (
+                      <ActionButton
+                        disabled={working}
+                        label="稍后重试识别"
+                        onPress={() => void submitDraftForRecognition()}
+                      />
+                    ) : null}
+                  </>
                 ) : null}
               </View>
             ) : null}
@@ -943,6 +965,7 @@ function statusLabel(status: MobileProcessingJob['status']): string {
     queued: '正在排队',
     recognizing: '正在识别题目与作答',
     security_check: '正在检查文件安全',
+    unavailable: '识别能力暂不可用，草稿已保留',
   };
   return labels[status];
 }

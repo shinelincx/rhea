@@ -1,10 +1,22 @@
 import { sharpFileInspection } from '@rhea/media-inspection-adapter';
 import { createS3ObjectStore } from '@rhea/object-storage-adapter';
+import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
 import { createPostgresSubmissionStore } from '@rhea/postgres-submission';
-import { SubmissionService, deterministicRecognition } from '@rhea/submission';
+import { QualityControlService } from '@rhea/quality-control';
+import {
+  SubmissionService,
+  deterministicRecognition,
+  type RecognitionPort,
+} from '@rhea/submission';
 
 import { createLocalSubmission } from './create-local-submission.js';
 import type { SubmissionScheduler } from './submission.provider.js';
+
+const unavailableRecognition: RecognitionPort = {
+  async recognize() {
+    throw new Error('RECOGNITION_PROVIDER_UNAVAILABLE');
+  },
+};
 
 export interface ConfiguredSubmission {
   scheduler: SubmissionScheduler;
@@ -29,11 +41,8 @@ export function createConfiguredSubmission(
     }
     return { ...createLocalSubmission(), shutdownResources: [] };
   }
-  if (environment.NODE_ENV === 'production') {
-    throw new Error('A signed production recognition adapter is not configured');
-  }
-
   const { pool, store } = createPostgresSubmissionStore(environment.DATABASE_URL);
+  const qualityControl = new QualityControlService(new PostgresQualityControlStore(pool));
   const objectStorage = createS3ObjectStore({
     accessKeyId: required(environment, 'OBJECT_STORE_ACCESS_KEY'),
     bucket: required(environment, 'OBJECT_STORE_BUCKET'),
@@ -46,10 +55,12 @@ export function createConfiguredSubmission(
     secretAccessKey: required(environment, 'OBJECT_STORE_SECRET_KEY'),
   });
   const service = new SubmissionService({
+    capabilityAuthorization: qualityControl,
     fileInspection: sharpFileInspection,
     objectStore: objectStorage.store,
     rawAssetDeletions: store,
-    recognition: deterministicRecognition,
+    recognition:
+      environment.NODE_ENV === 'production' ? unavailableRecognition : deterministicRecognition,
     store,
   });
   return {

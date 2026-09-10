@@ -7,6 +7,7 @@ interface ErrorResponse {
 }
 
 const STATUS_BY_CODE: Record<GeneratedLearningErrorCode, number> = {
+  CAPABILITY_UNAVAILABLE: 503,
   GENERATION_NOT_READY: 409,
   GENERATION_REQUEST_NOT_FOUND: 404,
   INPUT_INVALID: 400,
@@ -26,11 +27,13 @@ export class GeneratedLearningExceptionFilter implements ExceptionFilter<Generat
           code: exception.code,
           message: exception.message,
           recovery:
-            exception.code === 'VERSION_CONFLICT'
-              ? 'REFRESH_GENERATION'
-              : exception.code === 'SOURCE_UNAVAILABLE'
-                ? 'CONFIRM_OR_CLASSIFY_SOURCE'
-                : 'CHECK_INPUT',
+            exception.code === 'CAPABILITY_UNAVAILABLE'
+              ? 'RETRY_LATER'
+              : exception.code === 'VERSION_CONFLICT'
+                ? 'REFRESH_GENERATION'
+                : exception.code === 'SOURCE_UNAVAILABLE'
+                  ? 'CONFIRM_OR_CLASSIFY_SOURCE'
+                  : 'CHECK_INPUT',
         },
       });
   }

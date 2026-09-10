@@ -3,18 +3,10 @@ import { LearningContentService } from '@rhea/learning-content';
 import { unavailableModelGateway } from '@rhea/model-gateway-adapter';
 import { createPostgresGeneratedLearningStore } from '@rhea/postgres-generated-learning';
 import { createPostgresLearningContentStore } from '@rhea/postgres-learning-content';
+import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
+import { QualityControlService } from '@rhea/quality-control';
 
 import { createGeneratedLearningJobHandler } from './generated-learning-handler.js';
-
-const WORKER_CAPABILITY = {
-  adapterVersion: 'unconfigured',
-  availability: 'unavailable',
-  id: 'learning-pack-unavailable-v1',
-  modelVersion: 'unconfigured',
-  policyVersion: 'child-learning-policy-v1',
-  region: 'cn-shanghai',
-  templateVersion: 'lesson-support-template-v1',
-} as const;
 
 export function createConfiguredGeneratedLearningProcessor(
   environment: Record<string, string | undefined>,
@@ -27,11 +19,12 @@ export function createConfiguredGeneratedLearningProcessor(
 
   const generated = createPostgresGeneratedLearningStore(databaseUrl);
   const learningContent = createPostgresLearningContentStore(databaseUrl);
+  const qualityControl = new QualityControlService(new PostgresQualityControlStore(generated.pool));
   const service = new GeneratedLearningService({
     basisReader: new LearningContentService({ store: learningContent.store }),
-    capability: WORKER_CAPABILITY,
     modelGateway: unavailableModelGateway,
     publicationGate: generated.publicationGate,
+    qualityControl,
     store: generated.store,
   });
   return {

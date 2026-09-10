@@ -15,6 +15,8 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/create-app.js';
+import { createLocalCapabilityAuthorization } from '../src/quality-control/local-capability-authorization.js';
+import { LOCAL_RECOGNITION_CAPABILITY } from '../src/submission/create-local-submission.js';
 
 describe('Learning content HTTP interface', () => {
   let app: NestFastifyApplication | undefined;
@@ -56,6 +58,7 @@ describe('Learning content HTTP interface', () => {
       kind: 'photo_processing',
     });
     const submissions = new SubmissionService({
+      capabilityAuthorization: createLocalCapabilityAuthorization(LOCAL_RECOGNITION_CAPABILITY),
       fileInspection: deterministicFileInspection,
       objectStore: new MemoryObjectStore(),
       rawAssetDeletions: new MemoryRawAssetDeletionLog(),

@@ -10,6 +10,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@rhea/quality-control": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "24.10.13",
     "typescript": "6.0.3",

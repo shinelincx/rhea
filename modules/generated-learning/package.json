@@ -11,7 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@rhea/learning-content": "workspace:*"
+    "@rhea/learning-content": "workspace:*",
+    "@rhea/quality-control": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.10.13",

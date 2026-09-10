@@ -22,14 +22,23 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/create-app.js';
+import { createLocalCapabilityAuthorization } from '../src/quality-control/local-capability-authorization.js';
+import { LOCAL_RECOGNITION_CAPABILITY } from '../src/submission/create-local-submission.js';
 
 const capability: GeneratedLearningCapability = {
-  adapterVersion: 'fixed-adapter-v1',
-  availability: 'approved',
+  adapter: { id: 'fixed-adapter', version: 'fixed-adapter-v1' },
+  artifactHash: 'f'.repeat(64),
+  capabilityKey: 'ai.generated-learning',
   id: 'learning-pack-capability-v1',
-  modelVersion: 'fixed-model-v1',
+  implementedBy: 'test-engineer',
+  kind: 'ai',
+  modelOrEngine: { id: 'fixed-model', version: 'fixed-model-v1' },
   policyVersion: 'child-learning-policy-v1',
+  promptOrConfig: { kind: 'prompt', version: 'lesson-support-prompt-v1' },
+  provider: { id: 'fixed-test-model', version: 'fixed-provider-contract-v1' },
   region: 'test-local',
+  registeredAt: '2026-09-01T00:00:00.000Z',
+  requiredSlicePolicyVersion: 'test-quality-policy-v1',
   templateVersion: 'lesson-support-template-v1',
 };
 
@@ -105,6 +114,7 @@ describe('Generated learning HTTP interface', () => {
     });
 
     const submissions = new SubmissionService({
+      capabilityAuthorization: createLocalCapabilityAuthorization(LOCAL_RECOGNITION_CAPABILITY),
       fileInspection: deterministicFileInspection,
       objectStore: new MemoryObjectStore(),
       rawAssetDeletions: new MemoryRawAssetDeletionLog(),
@@ -167,7 +177,6 @@ describe('Generated learning HTTP interface', () => {
     const model = new FixedModelGateway([{ candidate }]);
     const service = new GeneratedLearningService({
       basisReader: learningContent,
-      capability,
       modelGateway: model,
       publicationGate: {
         async authorize(input) {
@@ -178,6 +187,7 @@ describe('Generated learning HTTP interface', () => {
           return consent?.status === 'granted' && consent.revision === input.consentRevision;
         },
       },
+      qualityControl: createLocalCapabilityAuthorization(capability),
       store: new MemoryGeneratedLearningStore(),
     });
     const scheduled: GeneratedLearningRequestView[] = [];

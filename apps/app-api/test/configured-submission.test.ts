@@ -9,9 +9,18 @@ describe('configured submission boundary', () => {
     expect(configured.shutdownResources).toEqual([]);
   });
 
-  it('fails closed when production has no signed recognition adapter', () => {
-    expect(() =>
-      createConfiguredSubmission({ DATABASE_URL: 'postgresql://unused', NODE_ENV: 'production' }),
-    ).toThrow('signed production recognition adapter');
+  it('starts production in recoverable quality-governed mode without a provider default', async () => {
+    const configured = createConfiguredSubmission({
+      DATABASE_URL: 'postgresql://unused',
+      NODE_ENV: 'production',
+      OBJECT_STORE_ACCESS_KEY: 'test-access-key',
+      OBJECT_STORE_BUCKET: 'test-bucket',
+      OBJECT_STORE_ENDPOINT: 'http://127.0.0.1:9000',
+      OBJECT_STORE_SECRET_KEY: 'test-secret-key',
+    });
+
+    expect(configured.service).toBeDefined();
+    expect(configured.shutdownResources).toHaveLength(2);
+    await Promise.all(configured.shutdownResources.map((resource) => resource.close()));
   });
 });

@@ -1,4 +1,9 @@
-import type { ObjectStorePort, RawAssetDeletionReceipt, SubmissionStore } from './ports.js';
+import type {
+  ObjectStorePort,
+  RawAssetDeletionReceipt,
+  SaveJobResult,
+  SubmissionStore,
+} from './ports.js';
 import type { ProcessingJob, UploadSession } from './types.js';
 
 function clone<Value>(value: Value): Value {
@@ -41,13 +46,13 @@ export class MemorySubmissionStore implements SubmissionStore {
       : null;
   }
 
-  async saveJobIfRevision(job: ProcessingJob, expectedRevision: number): Promise<boolean> {
+  async saveJobIfRevision(job: ProcessingJob, expectedRevision: number): Promise<SaveJobResult> {
     const current = this.#jobs.get(job.id);
     if (!current || current.revision !== expectedRevision) {
-      return false;
+      return 'revision_conflict';
     }
     this.#jobs.set(job.id, clone(job));
-    return true;
+    return 'saved';
   }
 
   async saveUploadSession(session: UploadSession): Promise<void> {

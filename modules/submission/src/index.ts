@@ -1,4 +1,8 @@
-export { deterministicFileInspection, deterministicRecognition } from './deterministic-adapters.js';
+export {
+  deterministicFileInspection,
+  deterministicRecognition,
+  deterministicRecognitionCapability,
+} from './deterministic-adapters.js';
 export { SubmissionError, type SubmissionErrorCode } from './error.js';
 export { MemoryObjectStore, MemoryRawAssetDeletionLog, MemorySubmissionStore } from './memory.js';
 export type {
@@ -7,7 +11,9 @@ export type {
   ObjectStorePort,
   RawAssetDeletionPort,
   RawAssetDeletionReceipt,
+  RecognitionCapabilityAuthorizationPort,
   RecognitionPort,
+  SaveJobResult,
   SubmissionStore,
 } from './ports.js';
 export { SubmissionService, type SubmissionServiceDependencies } from './service.js';

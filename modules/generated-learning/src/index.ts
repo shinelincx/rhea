@@ -3,6 +3,7 @@ export { MemoryGeneratedLearningStore } from './memory.js';
 export type {
   CurrentGenerationBasisReader,
   GenerationPublicationGate,
+  GenerationQualityControlPort,
   ModelGatewayPort,
 } from './ports.js';
 export { GeneratedLearningService, type GeneratedLearningServiceDependencies } from './service.js';
@@ -21,6 +22,7 @@ export type {
   GeneratedQuestionCandidate,
   GeneratedQuestionView,
   GenerationCheck,
+  GenerationAuthorizationSnapshot,
   GenerationRequestStatus,
   GenerationSourceExcerpt,
   GenerationSourceSnapshot,

@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 
 import {
   generatedLearningSourceKey,
+  type GeneratedLearningCapability,
   type GeneratedLearningContentVersion,
   type GeneratedLearningStore,
   type GenerationCheck,
@@ -19,6 +20,7 @@ import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 interface RequestRow extends QueryResultRow {
   actor_id: string;
   actor_type: StoredGenerationRequest['actor']['type'];
+  authorization: unknown;
   capability: unknown;
   consent_revision: number;
   created_at: Date;
@@ -43,6 +45,7 @@ interface RequestRow extends QueryResultRow {
 }
 
 interface VersionRow extends QueryResultRow {
+  authorization: unknown;
   capability: unknown;
   checks: unknown;
   content_state: GeneratedLearningContentVersion['contentState'];
@@ -64,6 +67,62 @@ const REQUIRED_GENERATION_CHECKS = new Set<GenerationCheck['kind']>([
   'source_coverage',
 ]);
 
+const MODEL_RUN_FIELDS = [
+  'attempt',
+  'authorizationDecisionId',
+  'capabilityVersionId',
+  'externalTraceId',
+  'finishedAt',
+  'inputTokens',
+  'modelOrEngineVersion',
+  'observedProvider',
+  'outputTokens',
+  'promptOrConfigVersion',
+  'provider',
+  'providerVersion',
+  'succeeded',
+] as const;
+
+function modelRunsMatch(
+  runs: readonly ModelRunRecord[],
+  authorization: StoredGenerationRequest['authorization'],
+  capability: GeneratedLearningCapability,
+  requireSuccess: boolean,
+): boolean {
+  let hasSuccess = false;
+  for (const run of runs) {
+    if (
+      typeof run !== 'object' ||
+      run === null ||
+      Object.keys(run).length !== MODEL_RUN_FIELDS.length ||
+      !MODEL_RUN_FIELDS.every((field) => Object.hasOwn(run, field)) ||
+      !Number.isInteger(run.attempt) ||
+      run.attempt < 1 ||
+      run.authorizationDecisionId !== authorization.decisionId ||
+      run.capabilityVersionId !== capability.id ||
+      run.provider !== capability.provider.id ||
+      run.providerVersion !== capability.provider.version ||
+      run.modelOrEngineVersion !== capability.modelOrEngine.version ||
+      run.promptOrConfigVersion !== capability.promptOrConfig.version ||
+      (run.observedProvider !== null &&
+        (typeof run.observedProvider !== 'string' || run.observedProvider.trim().length === 0)) ||
+      (run.externalTraceId !== null &&
+        (typeof run.externalTraceId !== 'string' || run.externalTraceId.trim().length === 0)) ||
+      !Number.isFinite(Date.parse(run.finishedAt)) ||
+      (run.inputTokens !== null &&
+        (!Number.isSafeInteger(run.inputTokens) || run.inputTokens < 0)) ||
+      (run.outputTokens !== null &&
+        (!Number.isSafeInteger(run.outputTokens) || run.outputTokens < 0)) ||
+      typeof run.succeeded !== 'boolean' ||
+      (run.succeeded && run.observedProvider !== capability.provider.id)
+    ) {
+      return false;
+    }
+    hasSuccess ||= run.succeeded;
+  }
+  return !requireSuccess || hasSuccess;
+}
+
 function allRequiredChecksPass(checks: readonly GenerationCheck[]): boolean {
   return (
     checks.length === REQUIRED_GENERATION_CHECKS.size &&
@@ -80,13 +139,21 @@ function timestamp(value: Date): string {
   return value.toISOString();
 }
 
+function legacyAuthorization(row: RequestRow): StoredGenerationRequest['authorization'] {
+  return {
+    containmentEpoch: 0,
+    degradedReason: 'NO_SIGNED_CAPABILITY',
+    decisionId: `legacy-unverified:${row.id}`,
+    issuedAt: timestamp(row.created_at),
+  };
+}
+
 export class PostgresGeneratedLearningStore
   implements GeneratedLearningStore, GenerationPublicationGate
 {
   constructor(private readonly pool: Pool) {}
 
   async authorize(input: Parameters<GenerationPublicationGate['authorize']>[0]): Promise<boolean> {
-    if (input.capability.availability !== 'approved') return false;
     return this.#withProfile(input.learningProfileId, async (client) => {
       await this.#setFamily(client, input.familySpaceId);
       const result = await client.query<{ authorized: boolean }>(
@@ -138,12 +205,15 @@ export class PostgresGeneratedLearningStore
       }
       const source = json<GenerationSourceSnapshot>(request.source_snapshot);
       const capability = json<StoredGenerationRequest['capability']>(request.capability);
+      const authorization = json<StoredGenerationRequest['authorization']>(request.authorization);
       if (
-        capability.availability !== 'approved' ||
+        !capability ||
         !isDeepStrictEqual(input.version.capability, capability) ||
+        !isDeepStrictEqual(input.version.authorization, authorization) ||
         !isDeepStrictEqual(input.version.source, source) ||
         !isDeepStrictEqual(input.version.checks, input.latestChecks) ||
-        !allRequiredChecksPass(input.latestChecks)
+        !allRequiredChecksPass(input.latestChecks) ||
+        !modelRunsMatch(input.modelRuns, authorization, capability, true)
       ) {
         return 'conflict';
       }
@@ -153,7 +223,7 @@ export class PostgresGeneratedLearningStore
         `SELECT learning.complete_generated_learning_request(
            $1, $2, $3, $4, $5, $6, $7,
            $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb,
-           $12::jsonb, $13::jsonb, $14
+           $12::jsonb, $13::jsonb, $14::jsonb, $15
          ) AS result`,
         [
           input.requestId,
@@ -163,6 +233,7 @@ export class PostgresGeneratedLearningStore
           input.version.predecessorId,
           input.version.revision,
           input.version.contentState,
+          JSON.stringify(input.version.authorization),
           JSON.stringify(input.version.capability),
           JSON.stringify(input.version.source),
           JSON.stringify(input.version.pack),
@@ -177,13 +248,14 @@ export class PostgresGeneratedLearningStore
   }
 
   async create(request: StoredGenerationRequest): Promise<boolean> {
+    if (request.modelRuns.length !== 0) return false;
     return this.#withProfile(request.learningProfileId, async (client) => {
       await this.#setFamily(client, request.familySpaceId);
       const inserted = await client.query<{ created: boolean }>(
         `SELECT learning.create_generated_learning_request(
            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-           $11::jsonb, $12::jsonb, $13, $14, $15, $16, $17, $18,
-           $19, $20::jsonb, $21::jsonb, $22, $23
+           $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17, $18, $19,
+           $20, $21::jsonb, $22::jsonb, $23, $24
          ) AS created`,
         [
           request.id,
@@ -196,7 +268,8 @@ export class PostgresGeneratedLearningStore
           request.actor.type,
           request.actor.id,
           request.consentRevision,
-          JSON.stringify(request.capability),
+          JSON.stringify(request.authorization),
+          request.capability ? JSON.stringify(request.capability) : null,
           JSON.stringify(request.source),
           generatedLearningSourceKey(request.source),
           request.status,
@@ -222,6 +295,14 @@ export class PostgresGeneratedLearningStore
         !request ||
         request.status !== 'generating' ||
         request.state_revision !== input.expectedStateRevision
+      ) {
+        return false;
+      }
+      const capability = json<StoredGenerationRequest['capability']>(request.capability);
+      const authorization = json<StoredGenerationRequest['authorization']>(request.authorization);
+      if (
+        input.modelRuns.length > 0 &&
+        (!capability || !modelRunsMatch(input.modelRuns, authorization, capability, false))
       ) {
         return false;
       }
@@ -321,6 +402,8 @@ export class PostgresGeneratedLearningStore
         return 'conflict';
       }
       await this.#setFamily(client, request.family_space_id);
+      const capability = json<StoredGenerationRequest['capability']>(request.capability);
+      if (!capability) return 'capability_unavailable';
       const usageId = randomUUID();
       const result = await client.query<{ result: GenerationCompletionResult }>(
         `SELECT learning.reveal_generated_learning_hint(
@@ -344,16 +427,25 @@ export class PostgresGeneratedLearningStore
 
   async #hydrateRequest(client: PoolClient, row: RequestRow): Promise<StoredGenerationRequest> {
     const versions = await client.query<VersionRow>(
-      `SELECT id, revision, predecessor_id, content_state, capability,
+      `SELECT id, revision, predecessor_id, content_state,
+              authorization_snapshot AS authorization, capability,
               source_snapshot, pack, checks, created_at
        FROM learning.generated_learning_content_versions
        WHERE request_id = $1
        ORDER BY revision`,
       [row.id],
     );
+    const authorization =
+      row.authorization === null
+        ? legacyAuthorization(row)
+        : json<StoredGenerationRequest['authorization']>(row.authorization);
     return {
       actor: { id: row.actor_id, type: row.actor_type },
-      capability: json<StoredGenerationRequest['capability']>(row.capability),
+      authorization,
+      capability:
+        row.authorization === null
+          ? null
+          : json<StoredGenerationRequest['capability']>(row.capability),
       consentRevision: row.consent_revision,
       createdAt: timestamp(row.created_at),
       currentVersionId: row.current_version_id,
@@ -376,6 +468,10 @@ export class PostgresGeneratedLearningStore
       unavailableReason: row.unavailable_reason,
       updatedAt: timestamp(row.updated_at),
       versions: versions.rows.map((version) => ({
+        authorization:
+          version.authorization === null
+            ? structuredClone(authorization)
+            : json<GeneratedLearningContentVersion['authorization']>(version.authorization),
         capability: json<GeneratedLearningContentVersion['capability']>(version.capability),
         checks: json<GenerationCheck[]>(version.checks),
         contentState: version.content_state,
@@ -401,7 +497,8 @@ export class PostgresGeneratedLearningStore
   #requestSelect(): string {
     return `SELECT id, family_space_id, learning_profile_id, material_id,
                    idempotency_key, request_fingerprint, purpose,
-                   actor_type, actor_id, consent_revision, capability,
+                   actor_type, actor_id, consent_revision,
+                   authorization_snapshot AS authorization, capability,
                    source_snapshot, source_key, status, unavailable_reason,
                    current_version_id, revealed_hint_level,
                    processing_lease_expires_at, state_revision,

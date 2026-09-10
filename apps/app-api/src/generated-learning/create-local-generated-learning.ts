@@ -7,17 +7,8 @@ import {
 } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 
+import { createLocalCapabilityAuthorization } from '../quality-control/local-capability-authorization.js';
 import type { GeneratedLearningScheduler } from './generated-learning.provider.js';
-
-export const UNAVAILABLE_GENERATED_LEARNING_CAPABILITY: GeneratedLearningCapability = {
-  adapterVersion: 'unconfigured',
-  availability: 'unavailable',
-  id: 'learning-pack-unavailable-v1',
-  modelVersion: 'unconfigured',
-  policyVersion: 'child-learning-policy-v1',
-  region: 'cn-shanghai',
-  templateVersion: 'lesson-support-template-v1',
-};
 
 function ageBandForGrade(
   grade: number | null,
@@ -36,7 +27,6 @@ export function createLocalGeneratedLearning(
 ): { scheduler: GeneratedLearningScheduler; service: GeneratedLearningService } {
   const service = new GeneratedLearningService({
     basisReader: learningContent,
-    capability: options.capability ?? UNAVAILABLE_GENERATED_LEARNING_CAPABILITY,
     modelGateway:
       options.modelGateway ??
       ({
@@ -57,6 +47,7 @@ export function createLocalGeneratedLearning(
         );
       },
     },
+    qualityControl: createLocalCapabilityAuthorization(options.capability ?? null),
     store: new MemoryGeneratedLearningStore(),
   });
   return {

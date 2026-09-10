@@ -1,23 +1,225 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { applyMigrations, loadDefaultMigrations } from '@rhea/database';
 import {
   generatedLearningSourceKey,
   type GeneratedLearningContentVersion,
   type GenerationSourceSnapshot,
+  type ModelRunRecord,
   type StoredGenerationRequest,
 } from '@rhea/generated-learning';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { PostgresQualityControlStore } from '../../postgres-quality-control/src/index.js';
+import {
+  QualityControlService,
+  type AuthorizationDecision,
+  type CapabilityUseSlice,
+  type CapabilityVersion,
+  type EvaluationSlice,
+  type RequiredSlicePolicy,
+} from '../../../modules/quality-control/src/index.js';
 import { PostgresGeneratedLearningStore } from '../src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = databaseUrl ? describe : describe.skip;
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined;
 
+const generatedLearningUseSlice = {
+  basisState: 'current',
+  gradeBand: 'middle_primary',
+  imageQuality: 'not_applicable',
+  questionType: 'process',
+  riskLevel: 'medium',
+  subject: 'mathematics',
+} satisfies CapabilityUseSlice;
+
+const recognitionUseSlice = {
+  basisState: 'not_applicable',
+  gradeBand: 'unclassified',
+  imageQuality: 'clear',
+  questionType: 'unclassified',
+  riskLevel: 'unclassified',
+  subject: 'unclassified',
+} satisfies CapabilityUseSlice;
+
+const requiredEvaluationSlices = [
+  {
+    basisState: 'current',
+    gradeBand: 'lower_primary',
+    imageQuality: 'clear',
+    questionType: 'objective',
+    riskLevel: 'low',
+    subject: 'chinese',
+  },
+  {
+    basisState: 'conflicted',
+    gradeBand: 'middle_primary',
+    imageQuality: 'degraded',
+    questionType: 'open_response',
+    riskLevel: 'medium',
+    subject: 'mathematics',
+  },
+  {
+    basisState: 'insufficient',
+    gradeBand: 'upper_primary',
+    imageQuality: 'unusable',
+    questionType: 'process',
+    riskLevel: 'high',
+    subject: 'english',
+  },
+  {
+    basisState: 'current',
+    gradeBand: 'lower_primary',
+    imageQuality: 'clear',
+    questionType: 'oral',
+    riskLevel: 'medium',
+    subject: 'science',
+  },
+  {
+    basisState: 'conflicted',
+    gradeBand: 'middle_primary',
+    imageQuality: 'degraded',
+    questionType: 'science_observation',
+    riskLevel: 'high',
+    subject: 'chinese',
+  },
+] satisfies EvaluationSlice[];
+
+let qualityControl: QualityControlService | undefined;
+let releasedCapability: CapabilityVersion | undefined;
+let releasedRecognitionCapability: CapabilityVersion | undefined;
+const noSignedCapabilityFamilySpaceId = randomUUID();
+let noSignedCapabilityDecision: AuthorizationDecision | undefined;
+
+async function registerReleasedCapability(
+  service: QualityControlService,
+  options: {
+    capabilityKey: string;
+    kind: CapabilityVersion['kind'];
+    unqualifiedFamilySpaceId?: string;
+    useSlice: CapabilityUseSlice;
+  },
+): Promise<{ unqualifiedDecision: AuthorizationDecision | null; version: CapabilityVersion }> {
+  const suffix = randomUUID();
+  const policy: RequiredSlicePolicy = {
+    minimumSampleSize: 20,
+    registeredAt: '2026-09-10T07:00:00.000Z',
+    requiredSignoffRoles: ['quality_owner', 'domain_reviewer', 'child_safety'],
+    requiredSlices: requiredEvaluationSlices,
+    version: `generated-learning-quality-policy-${suffix}`,
+  };
+  const version: CapabilityVersion = {
+    adapter: {
+      id: options.kind === 'ai' ? 'fixed-adapter' : 'fixed-recognition-adapter',
+      version: options.kind === 'ai' ? 'fixed-adapter-v1' : 'fixed-recognition-v1',
+    },
+    artifactHash: 'f'.repeat(64),
+    capabilityKey: options.capabilityKey,
+    id: `${options.kind}-capability-${suffix}`,
+    implementedBy: `test-engineer-${suffix}`,
+    kind: options.kind,
+    modelOrEngine: {
+      id: options.kind === 'ai' ? 'fixed-model' : 'fixed-ocr-engine',
+      version: options.kind === 'ai' ? 'fixed-model-v1' : 'fixed-ocr-engine-v1',
+    },
+    policyVersion: 'child-learning-policy-v1',
+    promptOrConfig: {
+      kind: options.kind === 'ai' ? 'prompt' : 'config',
+      version: options.kind === 'ai' ? 'lesson-support-prompt-v1' : 'recognition-config-v1',
+    },
+    provider: {
+      id: options.kind === 'ai' ? 'fixed-test-model' : 'fixed-test-recognition',
+      version: 'fixed-provider-contract-v1',
+    },
+    region: 'test-local',
+    registeredAt: '2026-09-10T07:00:01.000Z',
+    requiredSlicePolicyVersion: policy.version,
+    templateVersion: 'lesson-support-template-v1',
+  };
+
+  await service.registerSlicePolicy({ commandId: `register-policy-${suffix}`, policy });
+  let record = await service.registerCapability({
+    commandId: `register-capability-${suffix}`,
+    version,
+  });
+  const unqualifiedDecision = options.unqualifiedFamilySpaceId
+    ? await service.authorizeCapability({
+        capabilityKey: version.capabilityKey,
+        familySpaceId: options.unqualifiedFamilySpaceId,
+        kind: version.kind,
+        slice: options.useSlice,
+      })
+    : null;
+  for (const [index, slice] of requiredEvaluationSlices.entries()) {
+    record = await service.recordEvaluation({
+      commandId: `record-evaluation-${suffix}-${index}`,
+      expectedRevision: record.revision,
+      run: {
+        capabilityVersionId: version.id,
+        completedAt: `2026-09-10T07:01:0${index}.000Z`,
+        evidenceHash: String(index + 1).repeat(64),
+        id: `evaluation-${suffix}-${index}`,
+        metrics: { criticalErrorCount: 0, passRate: 1 },
+        outcome: 'passed',
+        policyVersion: policy.version,
+        sampleSize: 100,
+        slice,
+      },
+    });
+  }
+  const card = await service.getQualityCard(version.id);
+  for (const [index, role] of (
+    ['quality_owner', 'domain_reviewer', 'child_safety'] as const
+  ).entries()) {
+    const qualification = await service.signOffCapability({
+      capabilityVersionId: version.id,
+      commandId: `signoff-${suffix}-${role}`,
+      evidenceHash: card.evidenceHash,
+      expectedRevision: record.revision,
+      policyVersion: policy.version,
+      signedAt: `2026-09-10T07:02:0${index}.000Z`,
+      signer: { id: `${role}-${suffix}`, role },
+    });
+    record = await service.getCapability(qualification.capabilityVersionId);
+  }
+  for (const rollout of [
+    { changedAt: '2026-09-10T07:03:00.000Z', percentage: 0, stage: 'shadow' as const },
+    { changedAt: '2026-09-10T07:04:00.000Z', percentage: 10, stage: 'small' as const },
+    { changedAt: '2026-09-10T07:05:00.000Z', percentage: 50, stage: 'expanded' as const },
+    { changedAt: '2026-09-10T07:06:00.000Z', percentage: 100, stage: 'general' as const },
+  ]) {
+    record = await service.advanceRollout({
+      allowedUseSlices: [options.useSlice],
+      capabilityVersionId: version.id,
+      commandId: `rollout-${suffix}-${rollout.stage}`,
+      expectedRevision: record.revision,
+      ...rollout,
+    });
+  }
+  return { unqualifiedDecision, version };
+}
+
 beforeAll(async () => {
-  if (pool) await applyMigrations(pool, await loadDefaultMigrations());
+  if (!pool) return;
+  await applyMigrations(pool, await loadDefaultMigrations());
+  qualityControl = new QualityControlService(new PostgresQualityControlStore(pool));
+  const generatedLearningRelease = await registerReleasedCapability(qualityControl, {
+    capabilityKey: 'ai.generated-learning',
+    kind: 'ai',
+    unqualifiedFamilySpaceId: noSignedCapabilityFamilySpaceId,
+    useSlice: generatedLearningUseSlice,
+  });
+  releasedCapability = generatedLearningRelease.version;
+  noSignedCapabilityDecision = generatedLearningRelease.unqualifiedDecision ?? undefined;
+  releasedRecognitionCapability = (
+    await registerReleasedCapability(qualityControl, {
+      capabilityKey: 'submission.recognition',
+      kind: 'ocr',
+      useSlice: recognitionUseSlice,
+    })
+  ).version;
 });
 
 afterAll(async () => pool?.end());
@@ -32,9 +234,14 @@ interface Fixture {
   source: GenerationSourceSnapshot;
 }
 
-async function createFixture(): Promise<Fixture> {
+async function createFixture(familySpaceId = randomUUID()): Promise<Fixture> {
   if (!pool) throw new Error('Database is not configured');
-  const familySpaceId = randomUUID();
+  const qualityAuthority = qualityControl;
+  const generatedLearningCapability = releasedCapability;
+  const recognitionCapability = releasedRecognitionCapability;
+  if (!qualityAuthority || !generatedLearningCapability || !recognitionCapability) {
+    throw new Error('Quality-control fixture is not initialized');
+  }
   const guardianId = randomUUID();
   const learningProfileId = randomUUID();
   const uploadSessionId = randomUUID();
@@ -53,6 +260,18 @@ async function createFixture(): Promise<Fixture> {
   const basisHash = 'b'.repeat(64);
   const questionText = '36 ÷ 4 = ?';
   const answerText = '9';
+  const recognitionDecision = await qualityAuthority.authorizeCapability({
+    capabilityKey: recognitionCapability.capabilityKey,
+    familySpaceId,
+    kind: recognitionCapability.kind,
+    slice: recognitionUseSlice,
+  });
+  if (
+    recognitionDecision.status !== 'authorized' ||
+    recognitionDecision.primary?.capabilityVersion.id !== recognitionCapability.id
+  ) {
+    throw new Error('Signed recognition capability was not authorized');
+  }
   const regions = [
     {
       confidence: 0.99,
@@ -130,9 +349,30 @@ async function createFixture(): Promise<Fixture> {
     );
     await client.query(
       `INSERT INTO learning.recognition_candidates
-        (id, job_id, learning_profile_id, adapter_version, source_hash, regions)
-       VALUES ($1, $2, $3, 'fixed-recognition-v1', $4, $5::jsonb)`,
-      [candidateId, processingJobId, learningProfileId, sourceHash, JSON.stringify(regions)],
+        (id, job_id, family_space_id, learning_profile_id, adapter_version,
+         source_hash, regions, finished_at, capability_key, capability_kind,
+         capability_version_id, authorization_decision_id,
+         authorization_containment_epoch, authorization_family_space_hash,
+         capability_snapshot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, $12,
+               $13, $14, $15::jsonb)`,
+      [
+        candidateId,
+        processingJobId,
+        familySpaceId,
+        learningProfileId,
+        recognitionCapability.adapter.version,
+        sourceHash,
+        JSON.stringify(regions),
+        '2026-09-10T07:30:00.000Z',
+        recognitionCapability.capabilityKey,
+        recognitionCapability.kind,
+        recognitionCapability.id,
+        recognitionDecision.decisionId,
+        recognitionDecision.containmentEpoch,
+        createHash('sha256').update(familySpaceId).digest('hex'),
+        JSON.stringify(recognitionCapability),
+      ],
     );
     await client.query(
       `INSERT INTO learning.confirmed_content_versions
@@ -252,17 +492,28 @@ async function createFixture(): Promise<Fixture> {
     unitName: '除法',
   };
   const createdAt = '2026-09-10T08:00:00.000Z';
+  const decision = await qualityAuthority.authorizeCapability({
+    capabilityKey: generatedLearningCapability.capabilityKey,
+    familySpaceId,
+    kind: generatedLearningCapability.kind,
+    slice: generatedLearningUseSlice,
+  });
+  if (
+    decision.status !== 'authorized' ||
+    decision.primary?.capabilityVersion.id !== generatedLearningCapability.id
+  ) {
+    throw new Error('Signed generated-learning capability was not authorized');
+  }
+  const capability = decision.primary.capabilityVersion;
   const request: StoredGenerationRequest = {
     actor: { id: learningProfileId, type: 'learner' },
-    capability: {
-      adapterVersion: 'fixed-adapter-v1',
-      availability: 'approved',
-      id: 'learning-pack-capability-v1',
-      modelVersion: 'fixed-model-v1',
-      policyVersion: 'child-learning-policy-v1',
-      region: 'test-local',
-      templateVersion: 'lesson-support-template-v1',
+    authorization: {
+      containmentEpoch: decision.containmentEpoch,
+      degradedReason: decision.degradedReason,
+      decisionId: decision.decisionId,
+      issuedAt: decision.issuedAt,
     },
+    capability,
     consentRevision: 1,
     createdAt,
     currentVersionId: null,
@@ -296,7 +547,9 @@ async function createFixture(): Promise<Fixture> {
 }
 
 function versionFor(request: StoredGenerationRequest): GeneratedLearningContentVersion {
+  if (!request.capability) throw new Error('fixture requires an approved capability');
   return {
+    authorization: structuredClone(request.authorization),
     capability: structuredClone(request.capability),
     checks: [
       { detail: '适合年龄层级', kind: 'age_appropriateness', passed: true },
@@ -342,6 +595,29 @@ function versionFor(request: StoredGenerationRequest): GeneratedLearningContentV
   };
 }
 
+function successfulModelRunFor(
+  request: StoredGenerationRequest,
+  finishedAt: string,
+  externalTraceId: string,
+): ModelRunRecord {
+  if (!request.capability) throw new Error('fixture requires an approved capability');
+  return {
+    attempt: 1,
+    authorizationDecisionId: request.authorization.decisionId,
+    capabilityVersionId: request.capability.id,
+    externalTraceId,
+    finishedAt,
+    inputTokens: 100,
+    modelOrEngineVersion: request.capability.modelOrEngine.version,
+    observedProvider: request.capability.provider.id,
+    outputTokens: 200,
+    promptOrConfigVersion: request.capability.promptOrConfig.version,
+    provider: request.capability.provider.id,
+    providerVersion: request.capability.provider.version,
+    succeeded: true,
+  };
+}
+
 async function mutateFixture(fixture: Fixture, sql: string, values: unknown[] = []): Promise<void> {
   if (!pool) throw new Error('Database is not configured');
   const client = await pool.connect();
@@ -381,8 +657,8 @@ async function createAsGeneratedLearningRole(
     const result = await client.query<{ created: boolean }>(
       `SELECT learning.create_generated_learning_request(
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-         $11::jsonb, $12::jsonb, $13, $14, $15, $16, $17, $18,
-         $19, $20::jsonb, $21::jsonb, $22, $23
+         $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16, $17, $18, $19,
+         $20, $21::jsonb, $22::jsonb, $23, $24
        ) AS created`,
       [
         request.id,
@@ -395,7 +671,8 @@ async function createAsGeneratedLearningRole(
         request.actor.type,
         request.actor.id,
         request.consentRevision,
-        JSON.stringify(request.capability),
+        JSON.stringify(request.authorization),
+        request.capability ? JSON.stringify(request.capability) : null,
         JSON.stringify(request.source),
         sourceKey,
         request.status,
@@ -443,7 +720,7 @@ async function expectAtomicCompletionRefusal(
       expectedStateRevision: 1,
       latestChecks: version.checks,
       learningProfileId: fixture.learningProfileId,
-      modelRuns: [],
+      modelRuns: [successfulModelRunFor(fixture.request, version.createdAt, 'fixture-trace')],
       requestId: fixture.request.id,
       version,
     }),
@@ -496,7 +773,7 @@ async function publishFixture(
       expectedStateRevision: 1,
       latestChecks: version.checks,
       learningProfileId: fixture.learningProfileId,
-      modelRuns: [],
+      modelRuns: [successfulModelRunFor(fixture.request, version.createdAt, 'published-fixture')],
       requestId: fixture.request.id,
       version,
     }),
@@ -513,7 +790,6 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     await expect(
       store.authorize({
         ageBand: fixture.source.ageBand,
-        capability: fixture.request.capability,
         consentRevision: fixture.request.consentRevision,
         familySpaceId: fixture.familySpaceId,
         learningProfileId: fixture.learningProfileId,
@@ -522,7 +798,6 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     await expect(
       store.authorize({
         ageBand: 'lower_primary',
-        capability: fixture.request.capability,
         consentRevision: fixture.request.consentRevision,
         familySpaceId: fixture.familySpaceId,
         learningProfileId: fixture.learningProfileId,
@@ -550,11 +825,17 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         modelRuns: [
           {
             attempt: 1,
+            authorizationDecisionId: fixture.request.authorization.decisionId,
+            capabilityVersionId: fixture.request.capability!.id,
             externalTraceId: 'trace-1',
             finishedAt: version.createdAt,
             inputTokens: 100,
+            modelOrEngineVersion: fixture.request.capability!.modelOrEngine.version,
+            observedProvider: fixture.request.capability!.provider.id,
             outputTokens: 200,
-            provider: 'fixed-test-model',
+            promptOrConfigVersion: fixture.request.capability!.promptOrConfig.version,
+            provider: fixture.request.capability!.provider.id,
+            providerVersion: fixture.request.capability!.provider.version,
             succeeded: true,
           },
         ],
@@ -566,11 +847,33 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     await expect(
       store.findById(fixture.request.id, fixture.learningProfileId),
     ).resolves.toMatchObject({
+      authorization: fixture.request.authorization,
+      capability: fixture.request.capability,
       currentVersionId: version.id,
       latestChecks: version.checks,
-      modelRuns: [{ externalTraceId: 'trace-1', succeeded: true }],
+      modelRuns: [
+        {
+          authorizationDecisionId: fixture.request.authorization.decisionId,
+          capabilityVersionId: fixture.request.capability!.id,
+          externalTraceId: 'trace-1',
+          modelOrEngineVersion: fixture.request.capability!.modelOrEngine.version,
+          observedProvider: fixture.request.capability!.provider.id,
+          promptOrConfigVersion: fixture.request.capability!.promptOrConfig.version,
+          provider: fixture.request.capability!.provider.id,
+          providerVersion: fixture.request.capability!.provider.version,
+          succeeded: true,
+        },
+      ],
       status: 'ready',
-      versions: [{ id: version.id, pack: version.pack, source: fixture.source }],
+      versions: [
+        {
+          authorization: fixture.request.authorization,
+          capability: fixture.request.capability,
+          id: version.id,
+          pack: version.pack,
+          source: fixture.source,
+        },
+      ],
     });
     await expect(
       store.findLatestReadyForSource(
@@ -585,9 +888,9 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       await evidence.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
         fixture.learningProfileId,
       ]);
-      const [events, edges] = await Promise.all([
+      const [events, edges, lineage] = await Promise.all([
         evidence.query(
-          `SELECT event_type FROM learning.domain_outbox
+          `SELECT event_type, payload FROM learning.domain_outbox
            WHERE aggregate_id = $1 ORDER BY occurred_at, id`,
           [fixture.request.id],
         ),
@@ -597,10 +900,50 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
            WHERE generated_version_id = $1 ORDER BY position`,
           [version.id],
         ),
+        evidence.query(
+          `SELECT
+             request.authorization_snapshot AS request_authorization,
+             request.authorization_decision_id AS request_decision_id,
+             request.authorization_containment_epoch AS request_containment_epoch,
+             request.capability_version_id AS request_capability_version_id,
+             version.authorization_snapshot AS version_authorization,
+             version.authorization_decision_id AS version_decision_id,
+             version.authorization_containment_epoch AS version_containment_epoch,
+             version.capability_version_id AS version_capability_version_id
+           FROM learning.generated_learning_requests AS request
+           JOIN learning.generated_learning_content_versions AS version
+             ON version.request_id = request.id
+           WHERE request.id = $1 AND version.id = $2`,
+          [fixture.request.id, version.id],
+        ),
       ]);
       expect(events.rows.map(({ event_type }) => event_type)).toEqual([
         'generated_learning.requested',
         'generated_learning.published',
+      ]);
+      expect(events.rows.map(({ payload }) => payload)).toEqual([
+        expect.objectContaining({
+          authorizationDecisionId: fixture.request.authorization.decisionId,
+          capabilityVersionId: fixture.request.capability!.id,
+          status: 'queued',
+        }),
+        expect.objectContaining({
+          authorizationDecisionId: fixture.request.authorization.decisionId,
+          capabilityVersionId: fixture.request.capability!.id,
+          generatedContentVersionId: version.id,
+        }),
+      ]);
+      expect(lineage.rows).toEqual([
+        {
+          request_authorization: fixture.request.authorization,
+          request_capability_version_id: fixture.request.capability!.id,
+          request_containment_epoch: fixture.request.authorization.containmentEpoch.toString(),
+          request_decision_id: fixture.request.authorization.decisionId,
+          version_authorization: fixture.request.authorization,
+          version_capability_version_id: fixture.request.capability!.id,
+          version_containment_epoch: fixture.request.authorization.containmentEpoch.toString(),
+          version_decision_id: fixture.request.authorization.decisionId,
+        },
       ]);
       expect(edges.rows).toEqual([
         {
@@ -651,7 +994,9 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         expectedStateRevision: 1,
         latestChecks: version.checks,
         learningProfileId: fixture.learningProfileId,
-        modelRuns: [],
+        modelRuns: [
+          successfulModelRunFor(fixture.request, version.createdAt, 'incomplete-checks-result'),
+        ],
         requestId: fixture.request.id,
         version,
       }),
@@ -671,7 +1016,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         `SELECT learning.complete_generated_learning_request(
            $1, $2, $3, $4, $5, $6, $7,
            $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb,
-           $12::jsonb, $13::jsonb, $14
+           $12::jsonb, $13::jsonb, $14::jsonb, $15
          ) AS result`,
         [
           fixture.request.id,
@@ -681,6 +1026,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
           version.predecessorId,
           version.revision,
           version.contentState,
+          JSON.stringify(version.authorization),
           JSON.stringify(version.capability),
           JSON.stringify(version.source),
           JSON.stringify(version.pack),
@@ -705,6 +1051,35 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       status: 'generating',
       versions: [],
     });
+
+    const rogueSuccess = await createFixture();
+    await store.create(rogueSuccess.request);
+    await store.markGenerating({
+      expectedStateRevision: 0,
+      leaseExpiresAt: '2026-09-10T08:02:00.000Z',
+      learningProfileId: rogueSuccess.learningProfileId,
+      now: '2026-09-10T08:00:00.000Z',
+      requestId: rogueSuccess.request.id,
+      updatedAt: '2026-09-10T08:00:00.000Z',
+    });
+    const rogueVersion = versionFor(rogueSuccess.request);
+    const forgedSuccessfulRun = {
+      ...successfulModelRunFor(rogueSuccess.request, rogueVersion.createdAt, 'rogue-success'),
+      observedProvider: 'unapproved-provider',
+    };
+    await expect(
+      store.complete({
+        expectedStateRevision: 1,
+        latestChecks: rogueVersion.checks,
+        learningProfileId: rogueSuccess.learningProfileId,
+        modelRuns: [forgedSuccessfulRun],
+        requestId: rogueSuccess.request.id,
+        version: rogueVersion,
+      }),
+    ).resolves.toBe('conflict');
+    await expect(
+      store.findById(rogueSuccess.request.id, rogueSuccess.learningProfileId),
+    ).resolves.toMatchObject({ currentVersionId: null, modelRuns: [], versions: [] });
   });
 
   it('rejects forged material and source-key identities at create and complete boundaries', async () => {
@@ -776,6 +1151,25 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         version,
       }),
     ).resolves.toBe('conflict');
+  });
+
+  it('rejects replaying an authorization decision in another family space', async () => {
+    if (!pool) return;
+    const first = await createFixture();
+    const second = await createFixture();
+    const replayedAuthorization: StoredGenerationRequest = {
+      ...structuredClone(second.request),
+      authorization: structuredClone(first.request.authorization),
+      capability: structuredClone(first.request.capability),
+      id: randomUUID(),
+      idempotencyKey: `cross-family-replay-${randomUUID()}`,
+    };
+    const store = new PostgresGeneratedLearningStore(pool);
+
+    await expect(store.create(replayedAuthorization)).resolves.toBe(false);
+    await expect(
+      store.findById(replayedAuthorization.id, second.learningProfileId),
+    ).resolves.toBeNull();
   });
 
   it('locks the current classification against concurrent knowledge-point changes', async () => {
@@ -891,7 +1285,9 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         expectedStateRevision: 1,
         latestChecks: version.checks,
         learningProfileId: fixture.learningProfileId,
-        modelRuns: [],
+        modelRuns: [
+          successfulModelRunFor(fixture.request, version.createdAt, 'stale-classification-result'),
+        ],
         requestId: fixture.request.id,
         version,
       }),
@@ -939,12 +1335,21 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       requestId: failed.request.id,
       updatedAt: '2026-09-10T08:00:00.000Z',
     });
+    const failedRun: ModelRunRecord = {
+      ...successfulModelRunFor(
+        failed.request,
+        '2026-09-10T08:00:30.000Z',
+        'rogue-provider-failure',
+      ),
+      observedProvider: 'unapproved-provider',
+      succeeded: false,
+    };
     await expect(
       store.fail({
         expectedStateRevision: 1,
         latestChecks: [],
         learningProfileId: failed.learningProfileId,
-        modelRuns: [],
+        modelRuns: [failedRun],
         reason: 'MODEL_UNAVAILABLE',
         requestId: failed.request.id,
         updatedAt: '2026-09-10T08:01:00.000Z',
@@ -956,6 +1361,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       stateRevision: 2,
       status: 'unavailable',
       unavailableReason: 'MODEL_UNAVAILABLE',
+      modelRuns: [failedRun],
     });
   });
 
@@ -1044,7 +1450,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     );
   });
 
-  it('enforces profile RLS and grants only generated-learning top-level functions', async () => {
+  it('enforces profile RLS and grants only bounded generated-learning runtime functions', async () => {
     if (!pool) return;
     const first = await createFixture();
     const second = await createFixture();
@@ -1132,7 +1538,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
          ) AS can_compute_source_key_directly,
          has_function_privilege(
            'rhea_generated_learning_app',
-           'learning.create_generated_learning_request(uuid,uuid,uuid,uuid,text,text,text,text,uuid,integer,jsonb,jsonb,text,text,text,uuid,smallint,timestamp with time zone,integer,jsonb,jsonb,timestamp with time zone,timestamp with time zone)',
+           'learning.create_generated_learning_request(uuid,uuid,uuid,uuid,text,text,text,text,uuid,integer,jsonb,jsonb,jsonb,text,text,text,uuid,smallint,timestamp with time zone,integer,jsonb,jsonb,timestamp with time zone,timestamp with time zone)',
            'EXECUTE'
          ) AS can_create,
          has_function_privilege(
@@ -1152,9 +1558,14 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
          ) AS can_fail,
          has_function_privilege(
            'rhea_generated_learning_app',
-           'learning.complete_generated_learning_request(uuid,uuid,integer,uuid,uuid,integer,text,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,timestamp with time zone)',
+           'learning.complete_generated_learning_request(uuid,uuid,integer,uuid,uuid,integer,text,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,timestamp with time zone)',
            'EXECUTE'
          ) AS can_complete,
+         has_function_privilege(
+           'rhea_generated_learning_app',
+           'metrics.lock_current_capability_authorization(text,text,bigint,text,text)',
+           'EXECUTE'
+         ) AS can_lock_capability_authorization,
          has_function_privilege(
            'rhea_generated_learning_app',
            'learning.reveal_generated_learning_hint(uuid,uuid,uuid,smallint,smallint,uuid,text,uuid,timestamp with time zone)',
@@ -1183,6 +1594,9 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
          has_schema_privilege(
            'rhea_generated_learning_app', 'safety', 'USAGE'
          ) AS can_use_safety,
+         has_schema_privilege(
+           'rhea_generated_learning_app', 'metrics', 'USAGE'
+         ) AS can_use_metrics,
          (
            SELECT bool_and(class.relrowsecurity AND class.relforcerowsecurity)
            FROM pg_catalog.pg_class class
@@ -1207,6 +1621,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       can_insert_generated_source_edge: false,
       can_insert_generated_version: false,
       can_insert_outbox: false,
+      can_lock_capability_authorization: false,
       can_read_generated_hint_usages: false,
       can_read_generated_source_edges: false,
       can_lock_basis_directly: false,
@@ -1219,6 +1634,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       can_reveal_hint: true,
       can_resolve_eligibility_directly: false,
       can_update_generated_request: false,
+      can_use_metrics: false,
       can_use_safety: false,
     });
 
@@ -1440,5 +1856,214 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     } finally {
       hintRows.release();
     }
+  });
+
+  it('hydrates pre-lineage rows as unverified and refuses to publish them', async () => {
+    if (!pool) return;
+    const fixture = await createFixture();
+    const legacyRequestId = randomUUID();
+    await pool.query(
+      `INSERT INTO learning.generated_learning_requests
+        (id, family_space_id, learning_profile_id, material_id, idempotency_key,
+         request_fingerprint, purpose, actor_type, actor_id, consent_revision,
+         capability, source_snapshot, source_key, status, unavailable_reason,
+         current_version_id, revealed_hint_level, processing_lease_expires_at,
+         state_revision, latest_checks, model_runs, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'learning_pack', 'learner', $3, 1,
+               $7::jsonb, $8::jsonb, $9, 'queued', NULL, NULL, 0, NULL, 0,
+               '[]'::jsonb, '[]'::jsonb, $10, $10)`,
+      [
+        legacyRequestId,
+        fixture.familySpaceId,
+        fixture.learningProfileId,
+        fixture.materialId,
+        `legacy-request-${randomUUID()}`,
+        'e'.repeat(64),
+        JSON.stringify(fixture.request.capability),
+        JSON.stringify(fixture.source),
+        generatedLearningSourceKey(fixture.source),
+        '2026-09-10T07:59:00.000Z',
+      ],
+    );
+    const store = new PostgresGeneratedLearningStore(pool);
+    await expect(store.findById(legacyRequestId, fixture.learningProfileId)).resolves.toMatchObject(
+      {
+        authorization: {
+          containmentEpoch: 0,
+          degradedReason: 'NO_SIGNED_CAPABILITY',
+          decisionId: `legacy-unverified:${legacyRequestId}`,
+          issuedAt: '2026-09-10T07:59:00.000Z',
+        },
+        capability: null,
+        currentVersionId: null,
+        modelRuns: [],
+        status: 'queued',
+        versions: [],
+      },
+    );
+    await expect(
+      store.markGenerating({
+        expectedStateRevision: 0,
+        leaseExpiresAt: '2026-09-10T08:02:00.000Z',
+        learningProfileId: fixture.learningProfileId,
+        now: '2026-09-10T08:00:00.000Z',
+        requestId: legacyRequestId,
+        updatedAt: '2026-09-10T08:00:00.000Z',
+      }),
+    ).resolves.toBe(true);
+    const forgedVersion = versionFor(fixture.request);
+    await expect(
+      store.complete({
+        expectedStateRevision: 1,
+        latestChecks: forgedVersion.checks,
+        learningProfileId: fixture.learningProfileId,
+        modelRuns: [
+          successfulModelRunFor(fixture.request, forgedVersion.createdAt, 'legacy-result'),
+        ],
+        requestId: legacyRequestId,
+        version: forgedVersion,
+      }),
+    ).resolves.toBe('conflict');
+    const evidence = await pool.query<{ count: string }>(
+      `SELECT count(*)::text AS count
+       FROM learning.generated_learning_content_versions
+       WHERE request_id = $1`,
+      [legacyRequestId],
+    );
+    expect(evidence.rows[0]?.count).toBe('0');
+  });
+
+  it('persists a recoverable degraded request without invoking or publishing a capability', async () => {
+    if (!pool || !noSignedCapabilityDecision) return;
+    const fixture = await createFixture(noSignedCapabilityFamilySpaceId);
+    const degradedDecision = noSignedCapabilityDecision;
+    expect(degradedDecision).toMatchObject({
+      degradedReason: 'NO_SIGNED_CAPABILITY',
+      primary: null,
+      status: 'degraded',
+    });
+    const unavailable: StoredGenerationRequest = {
+      ...structuredClone(fixture.request),
+      authorization: {
+        containmentEpoch: degradedDecision.containmentEpoch,
+        degradedReason: degradedDecision.degradedReason,
+        decisionId: degradedDecision.decisionId,
+        issuedAt: degradedDecision.issuedAt,
+      },
+      capability: null,
+      modelRuns: [],
+      status: 'unavailable',
+      unavailableReason: 'CAPABILITY_UNAVAILABLE',
+    };
+    const store = new PostgresGeneratedLearningStore(pool);
+
+    await expect(store.create(unavailable)).resolves.toBe(true);
+    await expect(
+      store.markGenerating({
+        expectedStateRevision: 0,
+        leaseExpiresAt: '2026-09-10T08:02:00.000Z',
+        learningProfileId: unavailable.learningProfileId,
+        now: '2026-09-10T08:00:00.000Z',
+        requestId: unavailable.id,
+        updatedAt: '2026-09-10T08:00:00.000Z',
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      store.findById(unavailable.id, unavailable.learningProfileId),
+    ).resolves.toMatchObject({
+      authorization: unavailable.authorization,
+      capability: null,
+      currentVersionId: null,
+      modelRuns: [],
+      status: 'unavailable',
+      unavailableReason: 'CAPABILITY_UNAVAILABLE',
+      versions: [],
+    });
+
+    const evidence = await pool.query<{ published_count: string; version_count: string }>(
+      `SELECT
+         (SELECT count(*)::text
+          FROM learning.generated_learning_content_versions
+          WHERE request_id = $1) AS version_count,
+         (SELECT count(*)::text
+          FROM learning.domain_outbox
+          WHERE aggregate_id = $1
+            AND event_type = 'generated_learning.published') AS published_count`,
+      [unavailable.id],
+    );
+    expect(evidence.rows[0]).toEqual({ published_count: '0', version_count: '0' });
+  });
+
+  it('rejects a generated result atomically when its capability is contained before publication', async () => {
+    if (!pool || !qualityControl) return;
+    const fixture = await createFixture();
+    const store = new PostgresGeneratedLearningStore(pool);
+    await expect(store.create(fixture.request)).resolves.toBe(true);
+    await expect(
+      store.markGenerating({
+        expectedStateRevision: 0,
+        leaseExpiresAt: '2026-09-10T08:02:00.000Z',
+        learningProfileId: fixture.learningProfileId,
+        now: '2026-09-10T08:00:00.000Z',
+        requestId: fixture.request.id,
+        updatedAt: '2026-09-10T08:00:00.000Z',
+      }),
+    ).resolves.toBe(true);
+    const version = versionFor(fixture.request);
+    await qualityControl.containCapability({
+      commandId: `contain-generated-learning-${randomUUID()}`,
+      containedAt: '2026-09-10T08:00:30.000Z',
+      expectedContainmentEpoch: fixture.request.authorization.containmentEpoch,
+      reason: 'critical generated-learning quality regression',
+      target: { id: fixture.request.capability!.id, kind: 'capability_version' },
+    });
+
+    await expect(
+      store.complete({
+        expectedStateRevision: 1,
+        latestChecks: version.checks,
+        learningProfileId: fixture.learningProfileId,
+        modelRuns: [
+          {
+            attempt: 1,
+            authorizationDecisionId: fixture.request.authorization.decisionId,
+            capabilityVersionId: fixture.request.capability!.id,
+            externalTraceId: 'late-contained-result',
+            finishedAt: version.createdAt,
+            inputTokens: 100,
+            modelOrEngineVersion: fixture.request.capability!.modelOrEngine.version,
+            observedProvider: fixture.request.capability!.provider.id,
+            outputTokens: 200,
+            promptOrConfigVersion: fixture.request.capability!.promptOrConfig.version,
+            provider: fixture.request.capability!.provider.id,
+            providerVersion: fixture.request.capability!.provider.version,
+            succeeded: true,
+          },
+        ],
+        requestId: fixture.request.id,
+        version,
+      }),
+    ).resolves.toBe('capability_contained');
+    await expect(
+      store.findById(fixture.request.id, fixture.learningProfileId),
+    ).resolves.toMatchObject({
+      currentVersionId: null,
+      modelRuns: [],
+      status: 'generating',
+      versions: [],
+    });
+
+    const evidence = await pool.query<{ published_count: string; version_count: string }>(
+      `SELECT
+         (SELECT count(*)::text
+          FROM learning.generated_learning_content_versions
+          WHERE request_id = $1) AS version_count,
+         (SELECT count(*)::text
+          FROM learning.domain_outbox
+          WHERE aggregate_id = $1
+            AND event_type = 'generated_learning.published') AS published_count`,
+      [fixture.request.id],
+    );
+    expect(evidence.rows[0]).toEqual({ published_count: '0', version_count: '0' });
   });
 });

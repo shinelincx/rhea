@@ -5,6 +5,7 @@ export type MobileGenerationRequestStatus =
   'canceled' | 'generating' | 'queued' | 'ready' | 'unavailable';
 
 export type MobileGenerationUnavailableReason =
+  | 'CAPABILITY_CONTAINED'
   | 'CAPABILITY_UNAVAILABLE'
   | 'CONSENT_WITHDRAWN'
   | 'GENERATION_CANCELED'
@@ -15,17 +16,38 @@ export type MobileGenerationUnavailableReason =
 
 export interface MobileGeneratedLearningRequest {
   aiDisclosure: '我是 AI 学习助手，内容由 AI 生成并经过发布前检查。';
-  capabilityVersion: {
-    adapterVersion: string;
-    availability: 'approved' | 'unavailable';
+  authorizationDecision: {
+    containmentEpoch: number;
     id: string;
-    modelVersion: string;
+    issuedAt: string;
+  };
+  capabilityVersion: null | {
+    adapter: { id: string; version: string };
+    artifactHash: string;
+    capabilityKey: 'ai.generated-learning';
+    id: string;
+    implementedBy: string;
+    kind: 'ai';
+    modelOrEngine: { id: string; version: string };
     policyVersion: string;
+    promptOrConfig: { kind: 'prompt'; version: string };
+    provider: { id: string; version: string };
     region: string;
+    registeredAt: string;
+    requiredSlicePolicyVersion: string;
     templateVersion: string;
   };
   contentState: MobileGeneratedContentState;
   createdAt: string;
+  degraded: null | {
+    nextAction: 'retry_later';
+    reason:
+      | 'CAPABILITY_CONTAINED'
+      | 'NO_APPLICABLE_CAPABILITY'
+      | 'NO_SIGNED_CAPABILITY'
+      | 'OUTSIDE_ROLLOUT';
+    retryable: true;
+  };
   familySpaceId: string;
   generatedContent: null | {
     fullExplanation: null | { answer: string; steps: string[] };
@@ -102,6 +124,7 @@ const AI_DISCLOSURE = '我是 AI 学习助手，内容由 AI 生成并经过发�
 const CONTENT_STATES = ['direct_learning', 'confirmation_recommended', 'unavailable'] as const;
 const REQUEST_STATUSES = ['canceled', 'generating', 'queued', 'ready', 'unavailable'] as const;
 const UNAVAILABLE_REASONS = [
+  'CAPABILITY_CONTAINED',
   'CAPABILITY_UNAVAILABLE',
   'CONSENT_WITHDRAWN',
   'GENERATION_CANCELED',
@@ -109,6 +132,12 @@ const UNAVAILABLE_REASONS = [
   'MODEL_UNAVAILABLE',
   'SOURCE_CHANGED',
   'SOURCE_UNAVAILABLE',
+] as const;
+const DEGRADED_REASONS = [
+  'CAPABILITY_CONTAINED',
+  'NO_APPLICABLE_CAPABILITY',
+  'NO_SIGNED_CAPABILITY',
+  'OUTSIDE_ROLLOUT',
 ] as const;
 
 function invalidResponse(): never {
@@ -170,6 +199,45 @@ function isoDate(value: unknown): string {
     return invalidResponse();
   }
   return normalized;
+}
+
+function sha256(value: unknown): string {
+  const normalized = text(value, 64);
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : invalidResponse();
+}
+
+function capabilityVersion(value: unknown): MobileGeneratedLearningRequest['capabilityVersion'] {
+  if (value === null) return null;
+  const candidate = record(value);
+  const adapter = record(candidate.adapter);
+  const modelOrEngine = record(candidate.modelOrEngine);
+  const promptOrConfig = record(candidate.promptOrConfig);
+  const provider = record(candidate.provider);
+  return {
+    adapter: { id: text(adapter.id, 200), version: text(adapter.version, 200) },
+    artifactHash: sha256(candidate.artifactHash),
+    capabilityKey:
+      candidate.capabilityKey === 'ai.generated-learning'
+        ? 'ai.generated-learning'
+        : invalidResponse(),
+    id: text(candidate.id, 200),
+    implementedBy: text(candidate.implementedBy, 200),
+    kind: candidate.kind === 'ai' ? 'ai' : invalidResponse(),
+    modelOrEngine: {
+      id: text(modelOrEngine.id, 200),
+      version: text(modelOrEngine.version, 200),
+    },
+    policyVersion: text(candidate.policyVersion, 200),
+    promptOrConfig: {
+      kind: promptOrConfig.kind === 'prompt' ? 'prompt' : invalidResponse(),
+      version: text(promptOrConfig.version, 200),
+    },
+    provider: { id: text(provider.id, 200), version: text(provider.version, 200) },
+    region: text(candidate.region, 200),
+    registeredAt: isoDate(candidate.registeredAt),
+    requiredSlicePolicyVersion: text(candidate.requiredSlicePolicyVersion, 200),
+    templateVersion: text(candidate.templateVersion, 200),
+  };
 }
 
 function questionList(
@@ -260,17 +328,22 @@ function normalizeGeneratedLearningResponse(
     return invalidResponse();
   }
   const revealedHintLevel = level as 0 | 1 | 2 | 3;
-  const capabilityValue = record(candidate.capabilityVersion);
-  const availability = oneOf(capabilityValue.availability, ['approved', 'unavailable'] as const);
-  const capabilityVersion = {
-    adapterVersion: text(capabilityValue.adapterVersion, 200),
-    availability,
-    id: text(capabilityValue.id, 200),
-    modelVersion: text(capabilityValue.modelVersion, 200),
-    policyVersion: text(capabilityValue.policyVersion, 200),
-    region: text(capabilityValue.region, 200),
-    templateVersion: text(capabilityValue.templateVersion, 200),
+  const normalizedCapabilityVersion = capabilityVersion(candidate.capabilityVersion);
+  const authorizationValue = record(candidate.authorizationDecision);
+  const authorizationDecision = {
+    containmentEpoch: integer(authorizationValue.containmentEpoch, 0),
+    id: text(authorizationValue.id, 200),
+    issuedAt: isoDate(authorizationValue.issuedAt),
   };
+  const degradedValue = candidate.degraded === null ? null : record(candidate.degraded);
+  const degraded = degradedValue
+    ? {
+        nextAction:
+          degradedValue.nextAction === 'retry_later' ? ('retry_later' as const) : invalidResponse(),
+        reason: oneOf(degradedValue.reason, DEGRADED_REASONS),
+        retryable: degradedValue.retryable === true ? (true as const) : invalidResponse(),
+      }
+    : null;
   const sourceValue = record(candidate.sourceVersion);
   const sourceVersion = {
     basisSelectionVersion: integer(sourceValue.basisSelectionVersion, 1),
@@ -290,9 +363,11 @@ function normalizeGeneratedLearningResponse(
       : generatedContent(candidate.generatedContent, revealedHintLevel);
   const normalized: MobileGeneratedLearningRequest = {
     aiDisclosure: candidate.aiDisclosure === AI_DISCLOSURE ? AI_DISCLOSURE : invalidResponse(),
-    capabilityVersion,
+    authorizationDecision,
+    capabilityVersion: normalizedCapabilityVersion,
     contentState,
     createdAt: isoDate(candidate.createdAt),
+    degraded,
     familySpaceId: text(candidate.familySpaceId, 200),
     generatedContent: normalizedContent,
     id: text(candidate.id, 200),
@@ -318,13 +393,16 @@ function normalizeGeneratedLearningResponse(
   if (
     (status === 'ready' &&
       (normalizedContent === null ||
+        normalizedCapabilityVersion === null ||
+        degraded !== null ||
         contentState === 'unavailable' ||
         unavailableReason !== null)) ||
     (isProcessing &&
       (normalizedContent !== null ||
         contentState !== 'unavailable' ||
         unavailableReason !== null ||
-        availability !== 'approved' ||
+        normalizedCapabilityVersion === null ||
+        degraded !== null ||
         revealedHintLevel !== 0)) ||
     (isUnavailable &&
       (normalizedContent !== null ||
@@ -332,9 +410,14 @@ function normalizeGeneratedLearningResponse(
         unavailableReason === null)) ||
     (status === 'canceled' && unavailableReason !== 'GENERATION_CANCELED') ||
     (status === 'unavailable' && unavailableReason === 'GENERATION_CANCELED') ||
-    (availability === 'unavailable' &&
-      (status !== 'unavailable' || unavailableReason !== 'CAPABILITY_UNAVAILABLE')) ||
-    (availability === 'approved' && unavailableReason === 'CAPABILITY_UNAVAILABLE') ||
+    (normalizedCapabilityVersion === null &&
+      (status !== 'unavailable' ||
+        unavailableReason !== 'CAPABILITY_UNAVAILABLE' ||
+        degraded === null)) ||
+    (degraded !== null &&
+      (status !== 'unavailable' ||
+        !['CAPABILITY_CONTAINED', 'CAPABILITY_UNAVAILABLE'].includes(unavailableReason ?? ''))) ||
+    (unavailableReason === 'CAPABILITY_CONTAINED' && degraded?.reason !== 'CAPABILITY_CONTAINED') ||
     (normalizedContent !== null &&
       contentState === 'direct_learning' &&
       normalizedContent.supplementalNotes.length > 0) ||

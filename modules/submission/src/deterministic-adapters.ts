@@ -1,4 +1,23 @@
+import type { CapabilityVersion } from '@rhea/quality-control';
+
 import type { FileInspectionPort, RecognitionPort } from './ports.js';
+
+export const deterministicRecognitionCapability: CapabilityVersion = {
+  adapter: { id: 'deterministic-ocr', version: 'deterministic-ocr-v1' },
+  artifactHash: 'a'.repeat(64),
+  capabilityKey: 'ocr.recognition',
+  id: '11111111-1111-4111-8111-111111111111',
+  implementedBy: '33333333-3333-4333-8333-333333333333',
+  kind: 'ocr',
+  modelOrEngine: { id: 'deterministic-engine', version: 'engine-v1' },
+  policyVersion: 'ocr-policy-v1',
+  promptOrConfig: { kind: 'config', version: 'ocr-config-v1' },
+  provider: { id: 'rhea-deterministic', version: 'provider-contract-v1' },
+  region: 'cn-shanghai',
+  registeredAt: '2026-09-10T08:00:00.000Z',
+  requiredSlicePolicyVersion: 'ocr-quality-policy-v1',
+  templateVersion: 'not-applicable-v1',
+};
 
 function detectedMime(bytes: Uint8Array): string | null {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
@@ -53,7 +72,6 @@ export const deterministicFileInspection: FileInspectionPort = {
 export const deterministicRecognition: RecognitionPort = {
   async recognize({ pages }) {
     return {
-      adapterVersion: 'deterministic-ocr-v1',
       regions: pages.flatMap(({ page }, pageIndex) => [
         {
           confidence: pageIndex === 0 ? 0.97 : 0.62,

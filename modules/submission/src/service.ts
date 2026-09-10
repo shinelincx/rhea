@@ -5,6 +5,7 @@ import type {
   FileInspectionPort,
   ObjectStorePort,
   RawAssetDeletionPort,
+  RecognitionCapabilityAuthorizationPort,
   RecognitionPort,
   SubmissionStore,
 } from './ports.js';
@@ -24,6 +25,7 @@ const UPLOAD_TTL_MS = 30 * 60_000;
 
 export interface SubmissionServiceDependencies {
   clock?: { readonly now: Date };
+  capabilityAuthorization: RecognitionCapabilityAuthorizationPort;
   fileInspection: FileInspectionPort;
   objectStore: ObjectStorePort;
   rawAssetDeletions: RawAssetDeletionPort;
@@ -41,7 +43,9 @@ function view(job: ProcessingJob): ProcessingJobView {
     completedContent: job.completedContent,
     errorCode: job.errorCode,
     id: job.id,
+    nextAction: job.status === 'unavailable' ? 'retry' : null,
     qualityIssues: job.qualityIssues,
+    retryable: job.status === 'unavailable',
     status: job.status,
     updatedAt: job.updatedAt,
   };
@@ -62,6 +66,7 @@ function validPage(page: UploadPageInput): boolean {
 
 export class SubmissionService {
   readonly #clock: { readonly now: Date };
+  readonly #capabilityAuthorization: RecognitionCapabilityAuthorizationPort;
   readonly #fileInspection: FileInspectionPort;
   readonly #objectStore: ObjectStorePort;
   readonly #rawAssetDeletions: RawAssetDeletionPort;
@@ -74,6 +79,7 @@ export class SubmissionService {
         return new Date();
       },
     };
+    this.#capabilityAuthorization = dependencies.capabilityAuthorization;
     this.#fileInspection = dependencies.fileInspection;
     this.#objectStore = dependencies.objectStore;
     this.#rawAssetDeletions = dependencies.rawAssetDeletions;
@@ -225,7 +231,7 @@ export class SubmissionService {
       status: 'canceled' as const,
       updatedAt: this.#clock.now.toISOString(),
     };
-    if (!(await this.#store.saveJobIfRevision(canceled, job.revision))) {
+    if ((await this.#store.saveJobIfRevision(canceled, job.revision)) !== 'saved') {
       return this.getJob(input);
     }
     await this.#deleteRawAssets(job.uploadSessionId, job.learningProfileId);
@@ -234,10 +240,10 @@ export class SubmissionService {
 
   async process(id: string, learningProfileId: string): Promise<ProcessingJobView> {
     let job = await this.#requireJob(id, learningProfileId);
-    if (job.status !== 'queued') {
+    if (job.status !== 'queued' && job.status !== 'unavailable') {
       return view(job);
     }
-    job = await this.#transition(job, 'security_check');
+    job = await this.#transition(job, 'security_check', { errorCode: null });
     const upload = await this.#requiredUpload(job.uploadSessionId, learningProfileId);
     const pages: Array<{ bytes: Uint8Array; page: UploadSession['pages'][number] }> = [];
     const qualityIssues: ProcessingJob['qualityIssues'] = [];
@@ -256,12 +262,41 @@ export class SubmissionService {
     }
     await this.#store.saveUploadSession(upload);
     job = await this.#transition(job, 'quality_check', { qualityIssues });
+    const authorization = await this.#capabilityAuthorization.authorizeCapability({
+      capabilityKey: 'ocr.recognition',
+      familySpaceId: job.familySpaceId,
+      kind: 'ocr',
+      slice: {
+        basisState: 'not_applicable',
+        gradeBand: 'unclassified',
+        imageQuality: qualityIssues.length === 0 ? 'clear' : 'degraded',
+        questionType: 'unclassified',
+        riskLevel: 'unclassified',
+        subject: 'unclassified',
+      },
+    });
+    if (authorization.status !== 'authorized' || !authorization.primary) {
+      return this.#unavailable(job);
+    }
+    const beforeSend = await this.#capabilityAuthorization.revalidateAuthorization({
+      decisionId: authorization.decisionId,
+      expectedContainmentEpoch: authorization.containmentEpoch,
+      phase: 'before_send',
+      route: 'primary',
+    });
+    if (beforeSend.status !== 'authorized') {
+      return this.#unavailable(job);
+    }
     job = await this.#transition(job, 'recognizing');
     const cancellationVersion = job.cancellationVersion;
     const sourceHash = hash(upload.pages.map((page) => page.sha256).join(':'));
     let candidate: Awaited<ReturnType<RecognitionPort['recognize']>>;
     try {
-      candidate = await this.#recognition.recognize({ pages, sourceHash });
+      candidate = await this.#recognition.recognize({
+        authorization: beforeSend,
+        pages,
+        sourceHash,
+      });
     } catch {
       const current = await this.#requireJob(id, learningProfileId);
       return current.status === 'canceled' ? view(current) : this.#fail(current, 'OCR_FAILED');
@@ -274,14 +309,43 @@ export class SubmissionService {
     ) {
       return view(current);
     }
+    const afterReceive = await this.#capabilityAuthorization.revalidateAuthorization({
+      decisionId: authorization.decisionId,
+      expectedContainmentEpoch: authorization.containmentEpoch,
+      phase: 'after_receive',
+      route: 'primary',
+    });
+    if (afterReceive.status !== 'authorized') {
+      return this.#unavailable(current);
+    }
+    const beforePublish = await this.#capabilityAuthorization.revalidateAuthorization({
+      decisionId: authorization.decisionId,
+      expectedContainmentEpoch: authorization.containmentEpoch,
+      phase: 'before_publish',
+      route: 'primary',
+    });
+    if (beforePublish.status !== 'authorized') {
+      return this.#unavailable(current);
+    }
     const next: ProcessingJob = {
       ...current,
-      candidate: { ...candidate, id: randomUUID(), sourceHash },
+      candidate: {
+        ...candidate,
+        adapterVersion: beforePublish.capabilityVersion.adapter.version,
+        authorization: beforePublish,
+        finishedAt: this.#clock.now.toISOString(),
+        id: randomUUID(),
+        sourceHash,
+      },
       revision: current.revision + 1,
       status: 'awaiting_confirmation',
       updatedAt: this.#clock.now.toISOString(),
     };
-    if (!(await this.#store.saveJobIfRevision(next, current.revision))) {
+    const saved = await this.#store.saveJobIfRevision(next, current.revision);
+    if (saved === 'authorization_invalid') {
+      return this.#unavailable(current);
+    }
+    if (saved !== 'saved') {
       return view(await this.#requireJob(id, learningProfileId));
     }
     return view(next);
@@ -319,7 +383,7 @@ export class SubmissionService {
       status: 'completed',
       updatedAt: this.#clock.now.toISOString(),
     };
-    if (!(await this.#store.saveJobIfRevision(next, job.revision))) {
+    if ((await this.#store.saveJobIfRevision(next, job.revision)) !== 'saved') {
       throw new SubmissionError('JOB_STATE_CONFLICT', '内容确认状态已变化，请刷新后重试');
     }
     await this.#deleteRawAssets(job.uploadSessionId, job.learningProfileId);
@@ -353,10 +417,28 @@ export class SubmissionService {
       status: 'failed' as const,
       updatedAt: this.#clock.now.toISOString(),
     };
-    if (!(await this.#store.saveJobIfRevision(failed, current.revision))) {
+    if ((await this.#store.saveJobIfRevision(failed, current.revision)) !== 'saved') {
       return view(await this.#requireJob(job.id, job.learningProfileId));
     }
     return view(failed);
+  }
+
+  async #unavailable(job: ProcessingJob): Promise<ProcessingJobView> {
+    const current = await this.#requireJob(job.id, job.learningProfileId);
+    if (current.status === 'canceled') {
+      return view(current);
+    }
+    const unavailable: ProcessingJob = {
+      ...current,
+      errorCode: 'CAPABILITY_UNAVAILABLE',
+      revision: current.revision + 1,
+      status: 'unavailable',
+      updatedAt: this.#clock.now.toISOString(),
+    };
+    if ((await this.#store.saveJobIfRevision(unavailable, current.revision)) !== 'saved') {
+      return view(await this.#requireJob(job.id, job.learningProfileId));
+    }
+    return view(unavailable);
   }
 
   async #requireJob(id: string, learningProfileId: string): Promise<ProcessingJob> {
@@ -387,7 +469,7 @@ export class SubmissionService {
       status,
       updatedAt: this.#clock.now.toISOString(),
     };
-    if (!(await this.#store.saveJobIfRevision(next, job.revision))) {
+    if ((await this.#store.saveJobIfRevision(next, job.revision)) !== 'saved') {
       throw new SubmissionError('JOB_STATE_CONFLICT', '识别任务状态已经变化');
     }
     return next;

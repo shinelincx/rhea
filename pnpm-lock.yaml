@@ -184,6 +184,31 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/postgres-quality-control:
+    dependencies:
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../../modules/quality-control
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/postgres-submission:
     dependencies:
       '@rhea/database':
@@ -275,9 +300,15 @@ importers:
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-content
+      '@rhea/postgres-quality-control':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-quality-control
       '@rhea/postgres-submission':
         specifier: workspace:*
         version: link:../../adapters/postgres-submission
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../../modules/quality-control
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
@@ -324,6 +355,12 @@ importers:
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-content
+      '@rhea/postgres-quality-control':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-quality-control
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../../modules/quality-control
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
@@ -438,6 +475,9 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../learning-content
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../quality-control
     devDependencies:
       '@types/node':
         specifier: 24.10.13
@@ -461,7 +501,23 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  modules/quality-control:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   modules/submission:
+    dependencies:
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../quality-control
     devDependencies:
       '@types/node':
         specifier: 24.10.13

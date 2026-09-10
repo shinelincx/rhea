@@ -13,6 +13,28 @@ import type {
   MobileProcessingJob,
   SubmissionGateway,
 } from '../src/capture-draft/submission-gateway';
+
+const recognitionAuthorization = {
+  capabilityVersion: {
+    adapter: { id: 'fixture-adapter', version: 'fixture-v1' },
+    artifactHash: 'a'.repeat(64),
+    capabilityKey: 'ocr.recognition',
+    id: 'ocr-capability-v1',
+    implementedBy: 'engineer-1',
+    kind: 'ocr' as const,
+    modelOrEngine: { id: 'fixture-engine', version: 'engine-v1' },
+    policyVersion: 'ocr-policy-v1',
+    promptOrConfig: { kind: 'config' as const, version: 'ocr-config-v1' },
+    provider: { id: 'fixture-provider', version: 'provider-v1' },
+    region: 'cn-shanghai',
+    registeredAt: '2026-09-09T09:59:00.000Z',
+    requiredSlicePolicyVersion: 'ocr-quality-policy-v1',
+    templateVersion: 'not-applicable-v1',
+  },
+  containmentEpoch: 7,
+  decisionId: 'authorization-1',
+  status: 'authorized' as const,
+};
 import type { GeneratedLearningGateway } from '../src/generated-learning/generated-learning-gateway';
 
 const passThroughCrypto: DraftCryptoPort = {
@@ -124,6 +146,71 @@ describe('capture draft mobile flow', () => {
     expect(view.getByText('数学练习-1.jpg')).toBeVisible();
   });
 
+  it('keeps the photo draft and offers an explicit retry when OCR has no signed capability', async () => {
+    const repository = new EncryptedCaptureDraftRepository(
+      passThroughCrypto,
+      new MemoryDraftFilePort(),
+    );
+    const unavailable: MobileProcessingJob = {
+      candidate: null,
+      completedContent: null,
+      errorCode: 'CAPABILITY_UNAVAILABLE',
+      id: 'job-unavailable',
+      nextAction: 'retry',
+      qualityIssues: [],
+      retryable: true,
+      status: 'unavailable',
+      updatedAt: '2026-09-09T10:00:00.000Z',
+    };
+    const queued: MobileProcessingJob = {
+      ...unavailable,
+      errorCode: null,
+      id: 'job-retry',
+      nextAction: null,
+      retryable: false,
+      status: 'queued',
+    };
+    const submit = jest
+      .fn(async (): Promise<MobileProcessingJob> => unavailable)
+      .mockResolvedValueOnce(unavailable)
+      .mockResolvedValueOnce(queued);
+    const gateway = {
+      cancel: jest.fn(),
+      confirm: jest.fn(),
+      correctClassification: jest.fn(),
+      disputeAssessment: jest.fn(),
+      getJob: jest.fn(async () => unavailable),
+      gradeObjective: jest.fn(),
+      organize: jest.fn(),
+      submit,
+    } satisfies SubmissionGateway;
+    const view = await render(
+      <CaptureDraftScreen
+        accessToken="learner-token"
+        captureSource={captureSource()}
+        learningProfileId="profile-a"
+        onBack={jest.fn()}
+        repository={repository}
+        submissionGateway={gateway}
+      />,
+    );
+    const continueButton = await view.findByRole('button', { name: '继续拍照' });
+    await act(async () => {
+      fireEvent.press(continueButton);
+    });
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '检查并继续上传' }));
+    });
+
+    expect(await view.findByText('识别能力暂不可用，草稿已保留')).toBeVisible();
+    expect(view.getByText('当前没有已签署且可用的识别能力，照片草稿仍保留在本机。')).toBeVisible();
+    await act(async () => {
+      fireEvent.press(view.getByRole('button', { name: '稍后重试识别' }));
+    });
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(await repository.loadLatest('profile-a')).not.toBeNull();
+  });
+
   it('shows backend quality and confidence, accepts edits, and clears confirmed raw draft', async () => {
     const repository = new EncryptedCaptureDraftRepository(
       passThroughCrypto,
@@ -132,6 +219,8 @@ describe('capture draft mobile flow', () => {
     const awaiting: MobileProcessingJob = {
       candidate: {
         adapterVersion: 'fixture-v1',
+        authorization: recognitionAuthorization,
+        finishedAt: '2026-09-09T10:00:00.000Z',
         id: 'candidate-1',
         regions: [
           {
@@ -150,7 +239,9 @@ describe('capture draft mobile flow', () => {
       completedContent: null,
       errorCode: null,
       id: 'job-1',
+      nextAction: null,
       qualityIssues: [{ issue: 'too_dark', pageId: 'page-1' }],
+      retryable: false,
       status: 'awaiting_confirmation',
       updatedAt: '2026-09-09T10:00:00.000Z',
     };
@@ -439,6 +530,8 @@ describe('capture draft mobile flow', () => {
     const awaiting: MobileProcessingJob = {
       candidate: {
         adapterVersion: 'fixture-v1',
+        authorization: recognitionAuthorization,
+        finishedAt: '2026-09-09T10:00:00.000Z',
         id: 'candidate-1',
         regions,
         sourceHash: 'a'.repeat(64),
@@ -446,7 +539,9 @@ describe('capture draft mobile flow', () => {
       completedContent: null,
       errorCode: null,
       id: 'job-1',
+      nextAction: null,
       qualityIssues: [],
+      retryable: false,
       status: 'awaiting_confirmation',
       updatedAt: '2026-09-09T10:00:00.000Z',
     };

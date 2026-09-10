@@ -1,10 +1,12 @@
 import type { CurrentLearningBasisReference, Subject } from '@rhea/learning-content';
+import type { CapabilityVersion, DegradedReason } from '@rhea/quality-control';
 
 export type AgeBand = 'lower_primary' | 'middle_primary' | 'upper_primary';
 export type GeneratedContentState = 'direct_learning' | 'confirmation_recommended' | 'unavailable';
 export type GenerationRequestStatus =
   'canceled' | 'generating' | 'queued' | 'ready' | 'unavailable';
 export type GenerationUnavailableReason =
+  | 'CAPABILITY_CONTAINED'
   | 'CAPABILITY_UNAVAILABLE'
   | 'CONSENT_WITHDRAWN'
   | 'GENERATION_CANCELED'
@@ -18,14 +20,13 @@ export interface GeneratedLearningActorReference {
   type: 'guardian' | 'learner';
 }
 
-export interface GeneratedLearningCapability {
-  adapterVersion: string;
-  availability: 'approved' | 'unavailable';
-  id: string;
-  modelVersion: string;
-  policyVersion: string;
-  region: string;
-  templateVersion: string;
+export type GeneratedLearningCapability = CapabilityVersion;
+
+export interface GenerationAuthorizationSnapshot {
+  containmentEpoch: number;
+  degradedReason: DegradedReason | null;
+  decisionId: string;
+  issuedAt: string;
 }
 
 export interface GenerationSourceExcerpt {
@@ -134,15 +135,23 @@ export interface GenerationCheck {
 
 export interface ModelRunRecord {
   attempt: number;
+  authorizationDecisionId: string;
+  capabilityVersionId: string;
   externalTraceId: string | null;
   finishedAt: string;
   inputTokens: number | null;
+  modelOrEngineVersion: string;
+  /** Provider reported by the gateway; null when no provider response was received. */
+  observedProvider: string | null;
   outputTokens: number | null;
+  promptOrConfigVersion: string;
   provider: string;
+  providerVersion: string;
   succeeded: boolean;
 }
 
 export interface GeneratedLearningContentVersion {
+  authorization: GenerationAuthorizationSnapshot;
   capability: GeneratedLearningCapability;
   checks: GenerationCheck[];
   contentState: Exclude<GeneratedContentState, 'unavailable'>;
@@ -156,7 +165,8 @@ export interface GeneratedLearningContentVersion {
 
 export interface StoredGenerationRequest {
   actor: GeneratedLearningActorReference;
-  capability: GeneratedLearningCapability;
+  authorization: GenerationAuthorizationSnapshot;
+  capability: GeneratedLearningCapability | null;
   consentRevision: number;
   createdAt: string;
   currentVersionId: string | null;
@@ -186,9 +196,19 @@ export interface GeneratedQuestionView {
 
 export interface GeneratedLearningRequestView {
   aiDisclosure: '我是 AI 学习助手，内容由 AI 生成并经过发布前检查。';
-  capabilityVersion: GeneratedLearningCapability;
+  authorizationDecision: {
+    containmentEpoch: number;
+    id: string;
+    issuedAt: string;
+  };
+  capabilityVersion: GeneratedLearningCapability | null;
   contentState: GeneratedContentState;
   createdAt: string;
+  degraded: null | {
+    nextAction: 'retry_later';
+    reason: DegradedReason;
+    retryable: true;
+  };
   familySpaceId: string;
   generatedContent: null | {
     fullExplanation: null | { answer: string; steps: string[] };

@@ -6,6 +6,7 @@ import type {
   RawAssetDeletionPort,
   RawAssetDeletionReceipt,
   RecognitionCandidate,
+  SaveJobResult,
   SubmissionStore,
   UploadPage,
   UploadSession,
@@ -51,6 +52,26 @@ interface JobRow extends QueryResultRow {
   status: ProcessingJob['status'];
   updated_at: Date;
   upload_session_id: string;
+}
+
+const AUTHORIZATION_REJECTION_REASONS = new Set([
+  'AUTHORIZATION_SCOPE_MISMATCH',
+  'AUTHORIZATION_STALE',
+  'CAPABILITY_CONTAINED',
+  'ROUTE_NOT_AUTHORIZED',
+  'SHADOW_PUBLICATION_FORBIDDEN',
+]);
+
+function isAuthorizationRejection(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P0001' &&
+    'message' in error &&
+    typeof error.message === 'string' &&
+    AUTHORIZATION_REJECTION_REASONS.has(error.message)
+  );
 }
 
 async function setProfile(client: PoolClient, learningProfileId: string): Promise<void> {
@@ -223,8 +244,34 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
     );
   }
 
-  async saveJobIfRevision(job: ProcessingJob, expectedRevision: number): Promise<boolean> {
+  async saveJobIfRevision(job: ProcessingJob, expectedRevision: number): Promise<SaveJobResult> {
     return this.#withProfile(job.learningProfileId, async (client) => {
+      if (job.status === 'awaiting_confirmation' && job.candidate) {
+        await client.query('SAVEPOINT recognition_candidate_authorization');
+        try {
+          await client.query(
+            `SELECT authorization_id, capability_version_id, containment_epoch
+             FROM metrics.lock_current_family_capability_authorization(
+               $1, $2, $3, $4, $5, $6
+             )`,
+            [
+              job.candidate.authorization.decisionId,
+              job.candidate.authorization.capabilityVersion.id,
+              job.candidate.authorization.containmentEpoch,
+              createHash('sha256').update(job.familySpaceId).digest('hex'),
+              'before_publish',
+              'primary',
+            ],
+          );
+          await client.query('RELEASE SAVEPOINT recognition_candidate_authorization');
+        } catch (error) {
+          await client.query('ROLLBACK TO SAVEPOINT recognition_candidate_authorization');
+          if (isAuthorizationRejection(error)) {
+            return 'authorization_invalid';
+          }
+          throw error;
+        }
+      }
       const updated = await client.query(
         `UPDATE learning.processing_jobs SET
            status = $3, error_code = $4, quality_issues = $5,
@@ -243,7 +290,7 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
         ],
       );
       if (updated.rowCount !== 1) {
-        return false;
+        return 'revision_conflict';
       }
       if (job.candidate) {
         await this.#insertCandidate(client, job, job.candidate);
@@ -251,7 +298,7 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
       if (job.completedContent) {
         await this.#insertConfirmedContent(client, job, job.completedContent);
       }
-      return true;
+      return 'saved';
     });
   }
 
@@ -289,12 +336,17 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
     const candidates = await client.query<
       QueryResultRow & {
         adapter_version: string;
+        authorization_containment_epoch: number;
+        authorization_decision_id: string;
+        capability_snapshot: RecognitionCandidate['authorization']['capabilityVersion'];
+        finished_at: Date;
         id: string;
         regions: RecognitionCandidate['regions'];
         source_hash: string;
       }
     >(
-      `SELECT id, adapter_version, source_hash, regions
+      `SELECT id, adapter_version, authorization_containment_epoch,
+              authorization_decision_id, capability_snapshot, finished_at, source_hash, regions
        FROM learning.recognition_candidates WHERE job_id = $1`,
       [id],
     );
@@ -320,6 +372,13 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
       candidate: candidate
         ? {
             adapterVersion: candidate.adapter_version,
+            authorization: {
+              capabilityVersion: candidate.capability_snapshot,
+              containmentEpoch: Number(candidate.authorization_containment_epoch),
+              decisionId: candidate.authorization_decision_id,
+              status: 'authorized',
+            },
+            finishedAt: candidate.finished_at.toISOString(),
             id: candidate.id,
             regions: candidate.regions,
             sourceHash: candidate.source_hash,
@@ -357,16 +416,28 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
   ): Promise<void> {
     await client.query(
       `INSERT INTO learning.recognition_candidates
-        (id, job_id, learning_profile_id, adapter_version, source_hash, regions)
-       VALUES ($1, $2, $3, $4, $5, $6)
+        (id, job_id, family_space_id, learning_profile_id, adapter_version, finished_at,
+         source_hash, regions,
+         capability_key, capability_kind, capability_version_id, authorization_decision_id,
+         authorization_containment_epoch, authorization_family_space_hash, capability_snapshot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
        ON CONFLICT (job_id) DO NOTHING`,
       [
         candidate.id,
         job.id,
+        job.familySpaceId,
         job.learningProfileId,
         candidate.adapterVersion,
+        candidate.finishedAt,
         candidate.sourceHash,
         JSON.stringify(candidate.regions),
+        candidate.authorization.capabilityVersion.capabilityKey,
+        candidate.authorization.capabilityVersion.kind,
+        candidate.authorization.capabilityVersion.id,
+        candidate.authorization.decisionId,
+        candidate.authorization.containmentEpoch,
+        createHash('sha256').update(job.familySpaceId).digest('hex'),
+        JSON.stringify(candidate.authorization.capabilityVersion),
       ],
     );
   }

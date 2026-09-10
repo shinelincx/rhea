@@ -43,6 +43,7 @@ const requestStatusLabels: Record<MobileGenerationRequestStatus, string> = {
 };
 
 const unavailableReasonLabels: Record<MobileGenerationUnavailableReason, string> = {
+  CAPABILITY_CONTAINED: '该 AI 能力已被安全隔离，请稍后重新生成。',
   CAPABILITY_UNAVAILABLE: '当前 AI 学习能力尚未开放，请稍后再试。',
   CONSENT_WITHDRAWN: 'AI 处理授权已撤回，因此不会继续展示生成内容。',
   GENERATION_CANCELED: '这次生成已取消，可以稍后重新开始。',
@@ -352,7 +353,10 @@ export function GeneratedLearningCard({
               {generation.sourceVersion.basisSelectionVersion} · 归类{' '}
               {generation.sourceVersion.classificationRevision}
             </Text>
-            <Text style={styles.metadataText}>能力版本：{generation.capabilityVersion.id}</Text>
+            <Text style={styles.metadataText}>
+              能力版本：{generation.capabilityVersion?.id ?? '等待已签署能力'}
+            </Text>
+            <Text style={styles.metadataText}>授权决策：{generation.authorizationDecision.id}</Text>
           </View>
 
           {isProcessing ? (

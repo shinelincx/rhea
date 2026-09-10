@@ -72,6 +72,9 @@ describe('database migration interface', () => {
       '0010',
       '0011',
       '0012',
+      '0013',
+      '0014',
+      '0015',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -120,6 +123,47 @@ describe('database migration interface', () => {
     );
     expect(migrations[11]?.sql).toMatch(/CREATE ROLE rhea_generated_learning_app/i);
     expect(migrations[11]?.sql).toMatch(/FUNCTION learning\.lock_generated_learning_publication/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE TABLE metrics\.capability_versions/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE TABLE metrics\.quality_card_revisions/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE TABLE metrics\.capability_release_revisions/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE TABLE metrics\.shadow_observations/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE ROLE rhea_quality_runtime/i);
+    expect(migrations[12]?.sql).toMatch(/CREATE ROLE rhea_quality_governance/i);
+    expect(migrations[12]?.sql).toMatch(/FUNCTION metrics\.authorize_capability/i);
+    expect(migrations[12]?.sql).toMatch(/FUNCTION metrics\.contain_capability/i);
+    expect(migrations[12]?.sql).toMatch(
+      /family_space_hash text NOT NULL CHECK \(family_space_hash ~ '\^\[0-9a-f\]\{64\}\$'\)/i,
+    );
+    expect(migrations[12]?.sql).toMatch(
+      /FUNCTION metrics\.save_quality_authorization_decision[\s\S]*p_guard ->> 'familySpaceHash'/i,
+    );
+    expect(migrations[12]?.sql).toMatch(
+      /UNIQUE \(id, primary_version_id, containment_epoch, family_space_hash\)/i,
+    );
+    expect(migrations[12]?.sql).toMatch(
+      /FUNCTION metrics\.lock_current_family_capability_authorization\(\s*p_authorization_id text,\s*p_capability_version_id text,\s*p_expected_containment_epoch bigint,\s*p_family_space_hash text,\s*p_phase text,\s*p_route text/i,
+    );
+    expect(migrations[12]?.sql).toMatch(
+      /REVOKE EXECUTE ON FUNCTION metrics\.lock_current_capability_authorization\(\s*text, text, bigint, text, text\s*\) FROM rhea_learning_app/i,
+    );
+    expect(migrations[12]?.sql).toMatch(/SET search_path = pg_catalog, metrics/i);
+    expect(migrations[12]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[13]?.sql).toMatch(/ADD COLUMN capability_version_id text NOT NULL/i);
+    expect(migrations[13]?.sql).toMatch(/recognition_candidates_capability_fk/i);
+    expect(migrations[13]?.sql).toMatch(/recognition_candidates_authorization_fk/i);
+    expect(migrations[14]?.sql).toMatch(/authorization_snapshot jsonb/i);
+    expect(migrations[14]?.sql).toMatch(
+      /generated_learning_request_primary_capability_fk[\s\S]*FOREIGN KEY \([\s\S]*authorization_decision_id,[\s\S]*capability_version_id,[\s\S]*authorization_containment_epoch[\s\S]*REFERENCES metrics\.authorization_decisions\([\s\S]*id, primary_version_id, containment_epoch/i,
+    );
+    expect(migrations[14]?.sql).toMatch(
+      /generated_learning_content_primary_capability_fk[\s\S]*FOREIGN KEY \([\s\S]*authorization_decision_id,[\s\S]*capability_version_id,[\s\S]*authorization_containment_epoch[\s\S]*REFERENCES metrics\.authorization_decisions\([\s\S]*id, primary_version_id, containment_epoch/i,
+    );
+    expect(migrations[14]?.sql).toMatch(
+      /CREATE FUNCTION learning\.complete_generated_learning_request[\s\S]*?metrics\.lock_current_family_capability_authorization\([\s\S]*?'before_publish',[\s\S]*?'primary'[\s\S]*?REVOKE ALL ON FUNCTION learning\.complete_generated_learning_request/i,
+    );
+    expect(migrations[14]?.sql).toMatch(
+      /CREATE OR REPLACE FUNCTION learning\.reveal_generated_learning_hint[\s\S]*?metrics\.lock_current_family_capability_authorization\([\s\S]*?'before_publish',[\s\S]*?'primary'[\s\S]*?REVOKE ALL ON FUNCTION learning\.reveal_generated_learning_hint/i,
+    );
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -131,9 +175,9 @@ describe('database migration interface', () => {
     const result = await applyMigrations(database, await loadDefaultMigrations());
 
     expect(result).toEqual({
-      applied: ['0006', '0007', '0008', '0009', '0010', '0011', '0012'],
+      applied: ['0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015'],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(7);
+    expect(database.executedMigrationSql).toHaveLength(10);
   });
 });

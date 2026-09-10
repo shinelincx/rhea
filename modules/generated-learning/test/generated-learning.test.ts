@@ -1,22 +1,34 @@
 import { describe, expect, it } from 'vitest';
+import type {
+  AuthorizationDecision,
+  AuthorizationPhase,
+  AuthorizationRevalidation,
+  CapabilityVersion,
+} from '@rhea/quality-control';
 
 import {
   GeneratedLearningService,
   MemoryGeneratedLearningStore,
-  type GeneratedLearningCapability,
   type GeneratedLearningPackCandidate,
   type GenerationSourceSnapshot,
   type ModelGatewayPort,
 } from '../src/index.js';
 
 const actor = { id: 'profile-1', type: 'learner' as const };
-const capability: GeneratedLearningCapability = {
-  adapterVersion: 'fixed-adapter-v1',
-  availability: 'approved',
+const capability: CapabilityVersion = {
+  adapter: { id: 'fixed-adapter', version: 'fixed-adapter-v1' },
+  artifactHash: 'f'.repeat(64),
+  capabilityKey: 'ai.generated-learning',
   id: 'learning-pack-capability-v1',
-  modelVersion: 'fixed-model-v1',
+  implementedBy: 'engineer-1',
+  kind: 'ai',
+  modelOrEngine: { id: 'fixed-model', version: 'fixed-model-v1' },
   policyVersion: 'child-learning-policy-v1',
+  promptOrConfig: { kind: 'prompt', version: 'learning-pack-prompt-v1' },
+  provider: { id: 'fixed-test-model', version: 'fixed-provider-contract-v1' },
   region: 'test-local',
+  registeredAt: '2026-09-01T00:00:00.000Z',
+  requiredSlicePolicyVersion: 'quality-policy-v1',
   templateVersion: 'lesson-support-template-v1',
 };
 const basis = {
@@ -93,6 +105,11 @@ function candidate(
 
 function setup(
   input: {
+    authorization?: {
+      decision?: AuthorizationDecision;
+      rejectAt?: AuthorizationPhase;
+      throwAt?: AuthorizationPhase;
+    };
     gateway?: ModelGatewayPort;
     gate?: { granted: boolean };
     initialBasis?: typeof basis;
@@ -102,6 +119,31 @@ function setup(
   const gate = input.gate ?? { granted: true };
   const store = new MemoryGeneratedLearningStore();
   const calls: unknown[] = [];
+  const authorizationPhases: AuthorizationPhase[] = [];
+  const decision: AuthorizationDecision =
+    input.authorization?.decision ??
+    ({
+      containmentEpoch: 4,
+      decisionId: 'authorization-1',
+      degradedReason: null,
+      issuedAt: '2026-09-10T07:59:00.000Z',
+      primary: { capabilityVersion: capability, rolloutStage: 'general' },
+      rolloutBucket: 0,
+      scope: {
+        capabilityKey: 'ai.generated-learning',
+        kind: 'ai',
+        slice: {
+          basisState: 'current',
+          gradeBand: 'middle_primary',
+          imageQuality: 'not_applicable',
+          questionType: 'process',
+          riskLevel: 'medium',
+          subject: 'mathematics',
+        },
+      },
+      shadow: null,
+      status: 'authorized',
+    } satisfies AuthorizationDecision);
   const gateway: ModelGatewayPort =
     input.gateway ??
     ({
@@ -128,13 +170,44 @@ function setup(
         unitName: '除法',
       }),
     },
-    capability,
     clock: { now: new Date('2026-09-10T08:00:00.000Z') },
     modelGateway: gateway,
     publicationGate: { authorize: async () => gate.granted },
+    qualityControl: {
+      async authorizeCapability(requested) {
+        return structuredClone({
+          ...decision,
+          scope: {
+            capabilityKey: requested.capabilityKey,
+            kind: requested.kind,
+            slice: requested.slice,
+          },
+        });
+      },
+      async revalidateAuthorization(requested) {
+        authorizationPhases.push(requested.phase);
+        if (requested.phase === input.authorization?.throwAt) {
+          throw new Error('QUALITY_CONTROL_UNAVAILABLE');
+        }
+        if (requested.phase === input.authorization?.rejectAt) {
+          return {
+            containmentEpoch: decision.containmentEpoch + 1,
+            decisionId: decision.decisionId,
+            reason: 'CAPABILITY_CONTAINED',
+            status: 'rejected',
+          } satisfies AuthorizationRevalidation;
+        }
+        return {
+          capabilityVersion: capability,
+          containmentEpoch: decision.containmentEpoch,
+          decisionId: decision.decisionId,
+          status: 'authorized',
+        } satisfies AuthorizationRevalidation;
+      },
+    },
     store,
   });
-  return { calls, gate, service, state, store };
+  return { authorizationPhases, calls, gate, service, state, store };
 }
 
 async function request(service: GeneratedLearningService, idempotencyKey = 'request-1') {
@@ -155,7 +228,16 @@ describe('generated learning', () => {
     const queued = await request(service);
 
     expect(queued).toMatchObject({
-      capabilityVersion: { id: capability.id, templateVersion: capability.templateVersion },
+      authorizationDecision: {
+        containmentEpoch: 4,
+        id: 'authorization-1',
+      },
+      capabilityVersion: {
+        id: capability.id,
+        promptOrConfig: capability.promptOrConfig,
+        provider: capability.provider,
+        templateVersion: capability.templateVersion,
+      },
       contentState: 'unavailable',
       generatedContent: null,
       sourceVersion: {
@@ -577,5 +659,151 @@ describe('generated learning', () => {
       predecessorId: storedFirst?.versions[0]?.id,
       revision: 2,
     });
+  });
+
+  it('records the exact authorized AI capability and revalidates every execution boundary', async () => {
+    const { authorizationPhases, service, store } = setup();
+    const queued = await request(service, 'governed-capability');
+    const ready = await service.processRequest({
+      learningProfileId: actor.id,
+      requestId: queued.id,
+    });
+    const stored = await store.findById(ready.id, actor.id);
+
+    expect(authorizationPhases).toEqual(['before_send', 'after_receive', 'before_publish']);
+    expect(stored?.versions[0]).toMatchObject({
+      authorization: {
+        containmentEpoch: 4,
+        decisionId: 'authorization-1',
+      },
+      capability: {
+        adapter: capability.adapter,
+        id: capability.id,
+        modelOrEngine: capability.modelOrEngine,
+        promptOrConfig: capability.promptOrConfig,
+        provider: capability.provider,
+      },
+    });
+    expect(stored?.modelRuns[0]).toMatchObject({
+      authorizationDecisionId: 'authorization-1',
+      capabilityVersionId: capability.id,
+      finishedAt: '2026-09-10T08:00:00.000Z',
+      modelOrEngineVersion: capability.modelOrEngine.version,
+      promptOrConfigVersion: capability.promptOrConfig.version,
+      provider: capability.provider.id,
+      providerVersion: capability.provider.version,
+      observedProvider: capability.provider.id,
+    });
+  });
+
+  it('preserves the observed provider when a gateway routes outside the authorization', async () => {
+    const { service, store } = setup({
+      gateway: {
+        async runStructured() {
+          return {
+            candidate: candidate(),
+            externalTraceId: 'rogue-provider-trace',
+            inputTokens: 100,
+            outputTokens: 200,
+            provider: 'unapproved-provider',
+          };
+        },
+      },
+    });
+    const queued = await request(service, 'provider-mismatch');
+
+    await expect(
+      service.processRequest({ learningProfileId: actor.id, requestId: queued.id }),
+    ).resolves.toMatchObject({
+      generatedContent: null,
+      status: 'unavailable',
+      unavailableReason: 'MODEL_UNAVAILABLE',
+    });
+    const stored = await store.findById(queued.id, actor.id);
+    expect(stored?.modelRuns).toHaveLength(2);
+    expect(stored?.modelRuns[0]).toMatchObject({
+      externalTraceId: 'rogue-provider-trace',
+      observedProvider: 'unapproved-provider',
+      provider: capability.provider.id,
+      succeeded: false,
+    });
+  });
+
+  it('records one successful result and fails closed when after-receive revalidation errors', async () => {
+    const { service, store } = setup({ authorization: { throwAt: 'after_receive' } });
+    const queued = await request(service, 'revalidation-error');
+
+    await expect(
+      service.processRequest({ learningProfileId: actor.id, requestId: queued.id }),
+    ).resolves.toMatchObject({
+      generatedContent: null,
+      status: 'unavailable',
+      unavailableReason: 'CAPABILITY_UNAVAILABLE',
+    });
+    const stored = await store.findById(queued.id, actor.id);
+    expect(stored?.modelRuns).toHaveLength(1);
+    expect(stored?.modelRuns[0]).toMatchObject({
+      observedProvider: capability.provider.id,
+      succeeded: true,
+    });
+  });
+
+  it('returns a recoverable degraded state without calling the model when no capability is authorized', async () => {
+    const degraded: AuthorizationDecision = {
+      containmentEpoch: 7,
+      decisionId: 'degraded-authorization',
+      degradedReason: 'NO_SIGNED_CAPABILITY',
+      issuedAt: '2026-09-10T07:59:00.000Z',
+      primary: null,
+      rolloutBucket: 42,
+      scope: {
+        capabilityKey: 'ai.generated-learning',
+        kind: 'ai',
+        slice: {
+          basisState: 'current',
+          gradeBand: 'middle_primary',
+          imageQuality: 'not_applicable',
+          questionType: 'process',
+          riskLevel: 'medium',
+          subject: 'mathematics',
+        },
+      },
+      shadow: null,
+      status: 'degraded',
+    };
+    const { calls, service } = setup({ authorization: { decision: degraded } });
+
+    await expect(request(service, 'no-approved-capability')).resolves.toMatchObject({
+      authorizationDecision: {
+        containmentEpoch: 7,
+        id: 'degraded-authorization',
+      },
+      capabilityVersion: null,
+      degraded: {
+        nextAction: 'retry_later',
+        reason: 'NO_SIGNED_CAPABILITY',
+        retryable: true,
+      },
+      status: 'unavailable',
+      unavailableReason: 'CAPABILITY_UNAVAILABLE',
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('discards a response when containment activates after the provider returns', async () => {
+    const { authorizationPhases, service, store } = setup({
+      authorization: { rejectAt: 'after_receive' },
+    });
+    const queued = await request(service, 'contained-after-receive');
+
+    await expect(
+      service.processRequest({ learningProfileId: actor.id, requestId: queued.id }),
+    ).resolves.toMatchObject({
+      generatedContent: null,
+      status: 'unavailable',
+      unavailableReason: 'CAPABILITY_CONTAINED',
+    });
+    expect(authorizationPhases).toEqual(['before_send', 'after_receive']);
+    await expect(store.findById(queued.id, actor.id)).resolves.toMatchObject({ versions: [] });
   });
 });

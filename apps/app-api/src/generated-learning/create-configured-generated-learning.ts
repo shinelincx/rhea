@@ -2,11 +2,10 @@ import type { AiProcessingConsentPublicationReader } from '@rhea/family-access';
 import { GeneratedLearningService, type ModelGatewayPort } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 import { createPostgresGeneratedLearningStore } from '@rhea/postgres-generated-learning';
+import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
+import { QualityControlService } from '@rhea/quality-control';
 
-import {
-  createLocalGeneratedLearning,
-  UNAVAILABLE_GENERATED_LEARNING_CAPABILITY,
-} from './create-local-generated-learning.js';
+import { createLocalGeneratedLearning } from './create-local-generated-learning.js';
 import type { GeneratedLearningScheduler } from './generated-learning.provider.js';
 
 const unavailableModelGateway: ModelGatewayPort = {
@@ -33,6 +32,7 @@ export function createConfiguredGeneratedLearning(
     return { localScheduler: local.scheduler, service: local.service, shutdownResources: [] };
   }
   const { pool, publicationGate, store } = createPostgresGeneratedLearningStore(databaseUrl);
+  const qualityControl = new QualityControlService(new PostgresQualityControlStore(pool));
   return {
     localScheduler: {
       async schedule() {
@@ -41,9 +41,9 @@ export function createConfiguredGeneratedLearning(
     },
     service: new GeneratedLearningService({
       basisReader: learningContent,
-      capability: UNAVAILABLE_GENERATED_LEARNING_CAPABILITY,
       modelGateway: unavailableModelGateway,
       publicationGate,
+      qualityControl,
       store,
     }),
     shutdownResources: [{ close: () => pool.end() }],

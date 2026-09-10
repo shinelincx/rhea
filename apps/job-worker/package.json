@@ -18,6 +18,8 @@
     "@rhea/model-gateway-adapter": "workspace:*",
     "@rhea/postgres-generated-learning": "workspace:*",
     "@rhea/postgres-learning-content": "workspace:*",
+    "@rhea/postgres-quality-control": "workspace:*",
+    "@rhea/quality-control": "workspace:*",
     "@rhea/queue-adapter": "workspace:*"
   },
   "devDependencies": {

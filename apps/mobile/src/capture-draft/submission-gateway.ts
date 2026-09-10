@@ -9,6 +9,7 @@ export type MobileProcessingStatus =
   | 'recognizing'
   | 'awaiting_confirmation'
   | 'completed'
+  | 'unavailable'
   | 'failed'
   | 'canceled';
 
@@ -23,9 +24,35 @@ export interface MobileRecognitionRegion {
   text: string;
 }
 
+export interface MobileOcrCapabilityVersion {
+  adapter: { id: string; version: string };
+  artifactHash: string;
+  capabilityKey: string;
+  id: string;
+  implementedBy: string;
+  kind: 'ocr';
+  modelOrEngine: { id: string; version: string };
+  policyVersion: string;
+  promptOrConfig: { kind: 'config'; version: string };
+  provider: { id: string; version: string };
+  region: string;
+  registeredAt: string;
+  requiredSlicePolicyVersion: string;
+  templateVersion: string;
+}
+
+export interface MobileRecognitionAuthorization {
+  capabilityVersion: MobileOcrCapabilityVersion;
+  containmentEpoch: number;
+  decisionId: string;
+  status: 'authorized';
+}
+
 export interface MobileProcessingJob {
   candidate: {
     adapterVersion: string;
+    authorization: MobileRecognitionAuthorization;
+    finishedAt: string;
     id: string;
     regions: MobileRecognitionRegion[];
     sourceHash: string;
@@ -38,10 +65,12 @@ export interface MobileProcessingJob {
   } | null;
   errorCode: string | null;
   id: string;
+  nextAction: 'retry' | null;
   qualityIssues: Array<{
     issue: 'blurry' | 'too_dark' | 'glare' | 'missing_edge';
     pageId: string;
   }>;
+  retryable: boolean;
   status: MobileProcessingStatus;
   updatedAt: string;
 }

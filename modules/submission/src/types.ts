@@ -5,6 +5,7 @@ export type ProcessingJobStatus =
   | 'recognizing'
   | 'awaiting_confirmation'
   | 'completed'
+  | 'unavailable'
   | 'failed'
   | 'canceled';
 
@@ -55,6 +56,8 @@ export interface RecognitionRegion {
 
 export interface RecognitionCandidate {
   adapterVersion: string;
+  authorization: Extract<AuthorizationRevalidation, { status: 'authorized' }>;
+  finishedAt: string;
   id: string;
   regions: RecognitionRegion[];
   sourceHash: string;
@@ -75,7 +78,7 @@ export interface ProcessingJob {
   cancellationVersion: number;
   completedContent: ConfirmedContent | null;
   createdAt: string;
-  errorCode: 'FILE_UNSAFE' | 'OCR_FAILED' | 'UPLOAD_INCOMPLETE' | null;
+  errorCode: 'CAPABILITY_UNAVAILABLE' | 'FILE_UNSAFE' | 'OCR_FAILED' | 'UPLOAD_INCOMPLETE' | null;
   familySpaceId: string;
   id: string;
   learningProfileId: string;
@@ -91,7 +94,10 @@ export interface ProcessingJobView {
   completedContent: ConfirmedContent | null;
   errorCode: ProcessingJob['errorCode'];
   id: string;
+  nextAction: 'retry' | null;
   qualityIssues: ProcessingJob['qualityIssues'];
+  retryable: boolean;
   status: ProcessingJobStatus;
   updatedAt: string;
 }
+import type { AuthorizationRevalidation } from '@rhea/quality-control';
