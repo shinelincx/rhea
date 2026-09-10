@@ -18,6 +18,7 @@ export interface MobileRecognitionRegion {
   kind: 'question' | 'answer' | 'shared_prompt';
   lowConfidence: boolean;
   pageId: string;
+  questionRegionId: string | null;
   readingOrder: number;
   text: string;
 }
@@ -82,6 +83,7 @@ export interface MobileObjectiveAssessment {
     };
     id: string;
     question: { subject: MobileSubject; text: string; versionId: string };
+    requiresProfessionalReview: boolean;
     response: { text: string; versionId: string };
     revision: number;
   };

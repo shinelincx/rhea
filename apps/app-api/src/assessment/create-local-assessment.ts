@@ -69,7 +69,14 @@ export function createLocalAssessment(
         ({ id, kind }) => id === input.reference.responseRegionId && kind === 'answer',
       );
       const subject = material.currentClassification.primarySubject;
-      if (!questionRegion || !responseRegion || !subject) return null;
+      if (
+        !questionRegion ||
+        !responseRegion ||
+        responseRegion.questionRegionId !== questionRegion.id ||
+        !subject
+      ) {
+        return null;
+      }
       const question = {
         subject,
         text: questionRegion.text,

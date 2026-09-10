@@ -83,7 +83,8 @@ export interface ObjectiveAssessmentDecision {
   expectedDisplay: string | null;
   normalizedResponse: string | null;
   outcome: 'correct' | 'incorrect' | 'ungradable';
-  reasonCode: 'BASIS_INSUFFICIENT' | 'QUESTION_INSUFFICIENT' | null;
+  reasonCode:
+    'BASIS_INSUFFICIENT' | 'PROFESSIONAL_REVIEW_REQUIRED' | 'QUESTION_INSUFFICIENT' | null;
 }
 
 export interface ObjectiveAssessmentVersion {

@@ -361,6 +361,17 @@ describe('objective assessment', () => {
       }),
     });
     const assessment = await grade(service, inputReference);
+    expect(assessment.currentVersion).toMatchObject({
+      decision: { outcome: 'ungradable', reasonCode: 'PROFESSIONAL_REVIEW_REQUIRED' },
+      requiresProfessionalReview: true,
+    });
+    await expect(
+      service.getDownstreamReference({
+        actor: learner,
+        assessmentId: assessment.id,
+        learningProfileId: learner.id,
+      }),
+    ).rejects.toMatchObject({ code: 'DOWNSTREAM_INELIGIBLE' });
     const disputed = await service.raiseDispute({
       actor: learner,
       assessmentId: assessment.id,
@@ -398,11 +409,19 @@ describe('objective assessment', () => {
           reviewerId: 'professional-1',
         },
         predecessorId: assessment.currentVersion.id,
+        requiresProfessionalReview: false,
         revision: 2,
       },
       openDisputeId: null,
       resolutions: [{ resolvedBy: { id: 'professional-1', type: 'professional' } }],
     });
+    await expect(
+      service.getDownstreamReference({
+        actor: learner,
+        assessmentId: assessment.id,
+        learningProfileId: learner.id,
+      }),
+    ).resolves.toMatchObject({ outcome: 'correct' });
   });
 
   it('fails current reads closed when the selected learning basis changes', async () => {

@@ -82,6 +82,14 @@ describe('submission recognition workflow', () => {
     expect(recognized.status).toBe('awaiting_confirmation');
     expect(recognized.candidate?.adapterVersion).toBe('deterministic-ocr-v1');
     expect(recognized.candidate?.regions[0]).toMatchObject({ lowConfidence: false });
+    expect(recognized.candidate?.regions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'page-1:answer',
+          questionRegionId: 'page-1:question',
+        }),
+      ]),
+    );
 
     const confirmed = await service.confirm({
       edits: { 'page-1:answer': '9' },

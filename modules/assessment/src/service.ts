@@ -139,7 +139,20 @@ function normalizedText(
   return options.caseSensitive ? whitespaceNormalized : whitespaceNormalized.toLocaleLowerCase();
 }
 
-function decision(questionText: string, responseText: string, rule: ObjectiveGradingRule | null) {
+function decision(
+  questionText: string,
+  responseText: string,
+  rule: ObjectiveGradingRule | null,
+  requiresProfessionalReview = false,
+) {
+  if (requiresProfessionalReview) {
+    return {
+      expectedDisplay: null,
+      normalizedResponse: responseText.trim() || null,
+      outcome: 'ungradable' as const,
+      reasonCode: 'PROFESSIONAL_REVIEW_REQUIRED' as const,
+    };
+  }
   if (!questionText.trim()) {
     return {
       expectedDisplay: null,
@@ -384,7 +397,7 @@ export class AssessmentService {
       basis: structuredClone(basis),
       createdAt: this.#clock.now.toISOString(),
       createdBy: { ...input.actor },
-      decision: decision(question.text, response.text, rule),
+      decision: decision(question.text, response.text, rule, resolved.requiresProfessionalReview),
       gradingRuleVersionId: resolved.gradingRuleVersionId,
       id: randomUUID(),
       inputAuthority: { kind: 'confirmed_content' as const },
@@ -636,7 +649,7 @@ export class AssessmentService {
       : {
           gradingRuleVersionId: current.gradingRuleVersionId,
           question: structuredClone(current.question),
-          requiresProfessionalReview: current.requiresProfessionalReview,
+          requiresProfessionalReview: false,
           response: structuredClone(current.response),
           rule: structuredClone(current.rule),
         };
@@ -656,7 +669,7 @@ export class AssessmentService {
       inputReference: structuredClone(current.inputReference),
       predecessorId: current.id,
       question: resolved.question,
-      requiresProfessionalReview: resolved.requiresProfessionalReview,
+      requiresProfessionalReview: false,
       response: resolved.response,
       revision: current.revision + 1,
       rule: resolved.rule,

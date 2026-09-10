@@ -23,7 +23,7 @@ afterAll(async () => {
 });
 
 describeWithDatabase('PostgreSQL migrations', () => {
-  it('run from an empty database and can be repeated safely', async () => {
+  it('run through the released 0005 boundary, upgrade, and repeat safely', async () => {
     if (!pool || !database) {
       return;
     }
@@ -32,8 +32,9 @@ describeWithDatabase('PostgreSQL migrations', () => {
     await pool.query('DROP TABLE IF EXISTS public.rhea_schema_migrations');
     const migrations = await loadDefaultMigrations();
 
-    const first = await applyMigrations(database, migrations);
-    const second = await applyMigrations(database, migrations);
+    const released = await applyMigrations(database, migrations.slice(0, 5));
+    const upgraded = await applyMigrations(database, migrations);
+    const repeated = await applyMigrations(database, migrations);
     const schemas = await pool.query<{ schema_name: string }>(
       `SELECT schema_name
        FROM information_schema.schemata
@@ -42,13 +43,17 @@ describeWithDatabase('PostgreSQL migrations', () => {
       [['learning', 'metrics', 'safety']],
     );
 
-    expect(first).toEqual({
-      applied: ['0001', '0002', '0003', '0004', '0005', '0006'],
+    expect(released).toEqual({
+      applied: ['0001', '0002', '0003', '0004', '0005'],
       skipped: [],
     });
-    expect(second).toEqual({
+    expect(upgraded).toEqual({
+      applied: ['0006', '0007', '0008'],
+      skipped: ['0001', '0002', '0003', '0004', '0005'],
+    });
+    expect(repeated).toEqual({
       applied: [],
-      skipped: ['0001', '0002', '0003', '0004', '0005', '0006'],
+      skipped: ['0001', '0002', '0003', '0004', '0005', '0006', '0007', '0008'],
     });
     expect(schemas.rows.map(({ schema_name }) => schema_name)).toEqual([
       'learning',

@@ -46,8 +46,20 @@ async function createLearningMaterial(
       lowConfidence: false,
       pageId: 'page-1',
       polygon: [],
+      questionRegionId: null,
       readingOrder: 0,
       text: input.questionText ?? '6 × 7 = ?',
+    },
+    {
+      confidence: 0.99,
+      id: 'question-2',
+      kind: 'question',
+      lowConfidence: false,
+      pageId: 'page-1',
+      polygon: [],
+      questionRegionId: null,
+      readingOrder: 1,
+      text: '第二道题',
     },
     {
       confidence: 0.99,
@@ -56,7 +68,8 @@ async function createLearningMaterial(
       lowConfidence: false,
       pageId: 'page-1',
       polygon: [],
-      readingOrder: 1,
+      questionRegionId,
+      readingOrder: 2,
       text: input.answerText ?? '41',
     },
   ];
@@ -241,6 +254,32 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       });
     },
   );
+
+  it('rejects a real answer paired with a different real question', async () => {
+    if (!pool) return;
+    const fixture = await createLearningMaterial();
+    const store = new PostgresAssessmentStore(pool);
+    const service = new AssessmentService({
+      basisReader: fixture.learningContent,
+      inputReader: store,
+      store,
+    });
+
+    await expect(
+      service.gradeObjective({
+        actor: { id: fixture.learningProfileId, type: 'learner' },
+        familySpaceId: fixture.familySpaceId,
+        inputReference: {
+          confirmedContentVersionId: fixture.confirmedContentVersionId,
+          processingJobId: fixture.processingJobId,
+          questionRegionId: 'question-2',
+          responseRegionId: fixture.responseRegionId,
+        },
+        learningProfileId: fixture.learningProfileId,
+        materialId: fixture.material.id,
+      }),
+    ).rejects.toMatchObject({ code: 'TRUSTED_INPUT_NOT_FOUND' });
+  });
 
   it('persists repeated disputes and professional correction provenance', async () => {
     if (!pool) return;

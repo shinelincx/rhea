@@ -38,19 +38,22 @@ interface ObjectivePair {
 export function pairObjectiveRegions(
   regions: ReadonlyArray<MobileRecognitionRegion>,
 ): ObjectivePair[] {
-  const pageIds = [...new Set(regions.map(({ pageId }) => pageId))];
-  return pageIds.flatMap((pageId) => {
-    const pageRegions = regions.filter((region) => region.pageId === pageId);
-    const questions = pageRegions
-      .filter((region) => region.kind === 'question')
-      .sort((left, right) => left.readingOrder - right.readingOrder);
-    const responses = pageRegions
-      .filter((region) => region.kind === 'answer')
-      .sort((left, right) => left.readingOrder - right.readingOrder);
-    return questions.flatMap((question, index) => {
-      const response = responses[index];
-      return response ? [{ question, response }] : [];
-    });
+  const pageOrder = new Map<string, number>();
+  for (const region of regions) {
+    if (!pageOrder.has(region.pageId)) pageOrder.set(region.pageId, pageOrder.size);
+  }
+  const questions = regions
+    .filter((region) => region.kind === 'question')
+    .sort(
+      (left, right) =>
+        (pageOrder.get(left.pageId) ?? 0) - (pageOrder.get(right.pageId) ?? 0) ||
+        left.readingOrder - right.readingOrder,
+    );
+  return questions.flatMap((question) => {
+    const responses = regions.filter(
+      (region) => region.kind === 'answer' && region.questionRegionId === question.id,
+    );
+    return responses.length === 1 ? [{ question, response: responses[0]! }] : [];
   });
 }
 
@@ -216,6 +219,11 @@ function ObjectiveAssessmentItem({
                   ? '需要订正'
                   : '暂无法可靠批改'}
           </Text>
+          {assessment.currentVersion.requiresProfessionalReview && !assessment.openDisputeId ? (
+            <Text style={styles.warningText}>
+              当前学习依据存在冲突，需要专业复核；系统不会自动判定对错，也不会进入下游学习统计。
+            </Text>
+          ) : null}
           <Text style={styles.detail}>题目：{assessment.currentVersion.question.text}</Text>
           <Text style={styles.detail}>我的作答：{assessment.currentVersion.response.text}</Text>
           <Text style={styles.detail}>

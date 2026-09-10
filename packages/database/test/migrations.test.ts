@@ -66,35 +66,59 @@ describe('database migration interface', () => {
       '0004',
       '0005',
       '0006',
+      '0007',
+      '0008',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS metrics/i);
     expect(migrations[3]?.sql).toMatch(/CREATE TABLE learning\.processing_jobs/i);
     expect(migrations[3]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
-    expect(migrations[5]?.sql).toMatch(/CREATE TABLE learning\.objective_assessments/i);
-    expect(migrations[5]?.sql).toMatch(/CREATE TABLE learning\.objective_grading_rule_versions/i);
-    expect(migrations[5]?.sql).toMatch(/CREATE ROLE rhea_assessment_app/i);
-    expect(migrations[3]?.sql).toMatch(/FUNCTION learning\.resolve_confirmed_objective_regions/i);
-    expect(migrations[4]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_basis/i);
-    expect(migrations[4]?.sql).toMatch(/FUNCTION learning\.lock_current_assessment_basis/i);
-    expect(migrations[4]?.sql).toMatch(/SECURITY DEFINER/i);
-    expect(migrations[4]?.sql).toMatch(
+    expect(migrations[7]?.sql).toMatch(/CREATE TABLE learning\.objective_assessments/i);
+    expect(migrations[7]?.sql).toMatch(/CREATE TABLE learning\.objective_grading_rule_versions/i);
+    expect(migrations[7]?.sql).toMatch(/CREATE ROLE rhea_assessment_app/i);
+    expect(migrations[3]?.sql).not.toMatch(
+      /FUNCTION learning\.resolve_confirmed_objective_regions/i,
+    );
+    expect(migrations[4]?.sql).not.toMatch(
+      /FUNCTION learning\.resolve_objective_assessment_basis/i,
+    );
+    expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.resolve_confirmed_objective_regions/i);
+    expect(migrations[5]?.sql).toMatch(/questionRegionId/i);
+    expect(migrations[6]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_basis/i);
+    expect(migrations[6]?.sql).toMatch(/FUNCTION learning\.lock_current_assessment_basis/i);
+    expect(migrations[6]?.sql).toMatch(/SECURITY DEFINER/i);
+    expect(migrations[6]?.sql).toMatch(
       /REVOKE ALL ON FUNCTION learning\.lock_current_assessment_basis/i,
     );
-    expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_input/i);
-    expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.confirm_objective_grading_rule/i);
-    expect(migrations[5]?.sql).toMatch(
+    expect(migrations[7]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_input/i);
+    expect(migrations[7]?.sql).toMatch(/FUNCTION learning\.confirm_objective_grading_rule/i);
+    expect(migrations[7]?.sql).toMatch(
       /REVOKE ALL ON FUNCTION learning\.confirm_objective_grading_rule/i,
     );
-    expect(migrations[5]?.sql).toMatch(/input_authority jsonb NOT NULL/i);
-    expect(migrations[5]?.sql).toMatch(/resolved_by_type IN \('guardian', 'professional'\)/i);
-    expect(migrations[5]?.sql).toMatch(/SET search_path = pg_catalog, learning/i);
-    expect(migrations[5]?.sql).not.toMatch(
+    expect(migrations[7]?.sql).toMatch(/input_authority jsonb NOT NULL/i);
+    expect(migrations[7]?.sql).toMatch(/resolved_by_type IN \('guardian', 'professional'\)/i);
+    expect(migrations[7]?.sql).toMatch(/SET search_path = pg_catalog, learning/i);
+    expect(migrations[7]?.sql).not.toMatch(
       /(?:FROM|JOIN) learning\.(?:confirmed_content_versions|classification_versions|basis_selection_versions|learning_source_versions)/i,
     );
-    expect(migrations[5]?.sql).toMatch(
+    expect(migrations[7]?.sql).toMatch(
       /ALTER TABLE learning\.objective_grading_rule_versions FORCE ROW LEVEL SECURITY/i,
     );
+  });
+
+  it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
+    const database = new RecordingDatabase();
+    for (const version of ['0001', '0002', '0003', '0004', '0005']) {
+      database.applied.add(version);
+    }
+
+    const result = await applyMigrations(database, await loadDefaultMigrations());
+
+    expect(result).toEqual({
+      applied: ['0006', '0007', '0008'],
+      skipped: ['0001', '0002', '0003', '0004', '0005'],
+    });
+    expect(database.executedMigrationSql).toHaveLength(3);
   });
 });

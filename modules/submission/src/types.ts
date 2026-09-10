@@ -48,6 +48,7 @@ export interface RecognitionRegion {
   lowConfidence: boolean;
   pageId: string;
   polygon: Array<{ x: number; y: number }>;
+  questionRegionId: string | null;
   readingOrder: number;
   text: string;
 }
