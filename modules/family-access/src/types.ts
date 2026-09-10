@@ -49,6 +49,16 @@ export interface ConsentHistoryEntry {
   status: Exclude<ConsentStatus, 'not_decided'>;
 }
 
+export interface AiProcessingConsentSnapshot {
+  familySpaceId: string;
+  grade: Grade | null;
+  learningProfileId: string;
+  revision: number;
+  statementVersion: string;
+  status: ConsentStatus;
+  updatedAt: string | null;
+}
+
 export interface Clock {
   readonly now: Date;
 }
@@ -109,6 +119,11 @@ export interface FamilyAccess {
     grade: number | null;
     pin: string;
   }): Promise<LearningProfile>;
+  getLearningProfile(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<LearningProfile>;
   getSession(input: { accessToken: string }): Promise<{ actor: Actor; expiresAt: string }>;
   issueLearnerSession(input: {
     deviceAccessToken: string;
@@ -138,4 +153,12 @@ export interface FamilyAccess {
     accessToken: string;
     identityAssertion: string;
   }): Promise<{ reverifiedAt: string; validUntil: string }>;
+}
+
+/** Internal worker port: callers must be trusted by the composition root. */
+export interface AiProcessingConsentPublicationReader {
+  getAiProcessingConsentSnapshotForPublication(input: {
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<AiProcessingConsentSnapshot | null>;
 }

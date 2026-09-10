@@ -6,6 +6,8 @@ import { createScryptPinHasher, type PinHasher } from './pin-hasher.js';
 import type { FamilyAccessStore, SessionRecord } from './store.js';
 import type {
   Actor,
+  AiProcessingConsentPublicationReader,
+  AiProcessingConsentSnapshot,
   Capability,
   Clock,
   ConsentHistoryEntry,
@@ -78,7 +80,7 @@ function checkedPin(pin: string): string {
   return pin;
 }
 
-export class FamilyAccessService implements FamilyAccess {
+export class FamilyAccessService implements FamilyAccess, AiProcessingConsentPublicationReader {
   readonly #clock: Clock;
   readonly #identityProvider: IdentityProviderPort;
   readonly #pinHasher: PinHasher;
@@ -141,6 +143,52 @@ export class FamilyAccessService implements FamilyAccess {
     await this.#store.createLearningProfile({ editorGuardianId: guardian.guardianId, profile });
     const { displayName, familySpaceId, grade, id } = profile;
     return { displayName, familySpaceId, grade, id };
+  }
+
+  async getLearningProfile(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<LearningProfile> {
+    await this.authorizeLearningProfile({
+      accessToken: input.accessToken,
+      capability: 'learning.read',
+      familySpaceId: input.familySpaceId,
+      learningProfileId: input.learningProfileId,
+    });
+    const profile = await this.#store.findLearningProfile(
+      input.learningProfileId,
+      input.familySpaceId,
+    );
+    if (!profile) {
+      throw new FamilyAccessError('CAPABILITY_DENIED', '不能访问此学习档案');
+    }
+    const { displayName, familySpaceId, grade, id } = profile;
+    return { displayName, familySpaceId, grade, id };
+  }
+
+  async getAiProcessingConsentSnapshotForPublication(input: {
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<AiProcessingConsentSnapshot | null> {
+    const profile = await this.#store.findLearningProfile(
+      input.learningProfileId,
+      input.familySpaceId,
+    );
+    if (!profile) {
+      return null;
+    }
+    const consent = await this.#store.findConsent(input.familySpaceId, 'ai_processing');
+    const statement = consentStatement('ai_processing');
+    return {
+      familySpaceId: input.familySpaceId,
+      grade: profile.grade,
+      learningProfileId: profile.id,
+      revision: consent?.revision ?? 0,
+      statementVersion: consent?.statementVersion ?? statement.statementVersion,
+      status: consent?.status ?? 'not_decided',
+      updatedAt: consent?.updatedAt.toISOString() ?? null,
+    };
   }
 
   async registerDevice(input: { accessToken: string; familySpaceId: string; label: string }) {

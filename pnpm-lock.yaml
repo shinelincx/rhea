@@ -43,6 +43,22 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/model-gateway:
+    dependencies:
+      '@rhea/generated-learning':
+        specifier: workspace:*
+        version: link:../../modules/generated-learning
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/object-storage:
     dependencies:
       '@aws-sdk/client-s3':
@@ -111,6 +127,31 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  adapters/postgres-generated-learning:
+    dependencies:
+      '@rhea/generated-learning':
+        specifier: workspace:*
+        version: link:../../modules/generated-learning
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -207,6 +248,9 @@ importers:
       '@rhea/family-access':
         specifier: workspace:*
         version: link:../../modules/family-access
+      '@rhea/generated-learning':
+        specifier: workspace:*
+        version: link:../../modules/generated-learning
       '@rhea/job-runtime':
         specifier: workspace:*
         version: link:../../packages/job-runtime
@@ -225,6 +269,9 @@ importers:
       '@rhea/postgres-family-access':
         specifier: workspace:*
         version: link:../../adapters/postgres-family-access
+      '@rhea/postgres-generated-learning':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-generated-learning
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-content
@@ -247,6 +294,9 @@ importers:
       '@nestjs/testing':
         specifier: 12.0.1
         version: 12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@rhea/model-gateway-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/model-gateway
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
@@ -259,6 +309,21 @@ importers:
 
   apps/job-worker:
     dependencies:
+      '@rhea/generated-learning':
+        specifier: workspace:*
+        version: link:../../modules/generated-learning
+      '@rhea/learning-content':
+        specifier: workspace:*
+        version: link:../../modules/learning-content
+      '@rhea/model-gateway-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/model-gateway
+      '@rhea/postgres-generated-learning':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-generated-learning
+      '@rhea/postgres-learning-content':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-learning-content
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
@@ -357,6 +422,22 @@ importers:
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
   modules/family-access:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/generated-learning:
+    dependencies:
+      '@rhea/learning-content':
+        specifier: workspace:*
+        version: link:../learning-content
     devDependencies:
       '@types/node':
         specifier: 24.10.13

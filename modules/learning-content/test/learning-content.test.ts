@@ -121,6 +121,20 @@ describe('learning content organization', () => {
       revision: 2,
       source: 'correction',
     });
+    await expect(
+      service.getCurrentLearningContextReference({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        materialId: original.id,
+      }),
+    ).resolves.toMatchObject({
+      classificationRevision: 2,
+      confirmedContentVersionId: 'confirmed-1',
+      coursePathName: '沪教版三年级上册',
+      knowledgePointNames: ['阅读理解'],
+      subject: 'chinese',
+      unitName: '现代文阅读',
+    });
   });
 
   it('marks conflicting immutable sources while retaining an explicit current basis', async () => {

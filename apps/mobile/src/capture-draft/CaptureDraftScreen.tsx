@@ -13,6 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../design-system/tokens';
+import { GeneratedLearningCard } from '../generated-learning/GeneratedLearningCard';
+import type { GeneratedLearningGateway } from '../generated-learning/generated-learning-gateway';
 import type { CaptureSource, CapturedDraftPage } from './capture-source';
 import {
   addDraftPages,
@@ -53,6 +55,7 @@ interface CaptureDraftScreenProps {
   accessToken?: string;
   captureSource: CaptureSource;
   familySpaceId?: string;
+  generatedLearningGateway?: GeneratedLearningGateway;
   learningProfileId: string;
   onBack: () => void;
   repository: CaptureDraftRepository;
@@ -109,6 +112,7 @@ export function CaptureDraftScreen({
   accessToken,
   captureSource,
   familySpaceId,
+  generatedLearningGateway,
   learningProfileId,
   onBack,
   repository,
@@ -617,6 +621,22 @@ export function CaptureDraftScreen({
                   onPress={() => setEditingClassification(true)}
                 />
               </View>
+            ) : null}
+
+            {learningMaterial?.currentClassification.status === 'classified' &&
+            job?.completedContent &&
+            accessToken &&
+            familySpaceId &&
+            generatedLearningGateway ? (
+              <GeneratedLearningCard
+                accessToken={accessToken}
+                familySpaceId={familySpaceId}
+                gateway={generatedLearningGateway}
+                key={`${learningMaterial.id}:${learningMaterial.basis.currentSourceVersionId}:${learningMaterial.basis.selectionRevision}:${learningMaterial.currentClassification.revision}:${job.id}`}
+                learningProfileId={learningProfileId}
+                materialId={learningMaterial.id}
+                processingJobId={job.id}
+              />
             ) : null}
 
             {learningMaterial?.currentClassification.status === 'classified' &&

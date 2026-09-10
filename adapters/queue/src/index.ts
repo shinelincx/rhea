@@ -1,5 +1,16 @@
-import type { JobClient, ObservableJob, SubmitJobInput, SubmittedJob } from '@rhea/job-runtime';
+import {
+  getJobRetryPolicy,
+  isJobKind,
+  type JobClient,
+  type JobHandler,
+  type JobKind,
+  type ObservableJob,
+  type SubmitJobInput,
+  type SubmittedJob,
+} from '@rhea/job-runtime';
 import { Queue, Worker, type ConnectionOptions } from 'bullmq';
+
+export type { JobHandler, SubmitJobInput } from '@rhea/job-runtime';
 
 export interface BullMqOptions {
   queueName: string;
@@ -31,6 +42,37 @@ function connectionFromUrl(redisUrl: string): ConnectionOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function requireJobKind(value: unknown): JobKind {
+  if (!isJobKind(value)) {
+    throw new Error('UNSUPPORTED_JOB_KIND');
+  }
+
+  return value;
+}
+
+function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
+  const kind = requireJobKind(kindValue);
+  if (!isRecord(payload)) throw new Error('INVALID_JOB_PAYLOAD');
+  if (
+    kind === 'generated-learning.generate' &&
+    (typeof payload.requestId !== 'string' ||
+      !payload.requestId.trim() ||
+      typeof payload.learningProfileId !== 'string' ||
+      !payload.learningProfileId.trim())
+  ) {
+    throw new Error('INVALID_JOB_PAYLOAD');
+  }
+  return kind === 'generated-learning.generate'
+    ? {
+        kind,
+        payload: {
+          learningProfileId: payload.learningProfileId as string,
+          requestId: payload.requestId as string,
+        },
+      }
+    : { kind, payload: { outcome: payload.outcome } };
 }
 
 export class BullMqJobClient implements JobClient {
@@ -76,18 +118,32 @@ export class BullMqJobClient implements JobClient {
       attempts: job.attemptsMade,
       errorCode: status === 'failed' ? 'JOB_HANDLER_FAILED' : null,
       id: job.id ?? id,
-      kind: 'system.probe',
+      kind: requireJobKind(job.name),
       result: status === 'succeeded' && isRecord(job.returnvalue) ? job.returnvalue : null,
       status,
     };
   }
 
   async submit(input: SubmitJobInput): Promise<SubmittedJob> {
+    if (input.deduplicationKey) {
+      const existing = await this.#queue.getJob(input.deduplicationKey);
+      if (existing) {
+        if ((await existing.getState()) !== 'failed') {
+          return { id: existing.id ?? input.deduplicationKey, status: 'queued' };
+        }
+        await existing.remove();
+      }
+    }
+    const retryPolicy = getJobRetryPolicy(input.kind);
     const job = await this.#queue.add(input.kind, input.payload, {
-      attempts: 3,
-      backoff: { delay: 250, type: 'exponential' },
-      removeOnComplete: false,
-      removeOnFail: false,
+      attempts: retryPolicy.attempts,
+      backoff: {
+        delay: retryPolicy.backoff.delayMs,
+        type: retryPolicy.backoff.strategy,
+      },
+      ...(input.deduplicationKey ? { jobId: input.deduplicationKey } : {}),
+      removeOnComplete: { age: 86_400, count: 10_000 },
+      removeOnFail: { age: 604_800, count: 10_000 },
     });
 
     if (!job.id) {
@@ -98,18 +154,24 @@ export class BullMqJobClient implements JobClient {
   }
 }
 
-export function createProbeWorker(options: BullMqOptions): Worker {
+export function createJobWorker(options: BullMqOptions, handler: JobHandler): Worker {
   return new Worker(
     options.queueName,
     async (job) => {
-      if (job.name !== 'system.probe' || job.data.outcome === 'failure') {
-        throw new Error('JOB_HANDLER_FAILED');
-      }
-
-      return { message: 'processed' };
+      return handler(requireJobInput(job.name, job.data));
     },
     {
       connection: connectionFromUrl(options.redisUrl),
     },
   );
+}
+
+export function createProbeWorker(options: BullMqOptions): Worker {
+  return createJobWorker(options, async (input) => {
+    if (input.kind !== 'system.probe' || input.payload.outcome === 'failure') {
+      throw new Error('JOB_HANDLER_FAILED');
+    }
+
+    return { message: 'processed' };
+  });
 }

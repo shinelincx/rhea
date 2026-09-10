@@ -68,6 +68,10 @@ describe('database migration interface', () => {
       '0006',
       '0007',
       '0008',
+      '0009',
+      '0010',
+      '0011',
+      '0012',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -105,6 +109,17 @@ describe('database migration interface', () => {
     expect(migrations[7]?.sql).toMatch(
       /ALTER TABLE learning\.objective_grading_rule_versions FORCE ROW LEVEL SECURITY/i,
     );
+    expect(migrations[8]?.sql).toMatch(
+      /FUNCTION learning\.lock_current_generated_learning_eligibility/i,
+    );
+    expect(migrations[9]?.sql).toMatch(
+      /FUNCTION learning\.lock_current_generated_learning_content/i,
+    );
+    expect(migrations[10]?.sql).toMatch(
+      /FUNCTION learning\.lock_current_generated_learning_basis/i,
+    );
+    expect(migrations[11]?.sql).toMatch(/CREATE ROLE rhea_generated_learning_app/i);
+    expect(migrations[11]?.sql).toMatch(/FUNCTION learning\.lock_generated_learning_publication/i);
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -116,9 +131,9 @@ describe('database migration interface', () => {
     const result = await applyMigrations(database, await loadDefaultMigrations());
 
     expect(result).toEqual({
-      applied: ['0006', '0007', '0008'],
+      applied: ['0006', '0007', '0008', '0009', '0010', '0011', '0012'],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(3);
+    expect(database.executedMigrationSql).toHaveLength(7);
   });
 });

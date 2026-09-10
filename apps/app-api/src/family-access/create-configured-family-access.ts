@@ -1,13 +1,14 @@
 import {
   FamilyAccessService,
   createInMemoryFamilyAccess,
+  type AiProcessingConsentPublicationReader,
   type FamilyAccess,
   type IdentityProviderPort,
 } from '@rhea/family-access';
 import { createPostgresFamilyAccessStore } from '@rhea/postgres-family-access';
 
 export interface ConfiguredFamilyAccess {
-  familyAccess: FamilyAccess;
+  familyAccess: AiProcessingConsentPublicationReader & FamilyAccess;
   shutdownResources: Array<{ close(): Promise<void> }>;
 }
 

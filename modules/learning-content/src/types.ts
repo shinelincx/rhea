@@ -92,6 +92,16 @@ export interface CurrentLearningBasisReference {
   versionLabel: string;
 }
 
+export interface CurrentLearningContextReference {
+  basis: CurrentLearningBasisReference;
+  classificationRevision: number;
+  confirmedContentVersionId: string;
+  coursePathName: string | null;
+  knowledgePointNames: string[];
+  subject: Subject | null;
+  unitName: string | null;
+}
+
 export interface LearningMaterial {
   basis: LearningBasisView;
   basisSelectionHistory: BasisSelectionVersion[];

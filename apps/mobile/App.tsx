@@ -18,6 +18,7 @@ import { createSubmissionGateway } from './src/capture-draft/submission-gateway'
 import { deviceCredentialStore } from './src/family-entry/device-credential-store';
 import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
+import { createGeneratedLearningGateway } from './src/generated-learning/generated-learning-gateway';
 import { GuardianConsentScreen } from './src/guardian-consent/GuardianConsentScreen';
 import { TodayRouteScreen } from './src/today-route/TodayRouteScreen';
 import { createTodayRouteLoader } from './src/today-route/load-today-route';
@@ -30,6 +31,7 @@ const familyEntryGateway = createFamilyEntryGateway(
     (__DEV__ ? 'development:guardian-demo' : ''),
 );
 const submissionGateway = createSubmissionGateway(apiBaseUrl);
+const generatedLearningGateway = createGeneratedLearningGateway(apiBaseUrl);
 const captureDraftRepository = new EncryptedCaptureDraftRepository(
   Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
   Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
@@ -99,6 +101,7 @@ export default function App() {
             accessToken={learnerSession.accessToken}
             captureSource={expoCaptureSource}
             familySpaceId={learnerSession.profile.familySpaceId}
+            generatedLearningGateway={generatedLearningGateway}
             learningProfileId={learnerSession.profile.id}
             onBack={() => setLearnerRoute('today')}
             repository={captureDraftRepository}

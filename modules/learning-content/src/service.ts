@@ -6,8 +6,9 @@ import type {
   BasisSelectionVersion,
   ClassificationDraft,
   ClassificationVersion,
-  LearningActorReference,
   CurrentLearningBasisReference,
+  CurrentLearningContextReference,
+  LearningActorReference,
   LearningMaterial,
   LearningSourceKind,
   LearningSourceVersion,
@@ -353,6 +354,34 @@ export class LearningContentService {
       sourceVersionId: source.id,
       validityEpoch: material.validityEpoch,
       versionLabel: source.versionLabel,
+    };
+  }
+
+  async getCurrentLearningContextReference(input: {
+    actor: LearningActorReference;
+    learningProfileId: string;
+    materialId: string;
+  }): Promise<CurrentLearningContextReference> {
+    const material = await this.getMaterial(input);
+    const basisSource = material.sourceVersions.find(
+      ({ id }) => id === material.basis.currentSourceVersionId,
+    )!;
+    return {
+      basis: {
+        contentHash: basisSource.contentHash,
+        kind: basisSource.kind,
+        materialId: material.id,
+        selectionVersion: material.basis.selectionRevision,
+        sourceVersionId: basisSource.id,
+        validityEpoch: material.validityEpoch,
+        versionLabel: basisSource.versionLabel,
+      },
+      classificationRevision: material.currentClassification.revision,
+      confirmedContentVersionId: material.confirmedContentVersionId,
+      coursePathName: material.currentClassification.coursePath?.name ?? null,
+      knowledgePointNames: material.currentClassification.knowledgePoints.map(({ name }) => name),
+      subject: material.currentClassification.primarySubject,
+      unitName: material.currentClassification.unit?.name ?? null,
     };
   }
 

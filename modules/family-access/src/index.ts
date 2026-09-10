@@ -18,6 +18,8 @@ export type {
 } from './store.js';
 export type {
   Actor,
+  AiProcessingConsentPublicationReader,
+  AiProcessingConsentSnapshot,
   Capability,
   ConsentHistoryEntry,
   ConsentKind,

@@ -4,6 +4,7 @@ import { APP_FILTER } from '@nestjs/core';
 import type { FamilyAccess } from '@rhea/family-access';
 import type { JobClient } from '@rhea/job-runtime';
 import type { AssessmentService } from '@rhea/assessment';
+import type { GeneratedLearningService } from '@rhea/generated-learning';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
@@ -35,6 +36,13 @@ import {
   type SubmissionService,
 } from './submission/submission.provider.js';
 import { TodayRouteController } from './today-route.controller.js';
+import { GeneratedLearningController } from './generated-learning/generated-learning.controller.js';
+import { GeneratedLearningExceptionFilter } from './generated-learning/generated-learning-exception.filter.js';
+import {
+  GENERATED_LEARNING_SCHEDULER,
+  GENERATED_LEARNING_SERVICE,
+  type GeneratedLearningScheduler,
+} from './generated-learning/generated-learning.provider.js';
 
 @Module({})
 export class AppModule {
@@ -47,6 +55,8 @@ export class AppModule {
     learningContentService: LearningContentService,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
+    generatedLearningService: GeneratedLearningService,
+    generatedLearningScheduler: GeneratedLearningScheduler,
     shutdownResources: Array<{ close(): Promise<void> }>,
   ): DynamicModule {
     return {
@@ -54,6 +64,7 @@ export class AppModule {
       controllers: [
         AssessmentController,
         FamilyAccessController,
+        GeneratedLearningController,
         HealthController,
         LearningContentController,
         ProbeJobsController,
@@ -77,6 +88,10 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: LearningContentExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: GeneratedLearningExceptionFilter,
         },
         {
           provide: ASSESSMENT_SERVICE,
@@ -109,6 +124,14 @@ export class AppModule {
         {
           provide: SUBMISSION_SCHEDULER,
           useValue: submissionScheduler,
+        },
+        {
+          provide: GENERATED_LEARNING_SERVICE,
+          useValue: generatedLearningService,
+        },
+        {
+          provide: GENERATED_LEARNING_SCHEDULER,
+          useValue: generatedLearningScheduler,
         },
         ...shutdownResources.map((resource, index) => ({
           provide: `SHUTDOWN_RESOURCE_${index}`,

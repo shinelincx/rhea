@@ -20,9 +20,11 @@
     "@rhea/postgres-assessment": "workspace:*",
     "@rhea/postgres-submission": "workspace:*",
     "@rhea/family-access": "workspace:*",
+    "@rhea/generated-learning": "workspace:*",
     "@rhea/job-runtime": "workspace:*",
     "@rhea/learning-content": "workspace:*",
     "@rhea/postgres-family-access": "workspace:*",
+    "@rhea/postgres-generated-learning": "workspace:*",
     "@rhea/postgres-learning-content": "workspace:*",
     "@rhea/queue-adapter": "workspace:*",
     "@rhea/submission": "workspace:*",
@@ -30,6 +32,7 @@
     "rxjs": "7.8.2"
   },
   "devDependencies": {
+    "@rhea/model-gateway-adapter": "workspace:*",
     "@nestjs/testing": "12.0.1",
     "@types/node": "24.10.13",
     "typescript": "6.0.3",

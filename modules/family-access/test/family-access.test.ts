@@ -258,6 +258,106 @@ describe('FamilyAccess public interface', () => {
     ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
   });
 
+  it('reads the authoritative learning profile only through a matching authorized scope', async () => {
+    const clock = new MutableClock();
+    const familyAccess = createInMemoryFamilyAccess({ clock });
+    const first = await createFamilyFixture('guardian-profile-read-a', clock, familyAccess);
+    const second = await createFamilyFixture('guardian-profile-read-b', clock, familyAccess);
+    const learner = await familyAccess.issueLearnerSession({
+      deviceAccessToken: first.device.accessToken,
+      learningProfileId: first.profile.id,
+      pin: '2468',
+    });
+
+    await expect(
+      familyAccess.getLearningProfile({
+        accessToken: learner.accessToken,
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toEqual(first.profile);
+    await expect(
+      familyAccess.getLearningProfile({
+        accessToken: first.guardian.accessToken,
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toEqual(first.profile);
+    await expect(
+      familyAccess.getLearningProfile({
+        accessToken: first.guardian.accessToken,
+        familySpaceId: second.family.id,
+        learningProfileId: second.profile.id,
+      }),
+    ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+    await expect(
+      familyAccess.getLearningProfile({
+        accessToken: learner.accessToken,
+        familySpaceId: first.family.id,
+        learningProfileId: second.profile.id,
+      }),
+    ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+  });
+
+  it('provides a profile-bound AI-processing consent snapshot for trusted publication gates', async () => {
+    const clock = new MutableClock();
+    const familyAccess = createInMemoryFamilyAccess({ clock });
+    const first = await createFamilyFixture('guardian-ai-gate-a', clock, familyAccess);
+    const second = await createFamilyFixture('guardian-ai-gate-b', clock, familyAccess);
+
+    await expect(
+      familyAccess.getAiProcessingConsentSnapshotForPublication({
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toMatchObject({
+      familySpaceId: first.family.id,
+      grade: 3,
+      learningProfileId: first.profile.id,
+      revision: 0,
+      status: 'not_decided',
+      updatedAt: null,
+    });
+    await expect(
+      familyAccess.getAiProcessingConsentSnapshotForPublication({
+        familySpaceId: first.family.id,
+        learningProfileId: second.profile.id,
+      }),
+    ).resolves.toBeNull();
+
+    await familyAccess.reverifyGuardian({
+      accessToken: first.guardian.accessToken,
+      identityAssertion: 'guardian-ai-gate-a',
+    });
+    await familyAccess.changeConsent({
+      accessToken: first.guardian.accessToken,
+      familySpaceId: first.family.id,
+      granted: true,
+      kind: 'ai_processing',
+    });
+    const granted = await familyAccess.getAiProcessingConsentSnapshotForPublication({
+      familySpaceId: first.family.id,
+      learningProfileId: first.profile.id,
+    });
+
+    expect(granted).toMatchObject({ revision: 1, status: 'granted' });
+    expect(granted?.statementVersion).toBeTruthy();
+    expect(granted?.updatedAt).toBe(clock.now.toISOString());
+
+    await familyAccess.changeConsent({
+      accessToken: first.guardian.accessToken,
+      familySpaceId: first.family.id,
+      granted: false,
+      kind: 'ai_processing',
+    });
+    await expect(
+      familyAccess.getAiProcessingConsentSnapshotForPublication({
+        familySpaceId: first.family.id,
+        learningProfileId: first.profile.id,
+      }),
+    ).resolves.toMatchObject({ revision: 2, status: 'withdrawn' });
+  });
+
   it('does not reveal profiles from a different family space to a registered device', async () => {
     const clock = new MutableClock();
     const familyAccess = createInMemoryFamilyAccess({ clock });

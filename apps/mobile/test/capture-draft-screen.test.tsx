@@ -13,6 +13,7 @@ import type {
   MobileProcessingJob,
   SubmissionGateway,
 } from '../src/capture-draft/submission-gateway';
+import type { GeneratedLearningGateway } from '../src/generated-learning/generated-learning-gateway';
 
 const passThroughCrypto: DraftCryptoPort = {
   decrypt: async (_profileId, _context, ciphertext) => ciphertext,
@@ -194,11 +195,18 @@ describe('capture draft mobile flow', () => {
       })),
       submit: jest.fn(async () => awaiting),
     };
+    const generatedLearningGateway = {
+      cancel: jest.fn(),
+      get: jest.fn(),
+      request: jest.fn(),
+      revealNextHint: jest.fn(),
+    } satisfies GeneratedLearningGateway;
     const view = await render(
       <CaptureDraftScreen
         accessToken="learner-token"
         captureSource={captureSource()}
         familySpaceId="family-a"
+        generatedLearningGateway={generatedLearningGateway}
         learningProfileId="profile-a"
         onBack={jest.fn()}
         repository={repository}
@@ -240,6 +248,7 @@ describe('capture draft mobile flow', () => {
       ),
     );
     expect(await view.findByText('待归类')).toBeVisible();
+    expect(view.queryByText('AI 学习助手')).toBeNull();
 
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '修改归类' }));
@@ -266,6 +275,7 @@ describe('capture draft mobile flow', () => {
       ),
     );
     expect(await view.findByText('已整理到数学，当前学习依据版本已记录。')).toBeVisible();
+    expect(await view.findByText('AI 学习助手')).toBeVisible();
   });
 
   it('renders and grades every confirmed question-and-response pair', async () => {

@@ -2,9 +2,14 @@ import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { createInMemoryFamilyAccess, type FamilyAccess } from '@rhea/family-access';
+import {
+  createInMemoryFamilyAccess,
+  type AiProcessingConsentPublicationReader,
+  type FamilyAccess,
+} from '@rhea/family-access';
 import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
 import type { AssessmentService } from '@rhea/assessment';
+import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 import type { SubmissionService } from '@rhea/submission';
 
@@ -19,18 +24,29 @@ import { createEnvironmentDependencyProbes } from './health/environment-probes.j
 import { createLocalLearningContent } from './learning-content/create-local-learning-content.js';
 import { createLocalSubmission } from './submission/create-local-submission.js';
 import type { SubmissionScheduler } from './submission/submission.provider.js';
+import { createLocalGeneratedLearning } from './generated-learning/create-local-generated-learning.js';
+import type { GeneratedLearningScheduler } from './generated-learning/generated-learning.provider.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
   assessmentService?: AssessmentService;
   dependencyProbes?: DependencyProbe[];
   familyAccess?: FamilyAccess;
+  generatedLearningConsentReader?: AiProcessingConsentPublicationReader;
+  generatedLearningScheduler?: GeneratedLearningScheduler;
+  generatedLearningService?: GeneratedLearningService;
   jobClient?: JobClient;
   learningContentService?: LearningContentService;
   professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
   shutdownResources?: Array<{ close(): Promise<void> }>;
+}
+
+function isConsentPublicationReader(
+  value: FamilyAccess,
+): value is FamilyAccess & AiProcessingConsentPublicationReader {
+  return 'getAiProcessingConsentSnapshotForPublication' in value;
 }
 
 const LOCAL_WEB_ORIGINS = ['http://127.0.0.1:8081', 'http://localhost:8081'];
@@ -56,6 +72,13 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const learningContent = options.learningContentService ?? createLocalLearningContent();
   const assessment =
     options.assessmentService ?? createLocalAssessment(learningContent, submissions);
+  const generatedLearning = createLocalGeneratedLearning(
+    learningContent,
+    options.generatedLearningConsentReader ??
+      (isConsentPublicationReader(familyAccess)
+        ? familyAccess
+        : { getAiProcessingConsentSnapshotForPublication: async () => null }),
+  );
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
     .getInstance()
@@ -75,6 +98,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       learningContent,
       submissions,
       options.submissionScheduler ?? localSubmission.scheduler,
+      options.generatedLearningService ?? generatedLearning.service,
+      options.generatedLearningScheduler ?? generatedLearning.scheduler,
       options.shutdownResources ?? [],
     ),
     adapter,
