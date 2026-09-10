@@ -9,6 +9,14 @@ import type {
   SubmissionGateway,
 } from './submission-gateway';
 
+type DisputeTarget = 'assessment' | 'question' | 'response';
+
+const DISPUTE_TARGET_OPTIONS: ReadonlyArray<{ label: string; value: DisputeTarget }> = [
+  { label: '题目识别', value: 'question' },
+  { label: '我的作答', value: 'response' },
+  { label: '批改结论', value: 'assessment' },
+];
+
 interface ObjectiveAssessmentCardProps {
   accessToken: string;
   completedContent: NonNullable<MobileProcessingJob['completedContent']>;
@@ -66,6 +74,7 @@ export function ObjectiveAssessmentCard({
   const [assessment, setAssessment] = useState<MobileObjectiveAssessment | null>(null);
   const [correctionText, setCorrectionText] = useState('');
   const [disputeReason, setDisputeReason] = useState('');
+  const [disputeTarget, setDisputeTarget] = useState<DisputeTarget>('response');
   const [showDispute, setShowDispute] = useState(false);
   const [working, setWorking] = useState(false);
   const question = completedContent.regions.find((region) => region.kind === 'question');
@@ -121,7 +130,7 @@ export function ObjectiveAssessmentCard({
         familySpaceId,
         learningProfileId,
         reason: disputeReason,
-        target: 'assessment',
+        target: disputeTarget,
       });
       setAssessment(disputed);
       setShowDispute(false);
@@ -191,6 +200,34 @@ export function ObjectiveAssessmentCard({
           )}
           {showDispute && !assessment.openDisputeId ? (
             <View style={styles.disputePanel}>
+              <Text style={styles.inputLabel}>哪里需要复核？</Text>
+              <View accessibilityRole="radiogroup" style={styles.targetOptions}>
+                {DISPUTE_TARGET_OPTIONS.map((option) => {
+                  const selected = option.value === disputeTarget;
+                  return (
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      key={option.value}
+                      onPress={() => setDisputeTarget(option.value)}
+                      style={({ pressed }) => [
+                        styles.targetOption,
+                        selected ? styles.targetOptionSelected : null,
+                        pressed ? styles.pressed : null,
+                      ]}
+                    >
+                      <Text
+                        style={selected ? styles.targetOptionTextSelected : styles.targetOptionText}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text style={styles.guideText}>
+                首次质疑通常由监护人核对；依据冲突、需专业判断或重复质疑会转入专业复核。
+              </Text>
               <Text style={styles.inputLabel}>为什么觉得不对？</Text>
               <TextInput
                 accessibilityLabel="质疑原因"
@@ -262,6 +299,21 @@ const styles = StyleSheet.create({
   multilineInput: { minHeight: 72 },
   outcome: { color: colors.primary, fontSize: 22, fontWeight: '800' },
   pressed: { opacity: 0.8 },
+  targetOption: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.xs,
+  },
+  targetOptionSelected: { backgroundColor: '#EAF3FF', borderColor: colors.primary },
+  targetOptionText: { color: colors.mutedForeground, fontSize: 14, fontWeight: '600' },
+  targetOptionTextSelected: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  targetOptions: { flexDirection: 'row', gap: spacing.sm },
   title: { color: colors.foreground, fontSize: 19, fontWeight: '700' },
   warningText: { color: '#B54708', fontSize: 14, lineHeight: 21 },
 });

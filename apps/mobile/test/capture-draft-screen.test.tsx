@@ -348,7 +348,7 @@ describe('capture draft mobile flow', () => {
       correctClassification: jest.fn(),
       disputeAssessment: jest.fn(async () => ({
         ...graded,
-        disputes: [{ id: 'dispute-1', reviewRoute: 'professional' as const }],
+        disputes: [{ id: 'dispute-1', reviewRoute: 'guardian' as const }],
         openDisputeId: 'dispute-1',
       })),
       getJob: jest.fn(async () => awaiting),
@@ -422,6 +422,11 @@ describe('capture draft mobile flow', () => {
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '我觉得批改不对' }));
     });
+    expect(view.getByRole('radio', { name: '题目识别' })).toBeVisible();
+    expect(view.getByRole('radio', { name: '我的作答' }).props.accessibilityState).toMatchObject({
+      checked: true,
+    });
+    expect(view.getByRole('radio', { name: '批改结论' })).toBeVisible();
     await act(async () => {
       fireEvent.changeText(view.getByLabelText('质疑原因'), '作答识别错误');
       fireEvent.changeText(view.getByLabelText('补充修正信息'), '我写的是 9，请核对原稿。');
@@ -432,9 +437,12 @@ describe('capture draft mobile flow', () => {
     await act(async () => {
       fireEvent.press(view.getByRole('button', { name: '提交质疑并暂停结果' }));
     });
-    expect(await view.findByText('已转专业复核')).toBeVisible();
+    expect(gateway.disputeAssessment).toHaveBeenCalledWith(
+      expect.objectContaining({ target: 'response' }),
+    );
+    expect(await view.findByText('结果待复核')).toBeVisible();
     expect(
-      view.getByText('已交由专业人员复核；相关错题、掌握度、复习和挑战计分均已暂停。'),
+      view.getByText('结果待监护人复核；相关错题、掌握度、复习和挑战计分均已暂停。'),
     ).toBeVisible();
   });
 });

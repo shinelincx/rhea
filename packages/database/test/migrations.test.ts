@@ -81,6 +81,12 @@ describe('database migration interface', () => {
       /REVOKE ALL ON FUNCTION learning\.lock_current_assessment_basis/i,
     );
     expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_input/i);
+    expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.confirm_objective_grading_rule/i);
+    expect(migrations[5]?.sql).toMatch(
+      /REVOKE ALL ON FUNCTION learning\.confirm_objective_grading_rule/i,
+    );
+    expect(migrations[5]?.sql).toMatch(/input_authority jsonb NOT NULL/i);
+    expect(migrations[5]?.sql).toMatch(/resolved_by_type IN \('guardian', 'professional'\)/i);
     expect(migrations[5]?.sql).toMatch(/SET search_path = pg_catalog, learning/i);
     expect(migrations[5]?.sql).toMatch(
       /ALTER TABLE learning\.objective_grading_rule_versions FORCE ROW LEVEL SECURITY/i,

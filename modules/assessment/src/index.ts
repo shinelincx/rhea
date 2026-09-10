@@ -10,10 +10,13 @@ export type { AssessmentStore, DownstreamAssessmentRead } from './store.js';
 export { deriveTrustedBuiltInRule, type TrustedBuiltInRule } from './trusted-rules.js';
 export type {
   AcceptedTextGradingRule,
+  AssessmentCorrection,
   AssessmentActorReference,
   AssessmentDispute,
   AssessmentDisputeResolution,
   AssessmentDisputeTarget,
+  AssessmentVersionActorReference,
+  ConfirmedObjectiveGradingRule,
   DownstreamAssessmentReference,
   NumericGradingRule,
   ObjectiveAssessment,
@@ -22,6 +25,7 @@ export type {
   ObjectiveAssessmentVersion,
   ObjectiveGradingRule,
   QuestionVersionSnapshot,
+  ProfessionalReviewerReference,
   ResponseVersionSnapshot,
   ResolvedObjectiveAssessmentInput,
   SingleChoiceGradingRule,

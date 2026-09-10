@@ -1,5 +1,6 @@
 import type {
   AssessmentDispute,
+  AssessmentDisputeResolution,
   AssessmentStore,
   ObjectiveAssessmentDecision,
   ObjectiveAssessmentVersion,
@@ -43,6 +44,7 @@ interface VersionRow extends QueryResultRow {
   grading_rule_version_id: string | null;
   grading_rule: unknown | null;
   id: string;
+  input_authority: unknown;
   input_reference: unknown;
   predecessor_id: string | null;
   question: unknown;
@@ -79,6 +81,7 @@ interface ResolutionRow extends QueryResultRow {
   reason: string;
   resolved_at: Date;
   resolved_by_id: string;
+  resolved_by_type: AssessmentDisputeResolution['resolvedBy']['type'];
   resulting_assessment_version_id: string;
 }
 
@@ -218,7 +221,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       if (!row) return null;
       const [versions, disputes, resolutions] = await Promise.all([
         client.query<VersionRow>(
-          `SELECT id, revision, question, response, input_reference, grading_rule,
+          `SELECT id, revision, question, response, input_reference, input_authority, grading_rule,
                   grading_rule_version_id, decision, requires_professional_review,
                   basis_source_version_id, basis_selection_version, basis_validity_epoch,
                   basis_content_hash, basis_kind, basis_version_label, predecessor_id,
@@ -238,7 +241,8 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
         ),
         client.query<ResolutionRow>(
           `SELECT id, dispute_id, prior_assessment_version_id,
-                  resulting_assessment_version_id, reason, resolved_by_id, resolved_at
+                  resulting_assessment_version_id, reason, resolved_by_type,
+                  resolved_by_id, resolved_at
            FROM learning.assessment_dispute_resolutions
            WHERE assessment_id = $1
            ORDER BY resolved_at, id`,
@@ -270,7 +274,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           priorAssessmentVersionId: resolution.prior_assessment_version_id,
           reason: resolution.reason,
           resolvedAt: timestamp(resolution.resolved_at),
-          resolvedBy: { id: resolution.resolved_by_id, type: 'guardian' },
+          resolvedBy: { id: resolution.resolved_by_id, type: resolution.resolved_by_type },
           resultingAssessmentVersionId: resolution.resulting_assessment_version_id,
         })),
         versions: hydratedVersions,
@@ -358,6 +362,35 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           subject: current.question.subject,
         },
       };
+    });
+  }
+
+  async confirmObjectiveRule(
+    input: Parameters<ObjectiveAssessmentInputReader['confirmObjectiveRule']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const result = await client.query<{ confirmed: boolean }>(
+        `SELECT learning.confirm_objective_grading_rule(
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14
+         ) AS confirmed`,
+        [
+          input.learningProfileId,
+          input.familySpaceId,
+          input.materialId,
+          input.reference.processingJobId,
+          input.reference.confirmedContentVersionId,
+          input.reference.questionRegionId,
+          input.reference.responseRegionId,
+          input.basis.sourceVersionId,
+          input.basis.selectionVersion,
+          input.basis.validityEpoch,
+          input.gradingRuleVersionId,
+          JSON.stringify(input.rule),
+          input.actor.id,
+          input.confirmedAt,
+        ],
+      );
+      return result.rows[0]?.confirmed === true;
     });
   }
 
@@ -457,7 +490,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           (id, assessment_id, dispute_id, prior_assessment_version_id,
            resulting_assessment_version_id, family_space_id, learning_profile_id,
            reason, resolved_by_type, resolved_by_id, resolved_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'guardian', $9, $10)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           resolution.id,
           assessment.id,
@@ -467,6 +500,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           assessment.family_space_id,
           assessment.learning_profile_id,
           resolution.reason,
+          resolution.resolvedBy.type,
           resolution.resolvedBy.id,
           resolution.resolvedAt,
         ],
@@ -521,7 +555,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
     row: AssessmentRow,
   ): Promise<StoredObjectiveAssessment | null> {
     const versions = await client.query<VersionRow>(
-      `SELECT id, revision, question, response, input_reference, grading_rule,
+      `SELECT id, revision, question, response, input_reference, input_authority, grading_rule,
               grading_rule_version_id, decision, requires_professional_review,
               basis_source_version_id, basis_selection_version, basis_validity_epoch,
               basis_content_hash, basis_kind, basis_version_label, predecessor_id,
@@ -560,6 +594,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       decision: json<ObjectiveAssessmentDecision>(row.decision),
       gradingRuleVersionId: row.grading_rule_version_id,
       id: row.id,
+      inputAuthority: json<ObjectiveAssessmentVersion['inputAuthority']>(row.input_authority),
       inputReference: json<ObjectiveAssessmentInputReference>(row.input_reference),
       predecessorId: row.predecessor_id,
       question: json<QuestionVersionSnapshot>(row.question),
@@ -578,13 +613,13 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
     await client.query(
       `INSERT INTO learning.objective_assessment_versions
         (id, assessment_id, family_space_id, learning_profile_id, revision,
-         question, response, input_reference, grading_rule, grading_rule_version_id,
+         question, response, input_reference, input_authority, grading_rule, grading_rule_version_id,
          decision, requires_professional_review, basis_source_version_id,
          basis_selection_version, basis_validity_epoch, basis_content_hash,
          basis_kind, basis_version_label, predecessor_id, created_by_type,
          created_by_id, created_at)
        VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb,
-               $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
+               $10::jsonb, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)`,
       [
         version.id,
         assessment.id,
@@ -594,6 +629,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
         JSON.stringify(version.question),
         JSON.stringify(version.response),
         JSON.stringify(version.inputReference),
+        JSON.stringify(version.inputAuthority),
         version.rule ? JSON.stringify(version.rule) : null,
         version.gradingRuleVersionId,
         JSON.stringify(version.decision),

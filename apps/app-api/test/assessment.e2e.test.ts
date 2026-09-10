@@ -55,6 +55,7 @@ describe('Objective assessment HTTP interface', () => {
     const assessment = new AssessmentService({
       basisReader: learningContent,
       inputReader: {
+        confirmObjectiveRule: async () => true,
         async resolveObjectiveInput({ reference }) {
           const answers: Record<string, string> = { 'answer-1': '41', 'answer-2': '42' };
           const responseText = answers[reference.responseRegionId];
@@ -93,6 +94,40 @@ describe('Objective assessment HTTP interface', () => {
     await app.init();
 
     const baseUrl = `/v1/family-spaces/${family.id}/learning-profiles/${profile.id}`;
+    const rulePayload = {
+      inputReference: {
+        confirmedContentVersionId: '00000000-0000-4000-8000-000000000100',
+        processingJobId: '00000000-0000-4000-8000-000000000104',
+        questionRegionId: 'question-1',
+        responseRegionId: 'answer-1',
+      },
+      materialId: material.id,
+      rule: { expected: '42', kind: 'numeric' },
+    };
+    const learnerConfirmation = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'POST',
+      payload: rulePayload,
+      url: `${baseUrl}/objective-grading-rules`,
+    });
+    expect(learnerConfirmation.statusCode).toBe(403);
+    expect(learnerConfirmation.json()).toMatchObject({
+      error: { code: 'RULE_CONFIRMATION_REQUIRES_GUARDIAN' },
+    });
+    const guardianConfirmation = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: rulePayload,
+      url: `${baseUrl}/objective-grading-rules`,
+    });
+    expect(guardianConfirmation.statusCode).toBe(201);
+    expect(guardianConfirmation.json()).toMatchObject({
+      data: {
+        confirmedBy: { type: 'guardian' },
+        rule: { expected: '42', kind: 'numeric' },
+      },
+    });
+
     const gradedResponse = await app.inject({
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },
       method: 'POST',
@@ -162,12 +197,7 @@ describe('Objective assessment HTTP interface', () => {
       headers: { authorization: `Bearer ${guardian.accessToken}` },
       method: 'POST',
       payload: {
-        inputReference: {
-          confirmedContentVersionId: '00000000-0000-4000-8000-000000000100',
-          processingJobId: '00000000-0000-4000-8000-000000000104',
-          questionRegionId: 'question-1',
-          responseRegionId: 'answer-2',
-        },
+        correction: { responseText: '42' },
         reason: '监护人核对原稿后修正',
       },
       url: `${baseUrl}/objective-assessments/${graded.id}/disputes/${disputed.openDisputeId}/resolution`,
@@ -177,6 +207,7 @@ describe('Objective assessment HTTP interface', () => {
       data: {
         currentVersion: {
           decision: { outcome: 'correct' },
+          inputAuthority: { kind: 'guardian_correction' },
           predecessorId: graded.currentVersion.id,
           revision: 2,
         },

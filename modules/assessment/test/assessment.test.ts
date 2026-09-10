@@ -30,6 +30,7 @@ function reference(suffix: string): ObjectiveAssessmentInputReference {
 
 function trusted(input: {
   question?: string;
+  requiresProfessionalReview?: boolean;
   response: string;
   rule: ResolvedObjectiveAssessmentInput['rule'];
   subject: ResolvedObjectiveAssessmentInput['question']['subject'];
@@ -42,7 +43,7 @@ function trusted(input: {
       text: input.question ?? '已确认的客观题',
       versionId: `content-${input.suffix}:question-${input.suffix}`,
     },
-    requiresProfessionalReview: false,
+    requiresProfessionalReview: input.requiresProfessionalReview ?? false,
     response: {
       text: input.response,
       versionId: `content-${input.suffix}:response-${input.suffix}`,
@@ -56,6 +57,16 @@ function setup(entries: Record<string, ResolvedObjectiveAssessmentInput>) {
   const service = new AssessmentService({
     basisReader: { getCurrentBasisReference: async () => basis },
     inputReader: {
+      async confirmObjectiveRule(input) {
+        const current = entries[input.reference.questionRegionId];
+        if (!current) return false;
+        entries[input.reference.questionRegionId] = {
+          ...current,
+          gradingRuleVersionId: input.gradingRuleVersionId,
+          rule: structuredClone(input.rule),
+        };
+        return true;
+      },
       resolveObjectiveInput: async ({ reference: inputReference }) =>
         structuredClone(entries[inputReference.questionRegionId] ?? null),
     },
@@ -63,6 +74,50 @@ function setup(entries: Record<string, ResolvedObjectiveAssessmentInput>) {
   });
   return { service, store };
 }
+
+it('lets a guardian confirm a versioned trusted rule while rejecting learner authority', async () => {
+  const inputReference = reference('confirm-rule');
+  const { service } = setup({
+    [inputReference.questionRegionId]: trusted({
+      question: 'The word after cat is ___',
+      response: 'dog',
+      rule: null,
+      subject: 'english',
+      suffix: 'confirm-rule',
+    }),
+  });
+  await expect(
+    service.confirmObjectiveRule({
+      actor: learner,
+      familySpaceId: '00000000-0000-4000-8000-000000000002',
+      inputReference,
+      learningProfileId: learner.id,
+      materialId: basis.materialId,
+      rule: {
+        acceptedAnswers: ['dog'],
+        caseSensitive: false,
+        collapseWhitespace: true,
+        kind: 'accepted_text',
+      },
+    }),
+  ).rejects.toMatchObject({ code: 'RULE_CONFIRMATION_REQUIRES_GUARDIAN' });
+  const confirmed = await service.confirmObjectiveRule({
+    actor: guardian,
+    familySpaceId: '00000000-0000-4000-8000-000000000002',
+    inputReference,
+    learningProfileId: learner.id,
+    materialId: basis.materialId,
+    rule: {
+      acceptedAnswers: ['dog'],
+      caseSensitive: false,
+      collapseWhitespace: true,
+      kind: 'accepted_text',
+    },
+  });
+  const result = await grade(service, inputReference);
+  expect(confirmed.id).toBe(result.currentVersion.gradingRuleVersionId);
+  expect(result.currentVersion.decision.outcome).toBe('correct');
+});
 
 function grade(service: AssessmentService, inputReference: ObjectiveAssessmentInputReference) {
   return service.gradeObjective({
@@ -181,9 +236,8 @@ describe('objective assessment', () => {
     },
   );
 
-  it('pauses a response dispute and regrades only from a new trusted input reference', async () => {
+  it('pauses a response dispute and records a guardian-confirmed correction version', async () => {
     const originalReference = reference('original');
-    const correctedReference = reference('corrected');
     const englishRule = {
       acceptedAnswers: ['went'],
       caseSensitive: false,
@@ -197,13 +251,6 @@ describe('objective assessment', () => {
         rule: englishRule,
         subject: 'english',
         suffix: 'original',
-      }),
-      [correctedReference.questionRegionId]: trusted({
-        question: 'Past tense of go?',
-        response: 'went',
-        rule: englishRule,
-        subject: 'english',
-        suffix: 'corrected',
       }),
     });
     const original = await grade(service, originalReference);
@@ -236,17 +283,27 @@ describe('objective assessment', () => {
         actor: learner,
         assessmentId: original.id,
         disputeId: disputed.openDisputeId!,
-        inputReference: correctedReference,
+        correction: { responseText: 'went' },
         learningProfileId: learner.id,
         reason: '确认识别修正',
       }),
     ).rejects.toMatchObject({ code: 'DISPUTE_RESOLUTION_REQUIRES_GUARDIAN' });
+    await expect(
+      service.resolveDispute({
+        actor: guardian,
+        assessmentId: original.id,
+        correction: { rule: englishRule },
+        disputeId: disputed.openDisputeId!,
+        learningProfileId: learner.id,
+        reason: '修正对象错误',
+      }),
+    ).rejects.toMatchObject({ code: 'INPUT_INVALID' });
 
     const resolved = await service.resolveDispute({
       actor: guardian,
       assessmentId: original.id,
       disputeId: disputed.openDisputeId!,
-      inputReference: correctedReference,
+      correction: { responseText: 'went' },
       learningProfileId: learner.id,
       reason: '监护人核对新确认版本后确认识别修正',
     });
@@ -254,7 +311,12 @@ describe('objective assessment', () => {
     expect(resolved).toMatchObject({
       currentVersion: {
         decision: { outcome: 'correct' },
-        inputReference: correctedReference,
+        inputAuthority: {
+          actorId: guardian.id,
+          disputeId: disputed.openDisputeId,
+          kind: 'guardian_correction',
+        },
+        inputReference: originalReference,
         predecessorId: original.currentVersion.id,
         revision: 2,
       },
@@ -276,6 +338,7 @@ describe('objective assessment', () => {
     const { service } = setup({
       [inputReference.questionRegionId]: trusted({
         response: 'A',
+        requiresProfessionalReview: true,
         rule: { correctOption: 'B', kind: 'single_choice' },
         subject: 'science',
         suffix: 'review',
@@ -301,6 +364,29 @@ describe('objective assessment', () => {
         reason: '尝试普通复核',
       }),
     ).rejects.toMatchObject({ code: 'PROFESSIONAL_REVIEW_REQUIRED' });
+    const resolved = await service.resolveProfessionalDispute({
+      assessmentId: assessment.id,
+      correction: { rule: { correctOption: 'A', kind: 'single_choice' } },
+      disputeId: disputed.openDisputeId!,
+      learningProfileId: learner.id,
+      reason: '专业复核确认 A 也应被接受',
+      reviewCaseId: 'review-case-1',
+      reviewer: { id: 'professional-1', type: 'professional' },
+    });
+    expect(resolved).toMatchObject({
+      currentVersion: {
+        decision: { outcome: 'correct' },
+        inputAuthority: {
+          kind: 'professional_review',
+          reviewCaseId: 'review-case-1',
+          reviewerId: 'professional-1',
+        },
+        predecessorId: assessment.currentVersion.id,
+        revision: 2,
+      },
+      openDisputeId: null,
+      resolutions: [{ resolvedBy: { id: 'professional-1', type: 'professional' } }],
+    });
   });
 
   it('fails current reads closed when the selected learning basis changes', async () => {
@@ -310,6 +396,7 @@ describe('objective assessment', () => {
     const service = new AssessmentService({
       basisReader: { getCurrentBasisReference: async () => currentBasis },
       inputReader: {
+        confirmObjectiveRule: async () => false,
         resolveObjectiveInput: async () =>
           trusted({
             response: 'A',

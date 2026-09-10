@@ -5,6 +5,14 @@ export interface AssessmentActorReference {
   type: 'guardian' | 'learner';
 }
 
+export interface ProfessionalReviewerReference {
+  id: string;
+  type: 'professional';
+}
+
+export type AssessmentVersionActorReference =
+  AssessmentActorReference | ProfessionalReviewerReference;
+
 export interface ObjectiveAssessmentInputReference {
   confirmedContentVersionId: string;
   processingJobId: string;
@@ -18,6 +26,24 @@ export interface ResolvedObjectiveAssessmentInput {
   requiresProfessionalReview: boolean;
   response: Omit<ResponseVersionSnapshot, 'contentHash'>;
   rule: ObjectiveGradingRule | null;
+}
+
+export interface ConfirmedObjectiveGradingRule {
+  basis: CurrentLearningBasisReference;
+  confirmedAt: string;
+  confirmedBy: AssessmentActorReference & { type: 'guardian' };
+  familySpaceId: string;
+  id: string;
+  inputReference: ObjectiveAssessmentInputReference;
+  learningProfileId: string;
+  materialId: string;
+  rule: ObjectiveGradingRule;
+}
+
+export interface AssessmentCorrection {
+  questionText?: string;
+  responseText?: string;
+  rule?: ObjectiveGradingRule | null;
 }
 
 export interface QuestionVersionSnapshot {
@@ -63,9 +89,13 @@ export interface ObjectiveAssessmentDecision {
 export interface ObjectiveAssessmentVersion {
   basis: CurrentLearningBasisReference;
   createdAt: string;
-  createdBy: AssessmentActorReference;
+  createdBy: AssessmentVersionActorReference;
   decision: ObjectiveAssessmentDecision;
   id: string;
+  inputAuthority:
+    | { kind: 'confirmed_content' }
+    | { actorId: string; disputeId: string; kind: 'guardian_correction' }
+    | { disputeId: string; kind: 'professional_review'; reviewCaseId: string; reviewerId: string };
   inputReference: ObjectiveAssessmentInputReference;
   predecessorId: string | null;
   question: QuestionVersionSnapshot;
@@ -95,7 +125,7 @@ export interface AssessmentDisputeResolution {
   priorAssessmentVersionId: string;
   reason: string;
   resolvedAt: string;
-  resolvedBy: AssessmentActorReference & { type: 'guardian' };
+  resolvedBy: (AssessmentActorReference & { type: 'guardian' }) | ProfessionalReviewerReference;
   resultingAssessmentVersionId: string;
 }
 

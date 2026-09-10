@@ -6,14 +6,17 @@ import { AssessmentError } from './error.js';
 import type { AssessmentStore } from './store.js';
 import type {
   AssessmentActorReference,
+  AssessmentCorrection,
   AssessmentDispute,
   AssessmentDisputeResolution,
   AssessmentDisputeTarget,
+  ConfirmedObjectiveGradingRule,
   DownstreamAssessmentReference,
   ObjectiveAssessment,
   ObjectiveAssessmentInputReference,
   ObjectiveGradingRule,
   QuestionVersionSnapshot,
+  ProfessionalReviewerReference,
   ResolvedObjectiveAssessmentInput,
   ResponseVersionSnapshot,
   StoredObjectiveAssessment,
@@ -31,6 +34,17 @@ export interface LearningBasisReader {
 }
 
 export interface ObjectiveAssessmentInputReader {
+  confirmObjectiveRule(input: {
+    actor: AssessmentActorReference & { type: 'guardian' };
+    basis: CurrentLearningBasisReference;
+    confirmedAt: string;
+    familySpaceId: string;
+    gradingRuleVersionId: string;
+    learningProfileId: string;
+    materialId: string;
+    reference: ObjectiveAssessmentInputReference;
+    rule: ObjectiveGradingRule;
+  }): Promise<boolean>;
   resolveObjectiveInput(input: {
     actor: AssessmentActorReference;
     basis: CurrentLearningBasisReference;
@@ -83,27 +97,33 @@ function trustedContentHash(
 function checkedRule(rule: ObjectiveGradingRule | null): ObjectiveGradingRule | null {
   if (!rule) return null;
   if (rule.kind === 'numeric') {
-    if (rule.expected.length > 120) {
-      throw new AssessmentError('INPUT_INVALID', '数值答案不能超过 120 个字符');
+    const expected = requiredText(rule.expected, '数值答案', 120);
+    if (canonicalDecimal(expected) === null) {
+      throw new AssessmentError('INPUT_INVALID', '数值答案必须是有效数字');
     }
-    return { expected: rule.expected.trim(), kind: rule.kind };
+    return { expected, kind: rule.kind };
   }
   if (rule.kind === 'single_choice') {
-    if (rule.correctOption.length > 120) {
-      throw new AssessmentError('INPUT_INVALID', '正确选项不能超过 120 个字符');
-    }
-    return { correctOption: rule.correctOption.trim(), kind: rule.kind };
+    return {
+      correctOption: requiredText(rule.correctOption, '正确选项', 120),
+      kind: rule.kind,
+    };
   }
   if (rule.kind === 'accepted_text') {
+    const acceptedAnswers = rule.acceptedAnswers.map((answer) => answer.trim());
     if (
+      acceptedAnswers.length === 0 ||
       rule.acceptedAnswers.length > 20 ||
-      rule.acceptedAnswers.some((answer) => answer.length > 500)
+      acceptedAnswers.some((answer) => !answer || answer.length > 500)
     ) {
-      throw new AssessmentError('INPUT_INVALID', '可接受答案最多 20 个且每个不超过 500 个字符');
+      throw new AssessmentError(
+        'INPUT_INVALID',
+        '可接受答案必须有 1 到 20 个且每个不超过 500 个字符',
+      );
     }
     return {
       ...rule,
-      acceptedAnswers: rule.acceptedAnswers.map((answer) => answer.trim()),
+      acceptedAnswers,
     };
   }
   throw new AssessmentError('INPUT_INVALID', '暂不支持这种客观评价规则');
@@ -263,6 +283,66 @@ export class AssessmentService {
     this.#store = dependencies.store;
   }
 
+  async confirmObjectiveRule(input: {
+    actor: AssessmentActorReference;
+    familySpaceId: string;
+    inputReference: ObjectiveAssessmentInputReference;
+    learningProfileId: string;
+    materialId: string;
+    rule: ObjectiveGradingRule;
+  }): Promise<ConfirmedObjectiveGradingRule> {
+    if (input.actor.type !== 'guardian') {
+      throw new AssessmentError(
+        'RULE_CONFIRMATION_REQUIRES_GUARDIAN',
+        '评价规则需要监护人核对后确认',
+      );
+    }
+    const guardianActor = { ...input.actor, type: 'guardian' as const };
+    const basis = await this.#basisReader.getCurrentBasisReference({
+      actor: guardianActor,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+    });
+    if (basis.materialId !== input.materialId) {
+      throw new AssessmentError('BASIS_CHANGED', '当前学习依据已经变化，请刷新后重新确认');
+    }
+    const inputReference = this.#checkedInputReference(input.inputReference);
+    const rule = checkedRule(input.rule);
+    if (!rule) {
+      throw new AssessmentError('INPUT_INVALID', '确认的评价规则不能为空');
+    }
+    const confirmedAt = this.#clock.now.toISOString();
+    const gradingRuleVersionId = randomUUID();
+    const saved = await this.#inputReader.confirmObjectiveRule({
+      actor: guardianActor,
+      basis,
+      confirmedAt,
+      familySpaceId: input.familySpaceId,
+      gradingRuleVersionId,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+      reference: inputReference,
+      rule,
+    });
+    if (!saved) {
+      throw new AssessmentError(
+        'TRUSTED_INPUT_NOT_FOUND',
+        '没有找到与当前学习依据匹配的已确认题目',
+      );
+    }
+    return {
+      basis: structuredClone(basis),
+      confirmedAt,
+      confirmedBy: guardianActor,
+      familySpaceId: input.familySpaceId,
+      id: gradingRuleVersionId,
+      inputReference,
+      learningProfileId: input.learningProfileId,
+      materialId: input.materialId,
+      rule: structuredClone(rule),
+    };
+  }
+
   async gradeObjective(input: {
     actor: AssessmentActorReference;
     familySpaceId: string;
@@ -304,6 +384,7 @@ export class AssessmentService {
       decision: decision(question.text, response.text, rule),
       gradingRuleVersionId: resolved.gradingRuleVersionId,
       id: randomUUID(),
+      inputAuthority: { kind: 'confirmed_content' as const },
       inputReference,
       predecessorId: null,
       question,
@@ -398,9 +479,7 @@ export class AssessmentService {
       raisedBy: { ...input.actor },
       reason: requiredText(input.reason, '质疑原因', 500),
       reviewRoute:
-        input.target === 'assessment' ||
-        current.requiresProfessionalReview ||
-        assessment.disputes.length > 0
+        current.requiresProfessionalReview || assessment.disputes.length > 0
           ? 'professional'
           : 'guardian',
       target: input.target,
@@ -422,6 +501,7 @@ export class AssessmentService {
   async resolveDispute(input: {
     actor: AssessmentActorReference;
     assessmentId: string;
+    correction?: AssessmentCorrection;
     disputeId: string;
     inputReference?: ObjectiveAssessmentInputReference;
     learningProfileId: string;
@@ -450,16 +530,25 @@ export class AssessmentService {
       learningProfileId: input.learningProfileId,
       materialId: assessment.materialId,
     });
+    if (!basisMatches(current.basis, basis)) {
+      throw new AssessmentError('BASIS_CHANGED', '当前学习依据已经变化，请重新批改');
+    }
+    if (input.correction && input.inputReference) {
+      throw new AssessmentError('INPUT_INVALID', '修正内容与新的确认内容引用不能同时提交');
+    }
     const inputReference = this.#checkedInputReference(
       input.inputReference ?? current.inputReference,
     );
-    const resolved = await this.#resolveInput({
-      actor: input.actor,
-      basis,
-      inputReference,
-      learningProfileId: assessment.learningProfileId,
-      materialId: assessment.materialId,
-    });
+    const versionId = randomUUID();
+    const resolved = input.correction
+      ? this.#resolvedCorrection(current, input.correction, dispute.target, versionId, 'guardian')
+      : await this.#resolveInput({
+          actor: input.actor,
+          basis,
+          inputReference,
+          learningProfileId: assessment.learningProfileId,
+          materialId: assessment.materialId,
+        });
     const { question, response, rule } = resolved;
     const version = {
       basis: structuredClone(basis),
@@ -467,7 +556,14 @@ export class AssessmentService {
       createdBy: { ...input.actor },
       decision: decision(question.text, response.text, rule),
       gradingRuleVersionId: resolved.gradingRuleVersionId,
-      id: randomUUID(),
+      id: versionId,
+      inputAuthority: input.correction
+        ? ({
+            actorId: input.actor.id,
+            disputeId: dispute.id,
+            kind: 'guardian_correction' as const,
+          } as const)
+        : ({ kind: 'confirmed_content' as const } as const),
       inputReference: structuredClone(inputReference),
       predecessorId: current.id,
       question: structuredClone(question),
@@ -500,6 +596,143 @@ export class AssessmentService {
     assessment.resolutions.push(resolution);
     assessment.openDisputeId = null;
     return view(assessment);
+  }
+
+  async resolveProfessionalDispute(input: {
+    assessmentId: string;
+    correction?: AssessmentCorrection;
+    disputeId: string;
+    learningProfileId: string;
+    reason: string;
+    reviewCaseId: string;
+    reviewer: ProfessionalReviewerReference;
+  }): Promise<ObjectiveAssessment> {
+    const assessment = await this.#requireAssessment(input.assessmentId, input.learningProfileId);
+    const dispute = assessment.disputes.find((candidate) => candidate.id === input.disputeId);
+    if (
+      !dispute ||
+      assessment.openDisputeId !== dispute.id ||
+      dispute.reviewRoute !== 'professional'
+    ) {
+      throw new AssessmentError('DISPUTE_NOT_FOUND', '没有找到待专业复核的批改质疑');
+    }
+    const current = assessment.versions.at(-1)!;
+    const versionId = randomUUID();
+    const resolved = input.correction
+      ? this.#resolvedCorrection(
+          current,
+          input.correction,
+          dispute.target,
+          versionId,
+          'professional',
+        )
+      : {
+          gradingRuleVersionId: current.gradingRuleVersionId,
+          question: structuredClone(current.question),
+          requiresProfessionalReview: current.requiresProfessionalReview,
+          response: structuredClone(current.response),
+          rule: structuredClone(current.rule),
+        };
+    const version = {
+      basis: structuredClone(current.basis),
+      createdAt: this.#clock.now.toISOString(),
+      createdBy: { ...input.reviewer },
+      decision: decision(resolved.question.text, resolved.response.text, resolved.rule),
+      gradingRuleVersionId: resolved.gradingRuleVersionId,
+      id: versionId,
+      inputAuthority: {
+        disputeId: dispute.id,
+        kind: 'professional_review' as const,
+        reviewCaseId: requiredText(input.reviewCaseId, '专业复核工单', 200),
+        reviewerId: input.reviewer.id,
+      },
+      inputReference: structuredClone(current.inputReference),
+      predecessorId: current.id,
+      question: resolved.question,
+      requiresProfessionalReview: resolved.requiresProfessionalReview,
+      response: resolved.response,
+      revision: current.revision + 1,
+      rule: resolved.rule,
+    };
+    const resolution: AssessmentDisputeResolution = {
+      disputeId: dispute.id,
+      id: randomUUID(),
+      priorAssessmentVersionId: current.id,
+      reason: requiredText(input.reason, '专业复核说明', 500),
+      resolvedAt: this.#clock.now.toISOString(),
+      resolvedBy: { ...input.reviewer },
+      resultingAssessmentVersionId: version.id,
+    };
+    const saved = await this.#store.resolveDispute({
+      assessmentId: assessment.id,
+      expectedCurrentVersionId: current.id,
+      expectedOpenDisputeId: dispute.id,
+      learningProfileId: assessment.learningProfileId,
+      resolution,
+      version,
+    });
+    if (!saved) {
+      throw new AssessmentError('VERSION_CONFLICT', '专业复核期间批改依据已变化，请刷新后重试');
+    }
+    assessment.versions.push(version);
+    assessment.resolutions.push(resolution);
+    assessment.openDisputeId = null;
+    return view(assessment);
+  }
+
+  #resolvedCorrection(
+    current: StoredObjectiveAssessment['versions'][number],
+    correction: AssessmentCorrection,
+    target: AssessmentDisputeTarget,
+    versionId: string,
+    authority: 'guardian' | 'professional',
+  ) {
+    const changesQuestion = correction.questionText !== undefined;
+    const changesResponse = correction.responseText !== undefined;
+    const changesRule = Object.prototype.hasOwnProperty.call(correction, 'rule');
+    if (!changesQuestion && !changesResponse && !changesRule) {
+      throw new AssessmentError('INPUT_INVALID', '请提供需要确认的题目、作答或评价规则修正');
+    }
+    if (
+      (target === 'question' && (changesResponse || changesRule)) ||
+      (target === 'response' && (changesQuestion || changesRule)) ||
+      (target === 'assessment' && (changesQuestion || changesResponse))
+    ) {
+      throw new AssessmentError('INPUT_INVALID', '修正内容必须与质疑对象一致');
+    }
+    const questionText = changesQuestion
+      ? requiredText(correction.questionText!, '修正题目')
+      : current.question.text;
+    const responseText = changesResponse
+      ? requiredText(correction.responseText!, '修正作答')
+      : current.response.text;
+    const rule = changesRule ? checkedRule(correction.rule ?? null) : structuredClone(current.rule);
+    const questionVersionId = changesQuestion
+      ? `${authority}-correction:${versionId}:question`
+      : current.question.versionId;
+    const responseVersionId = changesResponse
+      ? `${authority}-correction:${versionId}:response`
+      : current.response.versionId;
+    return {
+      gradingRuleVersionId: changesRule
+        ? rule
+          ? `${authority}-correction:${versionId}:rule`
+          : null
+        : current.gradingRuleVersionId,
+      question: this.#checkedQuestion({
+        ...current.question,
+        contentHash: trustedContentHash('question', questionVersionId, questionText),
+        text: questionText,
+        versionId: questionVersionId,
+      }),
+      requiresProfessionalReview: current.requiresProfessionalReview,
+      response: this.#checkedResponse({
+        contentHash: trustedContentHash('response', responseVersionId, responseText),
+        text: responseText,
+        versionId: responseVersionId,
+      }),
+      rule,
+    };
   }
 
   #checkedInputReference(
