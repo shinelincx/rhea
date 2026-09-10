@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { applyMigrations, loadDefaultMigrations } from '@rhea/database';
 import { LearningContentService } from '@rhea/learning-content';
@@ -25,6 +25,25 @@ async function createConfirmedContent() {
   const processingJobId = randomUUID();
   const candidateId = randomUUID();
   const confirmedContentVersionId = randomUUID();
+  const capabilityVersionId = randomUUID();
+  const authorizationDecisionId = randomUUID();
+  const releaseId = randomUUID();
+  const capability = {
+    adapter: { id: 'learning-content-fixture', version: 'test-v1' },
+    artifactHash: 'd'.repeat(64),
+    capabilityKey: 'ocr.recognition',
+    id: capabilityVersionId,
+    implementedBy: 'learning-content-integration-test',
+    kind: 'ocr',
+    modelOrEngine: { id: 'fixture-engine', version: 'engine-v1' },
+    policyVersion: 'fixture-policy-v1',
+    promptOrConfig: { kind: 'config', version: 'fixture-config-v1' },
+    provider: { id: 'fixture-provider', version: 'provider-v1' },
+    region: 'cn-shanghai',
+    registeredAt: '2026-09-10T08:00:00.000Z',
+    requiredSlicePolicyVersion: 'learning-content-fixture-policy-v1',
+    templateVersion: 'not-applicable-v1',
+  } as const;
   const setup = await pool.connect();
   try {
     await setup.query('BEGIN');
@@ -56,10 +75,106 @@ async function createConfirmedContent() {
       [processingJobId, uploadSessionId, familySpaceId, learningProfileId],
     );
     await setup.query(
+      `INSERT INTO metrics.quality_gate_policies
+        (version, minimum_sample_size, required_signoff_roles, registered_at)
+       VALUES ($1, 1, ARRAY['quality_owner', 'domain_reviewer', 'child_safety'], $2)`,
+      [capability.requiredSlicePolicyVersion, capability.registeredAt],
+    );
+    await setup.query(
+      `INSERT INTO metrics.capability_versions
+        (id, capability_key, kind, implemented_by, provider_id, provider_version,
+         model_or_engine_id, model_or_engine_version, adapter_id, adapter_version,
+         prompt_or_config_kind, prompt_or_config_version, template_version, policy_version,
+         required_slice_policy_version, region, registered_at, artifact_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+               $15, $16, $17, $18)`,
+      [
+        capability.id,
+        capability.capabilityKey,
+        capability.kind,
+        capability.implementedBy,
+        capability.provider.id,
+        capability.provider.version,
+        capability.modelOrEngine.id,
+        capability.modelOrEngine.version,
+        capability.adapter.id,
+        capability.adapter.version,
+        capability.promptOrConfig.kind,
+        capability.promptOrConfig.version,
+        capability.templateVersion,
+        capability.policyVersion,
+        capability.requiredSlicePolicyVersion,
+        capability.region,
+        capability.registeredAt,
+        capability.artifactHash,
+      ],
+    );
+    await setup.query(
+      `INSERT INTO metrics.capability_release_revisions
+        (id, capability_key, kind, revision, stage, capability_version_id,
+         fallback_version_id, rollout_basis_points, allowed_use_slices, predecessor_id,
+         action, reason_code, changed_by, changed_at)
+       VALUES ($1, $2, $3, 1, 'general', $4, NULL, 10000, $5, NULL,
+               'advance', 'fixture', 'integration-test', $6)`,
+      [
+        releaseId,
+        capability.capabilityKey,
+        capability.kind,
+        capability.id,
+        JSON.stringify([
+          {
+            basisState: 'not_applicable',
+            gradeBand: 'unclassified',
+            imageQuality: 'clear',
+            questionType: 'unclassified',
+            riskLevel: 'unclassified',
+            subject: 'unclassified',
+          },
+        ]),
+        capability.registeredAt,
+      ],
+    );
+    await setup.query(
+      `INSERT INTO metrics.authorization_decisions
+        (id, capability_key, kind, family_space_hash, subject, grade_band, question_type,
+         image_quality, risk_level, basis_state, rollout_bucket, containment_epoch,
+         primary_release_id, primary_version_id, status, degraded_reason, issued_at)
+       VALUES ($1, $2, $3, $4, 'unclassified', 'unclassified', 'unclassified',
+               'clear', 'unclassified', 'not_applicable', 0, 0, $5, $6,
+               'authorized', NULL, $7)`,
+      [
+        authorizationDecisionId,
+        capability.capabilityKey,
+        capability.kind,
+        createHash('sha256').update(familySpaceId).digest('hex'),
+        releaseId,
+        capability.id,
+        capability.registeredAt,
+      ],
+    );
+    await setup.query(
       `INSERT INTO learning.recognition_candidates
-        (id, job_id, learning_profile_id, adapter_version, source_hash, regions)
-       VALUES ($1, $2, $3, 'test-v1', $4, '[]')`,
-      [candidateId, processingJobId, learningProfileId, 'a'.repeat(64)],
+        (id, job_id, family_space_id, learning_profile_id, adapter_version,
+         finished_at, source_hash, regions, capability_key, capability_kind,
+         capability_version_id, authorization_decision_id,
+         authorization_containment_epoch, authorization_family_space_hash,
+         capability_snapshot)
+       VALUES ($1, $2, $3, $4, 'test-v1', $5, $6, '[]', $7, $8, $9, $10,
+               0, $11, $12)`,
+      [
+        candidateId,
+        processingJobId,
+        familySpaceId,
+        learningProfileId,
+        capability.registeredAt,
+        'a'.repeat(64),
+        capability.capabilityKey,
+        capability.kind,
+        capability.id,
+        authorizationDecisionId,
+        createHash('sha256').update(familySpaceId).digest('hex'),
+        JSON.stringify(capability),
+      ],
     );
     await setup.query(
       `INSERT INTO learning.confirmed_content_versions
