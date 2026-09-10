@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 import type { CaptureSource } from '../src/capture-draft/capture-source';
 import { CaptureDraftScreen } from '../src/capture-draft/CaptureDraftScreen';
+import { ObjectiveAssessmentCard } from '../src/capture-draft/ObjectiveAssessmentCard';
 import {
   EncryptedCaptureDraftRepository,
   MemoryDraftFilePort,
@@ -264,6 +265,132 @@ describe('capture draft mobile flow', () => {
       ),
     );
     expect(await view.findByText('已整理到数学，当前学习依据版本已记录。')).toBeVisible();
+  });
+
+  it('renders and grades every confirmed question-and-response pair', async () => {
+    const regions = [
+      {
+        confidence: 0.99,
+        id: 'question-1',
+        kind: 'question' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 0,
+        text: '1 + 1 =',
+      },
+      {
+        confidence: 0.99,
+        id: 'question-2',
+        kind: 'question' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 1,
+        text: '2 + 2 =',
+      },
+      {
+        confidence: 0.99,
+        id: 'answer-1',
+        kind: 'answer' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 2,
+        text: '2',
+      },
+      {
+        confidence: 0.99,
+        id: 'answer-2',
+        kind: 'answer' as const,
+        lowConfidence: false,
+        pageId: 'page-1',
+        readingOrder: 3,
+        text: '4',
+      },
+    ];
+    const gradeObjective = jest.fn(async (input) => {
+      const second = input.inputReference.questionRegionId === 'question-2';
+      return {
+        currentVersion: {
+          basis: {
+            selectionVersion: 1,
+            sourceVersionId: 'source-1',
+            versionLabel: '确认内容第 1 版',
+          },
+          decision: {
+            expectedDisplay: second ? '4' : '2',
+            normalizedResponse: second ? '4' : '2',
+            outcome: 'correct' as const,
+            reasonCode: null,
+          },
+          id: second ? 'version-2' : 'version-1',
+          question: {
+            subject: 'mathematics' as const,
+            text: second ? '2 + 2 =' : '1 + 1 =',
+            versionId: input.inputReference.questionRegionId,
+          },
+          response: {
+            text: second ? '4' : '2',
+            versionId: input.inputReference.responseRegionId,
+          },
+          revision: 1,
+        },
+        disputes: [],
+        id: second ? 'assessment-2' : 'assessment-1',
+        openDisputeId: null,
+        resolutions: [],
+        versions: [],
+      };
+    });
+    const gateway = {
+      cancel: jest.fn(),
+      confirm: jest.fn(),
+      correctClassification: jest.fn(),
+      disputeAssessment: jest.fn(),
+      getJob: jest.fn(),
+      gradeObjective,
+      organize: jest.fn(),
+      submit: jest.fn(),
+    } as SubmissionGateway;
+    const view = await render(
+      <ObjectiveAssessmentCard
+        accessToken="learner-token"
+        completedContent={{
+          id: 'content-1',
+          regions,
+          sourceCandidateId: 'candidate-1',
+          sourceHash: 'a'.repeat(64),
+        }}
+        familySpaceId="family-a"
+        learningMaterial={{
+          basis: { currentSourceVersionId: 'source-1', hasConflict: false, selectionRevision: 1 },
+          currentClassification: {
+            primarySubject: 'mathematics',
+            revision: 1,
+            status: 'classified',
+          },
+          id: 'material-1',
+          sourceVersions: [{ id: 'source-1', versionLabel: '确认内容第 1 版' }],
+        }}
+        learningProfileId="profile-a"
+        onError={jest.fn()}
+        onNotice={jest.fn()}
+        processingJobId="job-1"
+        submissionGateway={gateway}
+      />,
+    );
+
+    expect(view.getByText('客观题批改 · 共 2 题')).toBeVisible();
+    expect(view.getByText('第 1 题')).toBeVisible();
+    expect(view.getByText('第 2 题')).toBeVisible();
+    const gradeButtons = view.getAllByRole('button', { name: '按当前学习依据批改' });
+    for (const button of gradeButtons) {
+      await act(async () => fireEvent.press(button));
+    }
+    await waitFor(() => expect(gradeObjective).toHaveBeenCalledTimes(2));
+    expect(gradeObjective.mock.calls.map(([input]) => input.inputReference)).toEqual([
+      expect.objectContaining({ questionRegionId: 'question-1', responseRegionId: 'answer-1' }),
+      expect.objectContaining({ questionRegionId: 'question-2', responseRegionId: 'answer-2' }),
+    ]);
+    expect(view.getAllByText('答对了')).toHaveLength(2);
   });
 
   it('shows a traceable objective result and lets the learner pause it with a dispute', async () => {

@@ -170,61 +170,42 @@ SECURITY DEFINER
 SET search_path = pg_catalog, learning
 AS $$
   SELECT
-    question_region.value ->> 'text',
-    response_region.value ->> 'text',
-    classification.primary_subject,
+    confirmed.question_text,
+    confirmed.response_text,
+    basis.subject,
     rule.id::text,
     rule.grading_rule,
     COALESCE(rule.requires_professional_review, false)
-      OR cardinality(source.conflicts_with_source_version_ids) > 0
-  FROM learning.learning_materials material
-  JOIN learning.confirmed_content_versions content
-    ON content.id = p_confirmed_content_version_id
-   AND content.id = material.confirmed_content_version_id
-   AND content.job_id = p_processing_job_id
-   AND content.learning_profile_id = material.learning_profile_id
-  JOIN LATERAL (
-    SELECT primary_subject
-    FROM learning.classification_versions
-    WHERE material_id = material.id
-    ORDER BY revision DESC
-    LIMIT 1
-  ) classification ON classification.primary_subject IS NOT NULL
-  JOIN LATERAL (
-    SELECT version, source_version_id
-    FROM learning.basis_selection_versions
-    WHERE material_id = material.id
-    ORDER BY version DESC
-    LIMIT 1
-  ) selection ON true
-  JOIN learning.learning_source_versions source ON source.id = selection.source_version_id
-  JOIN LATERAL jsonb_array_elements(content.regions) question_region(value)
-    ON question_region.value ->> 'id' = p_question_region_id
-   AND question_region.value ->> 'kind' = 'question'
-  JOIN LATERAL jsonb_array_elements(content.regions) response_region(value)
-    ON response_region.value ->> 'id' = p_response_region_id
-   AND response_region.value ->> 'kind' = 'answer'
+      OR basis.requires_professional_review
+  FROM learning.resolve_objective_assessment_basis(
+    p_learning_profile_id,
+    p_material_id,
+    p_confirmed_content_version_id,
+    p_basis_source_version_id,
+    p_basis_selection_version,
+    p_basis_validity_epoch
+  ) basis
+  CROSS JOIN learning.resolve_confirmed_objective_regions(
+    p_learning_profile_id,
+    p_processing_job_id,
+    p_confirmed_content_version_id,
+    p_question_region_id,
+    p_response_region_id
+  ) confirmed
   LEFT JOIN LATERAL (
     SELECT candidate.id, candidate.grading_rule, candidate.requires_professional_review
     FROM learning.objective_grading_rule_versions candidate
-    WHERE candidate.learning_profile_id = material.learning_profile_id
-      AND candidate.material_id = material.id
-      AND candidate.confirmed_content_version_id = content.id
+    WHERE candidate.learning_profile_id = p_learning_profile_id
+      AND candidate.material_id = p_material_id
+      AND candidate.confirmed_content_version_id = p_confirmed_content_version_id
       AND candidate.question_region_id = p_question_region_id
-      AND candidate.basis_source_version_id = source.id
-      AND candidate.basis_selection_version = selection.version
-      AND candidate.basis_validity_epoch = material.validity_epoch
-      AND candidate.subject = classification.primary_subject
+      AND candidate.basis_source_version_id = p_basis_source_version_id
+      AND candidate.basis_selection_version = p_basis_selection_version
+      AND candidate.basis_validity_epoch = p_basis_validity_epoch
+      AND candidate.subject = basis.subject
     ORDER BY candidate.revision DESC
     LIMIT 1
   ) rule ON true
-  WHERE material.id = p_material_id
-    AND material.learning_profile_id = p_learning_profile_id
-    AND p_learning_profile_id::text = current_setting('rhea.learning_profile_id', true)
-    AND material.invalidated_at IS NULL
-    AND source.id = p_basis_source_version_id
-    AND selection.version = p_basis_selection_version
-    AND material.validity_epoch = p_basis_validity_epoch
 $$;
 
 REVOKE ALL ON FUNCTION learning.resolve_objective_assessment_input(
@@ -242,6 +223,9 @@ CREATE OR REPLACE FUNCTION learning.confirm_objective_grading_rule(
   p_basis_source_version_id uuid,
   p_basis_selection_version integer,
   p_basis_validity_epoch integer,
+  p_basis_content_hash text,
+  p_basis_kind text,
+  p_basis_version_label text,
   p_rule_id uuid,
   p_grading_rule jsonb,
   p_confirmed_by_id uuid,
@@ -261,67 +245,51 @@ BEGIN
     RETURN false;
   END IF;
 
-  PERFORM 1
-  FROM learning.learning_materials material
-  WHERE material.id = p_material_id
-    AND material.learning_profile_id = p_learning_profile_id
-    AND material.family_space_id = p_family_space_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
+  IF NOT learning.lock_current_assessment_basis(
+    p_learning_profile_id,
+    p_material_id,
+    p_basis_source_version_id,
+    p_basis_selection_version,
+    p_basis_validity_epoch,
+    p_basis_content_hash,
+    p_basis_kind,
+    p_basis_version_label
+  ) THEN
     RETURN false;
   END IF;
 
-  SELECT classification.primary_subject, latest.id, COALESCE(latest.revision, 0) + 1
+  SELECT basis.subject, latest.id, COALESCE(latest.revision, 0) + 1
   INTO v_subject, v_predecessor_id, v_revision
-  FROM learning.learning_materials material
-  JOIN learning.confirmed_content_versions content
-    ON content.id = p_confirmed_content_version_id
-   AND content.id = material.confirmed_content_version_id
-   AND content.job_id = p_processing_job_id
-   AND content.learning_profile_id = material.learning_profile_id
-  JOIN LATERAL (
-    SELECT primary_subject
-    FROM learning.classification_versions
-    WHERE material_id = material.id
-    ORDER BY revision DESC
-    LIMIT 1
-  ) classification ON classification.primary_subject IS NOT NULL
-  JOIN LATERAL (
-    SELECT version, source_version_id
-    FROM learning.basis_selection_versions
-    WHERE material_id = material.id
-    ORDER BY version DESC
-    LIMIT 1
-  ) selection ON true
-  JOIN learning.learning_source_versions source ON source.id = selection.source_version_id
-  JOIN LATERAL jsonb_array_elements(content.regions) question_region(value)
-    ON question_region.value ->> 'id' = p_question_region_id
-   AND question_region.value ->> 'kind' = 'question'
-  JOIN LATERAL jsonb_array_elements(content.regions) response_region(value)
-    ON response_region.value ->> 'id' = p_response_region_id
-   AND response_region.value ->> 'kind' = 'answer'
+  FROM learning.resolve_objective_assessment_basis(
+    p_learning_profile_id,
+    p_material_id,
+    p_confirmed_content_version_id,
+    p_basis_source_version_id,
+    p_basis_selection_version,
+    p_basis_validity_epoch
+  ) basis
+  CROSS JOIN learning.resolve_confirmed_objective_regions(
+    p_learning_profile_id,
+    p_processing_job_id,
+    p_confirmed_content_version_id,
+    p_question_region_id,
+    p_response_region_id
+  ) confirmed
   LEFT JOIN LATERAL (
     SELECT candidate.id, candidate.revision
     FROM learning.objective_grading_rule_versions candidate
-    WHERE candidate.learning_profile_id = material.learning_profile_id
-      AND candidate.material_id = material.id
-      AND candidate.confirmed_content_version_id = content.id
+    WHERE candidate.learning_profile_id = p_learning_profile_id
+      AND candidate.material_id = p_material_id
+      AND candidate.confirmed_content_version_id = p_confirmed_content_version_id
       AND candidate.question_region_id = p_question_region_id
-      AND candidate.basis_source_version_id = source.id
-      AND candidate.basis_selection_version = selection.version
-      AND candidate.basis_validity_epoch = material.validity_epoch
-      AND candidate.subject = classification.primary_subject
+      AND candidate.basis_source_version_id = p_basis_source_version_id
+      AND candidate.basis_selection_version = p_basis_selection_version
+      AND candidate.basis_validity_epoch = p_basis_validity_epoch
+      AND candidate.subject = basis.subject
     ORDER BY candidate.revision DESC
     LIMIT 1
   ) latest ON true
-  WHERE material.id = p_material_id
-    AND material.learning_profile_id = p_learning_profile_id
-    AND material.family_space_id = p_family_space_id
-    AND material.invalidated_at IS NULL
-    AND source.id = p_basis_source_version_id
-    AND selection.version = p_basis_selection_version
-    AND material.validity_epoch = p_basis_validity_epoch;
+  WHERE basis.family_space_id = p_family_space_id;
 
   IF NOT FOUND THEN
     RETURN false;
@@ -344,66 +312,7 @@ $$;
 
 REVOKE ALL ON FUNCTION learning.confirm_objective_grading_rule(
   uuid, uuid, uuid, uuid, uuid, text, text, uuid, integer, integer,
-  uuid, jsonb, uuid, timestamptz
-) FROM PUBLIC;
-
-CREATE OR REPLACE FUNCTION learning.lock_current_assessment_basis(
-  p_learning_profile_id uuid,
-  p_material_id uuid,
-  p_source_version_id uuid,
-  p_selection_version integer,
-  p_validity_epoch integer,
-  p_content_hash text,
-  p_kind text,
-  p_version_label text
-) RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, learning
-AS $$
-BEGIN
-  IF p_learning_profile_id::text IS DISTINCT FROM
-     current_setting('rhea.learning_profile_id', true) THEN
-    RETURN false;
-  END IF;
-
-  PERFORM 1
-  FROM learning.learning_materials material
-  WHERE material.id = p_material_id
-    AND material.learning_profile_id = p_learning_profile_id
-  FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RETURN false;
-  END IF;
-
-  PERFORM 1
-  FROM learning.learning_materials material
-  JOIN LATERAL (
-    SELECT version, source_version_id
-    FROM learning.basis_selection_versions
-    WHERE material_id = material.id
-    ORDER BY version DESC
-    LIMIT 1
-  ) selection ON true
-  JOIN learning.learning_source_versions source ON source.id = selection.source_version_id
-  WHERE material.id = p_material_id
-    AND material.learning_profile_id = p_learning_profile_id
-    AND material.invalidated_at IS NULL
-    AND material.validity_epoch = p_validity_epoch
-    AND selection.version = p_selection_version
-    AND source.id = p_source_version_id
-    AND source.content_hash = p_content_hash
-    AND source.kind = p_kind
-    AND source.version_label = p_version_label
-  FOR UPDATE OF material;
-
-  RETURN FOUND;
-END
-$$;
-
-REVOKE ALL ON FUNCTION learning.lock_current_assessment_basis(
-  uuid, uuid, uuid, integer, integer, text, text, text
+  text, text, text, uuid, jsonb, uuid, timestamptz
 ) FROM PUBLIC;
 
 ALTER TABLE learning.objective_grading_rule_versions ENABLE ROW LEVEL SECURITY;
@@ -455,12 +364,18 @@ GRANT USAGE ON SCHEMA learning TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.lock_current_assessment_basis(
   uuid, uuid, uuid, integer, integer, text, text, text
 ) TO rhea_assessment_app;
+GRANT EXECUTE ON FUNCTION learning.resolve_objective_assessment_basis(
+  uuid, uuid, uuid, uuid, integer, integer
+) TO rhea_assessment_app;
+GRANT EXECUTE ON FUNCTION learning.resolve_confirmed_objective_regions(
+  uuid, uuid, uuid, text, text
+) TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.resolve_objective_assessment_input(
   uuid, uuid, uuid, uuid, text, text, uuid, integer, integer
 ) TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.confirm_objective_grading_rule(
   uuid, uuid, uuid, uuid, uuid, text, text, uuid, integer, integer,
-  uuid, jsonb, uuid, timestamptz
+  text, text, text, uuid, jsonb, uuid, timestamptz
 ) TO rhea_assessment_app;
 GRANT SELECT, INSERT, UPDATE ON learning.objective_assessments TO rhea_assessment_app;
 GRANT SELECT, INSERT ON

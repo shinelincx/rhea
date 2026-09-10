@@ -142,6 +142,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
         occurredAt: dispute.raisedAt,
         payload: {
           assessmentVersionId: dispute.assessmentVersionId,
+          downstreamEligibility: { eligible: false, reason: 'disputed' },
           disputeId: dispute.id,
           reviewRoute: dispute.reviewRoute,
           target: dispute.target,
@@ -198,6 +199,10 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
         payload: {
           assessmentVersionId: version.id,
           basisSourceVersionId: version.basis.sourceVersionId,
+          downstreamEligibility:
+            version.decision.outcome === 'ungradable'
+              ? { eligible: false, reason: 'ungradable' }
+              : { assessmentVersionId: version.id, eligible: true },
           outcome: version.decision.outcome,
         },
       });
@@ -371,7 +376,8 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
     return this.#withProfile(input.learningProfileId, async (client) => {
       const result = await client.query<{ confirmed: boolean }>(
         `SELECT learning.confirm_objective_grading_rule(
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+           $14, $15::jsonb, $16, $17
          ) AS confirmed`,
         [
           input.learningProfileId,
@@ -384,6 +390,9 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           input.basis.sourceVersionId,
           input.basis.selectionVersion,
           input.basis.validityEpoch,
+          input.basis.contentHash,
+          input.basis.kind,
+          input.basis.versionLabel,
           input.gradingRuleVersionId,
           JSON.stringify(input.rule),
           input.actor.id,
@@ -517,6 +526,10 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
         eventType: 'objective_assessment.dispute_resolved',
         occurredAt: resolution.resolvedAt,
         payload: {
+          downstreamEligibility:
+            input.version.decision.outcome === 'ungradable'
+              ? { eligible: false, reason: 'ungradable' }
+              : { assessmentVersionId: input.version.id, eligible: true },
           disputeId: resolution.disputeId,
           priorAssessmentVersionId: resolution.priorAssessmentVersionId,
           resultingAssessmentVersionId: resolution.resultingAssessmentVersionId,

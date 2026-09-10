@@ -229,6 +229,7 @@ function ruleIdentity(rule: ObjectiveGradingRule | null): string {
 
 function deduplicationKey(input: {
   basis: CurrentLearningBasisReference;
+  gradingRuleVersionId: string | null;
   learningProfileId: string;
   materialId: string;
   question: QuestionVersionSnapshot;
@@ -247,6 +248,7 @@ function deduplicationKey(input: {
         input.basis.sourceVersionId,
         String(input.basis.selectionVersion),
         String(input.basis.validityEpoch),
+        input.gradingRuleVersionId ?? 'unversioned',
         ruleIdentity(input.rule),
       ].join('\u001f'),
     )
@@ -369,6 +371,7 @@ export class AssessmentService {
     const { question, response, rule } = resolved;
     const key = deduplicationKey({
       basis,
+      gradingRuleVersionId: resolved.gradingRuleVersionId,
       learningProfileId: input.learningProfileId,
       materialId: input.materialId,
       question,
@@ -617,6 +620,10 @@ export class AssessmentService {
       throw new AssessmentError('DISPUTE_NOT_FOUND', '没有找到待专业复核的批改质疑');
     }
     const current = assessment.versions.at(-1)!;
+    const reviewer = {
+      id: requiredText(input.reviewer.id, '专业复核人员', 200),
+      type: 'professional' as const,
+    };
     const versionId = randomUUID();
     const resolved = input.correction
       ? this.#resolvedCorrection(
@@ -636,7 +643,7 @@ export class AssessmentService {
     const version = {
       basis: structuredClone(current.basis),
       createdAt: this.#clock.now.toISOString(),
-      createdBy: { ...input.reviewer },
+      createdBy: reviewer,
       decision: decision(resolved.question.text, resolved.response.text, resolved.rule),
       gradingRuleVersionId: resolved.gradingRuleVersionId,
       id: versionId,
@@ -644,7 +651,7 @@ export class AssessmentService {
         disputeId: dispute.id,
         kind: 'professional_review' as const,
         reviewCaseId: requiredText(input.reviewCaseId, '专业复核工单', 200),
-        reviewerId: input.reviewer.id,
+        reviewerId: reviewer.id,
       },
       inputReference: structuredClone(current.inputReference),
       predecessorId: current.id,
@@ -660,7 +667,7 @@ export class AssessmentService {
       priorAssessmentVersionId: current.id,
       reason: requiredText(input.reason, '专业复核说明', 500),
       resolvedAt: this.#clock.now.toISOString(),
-      resolvedBy: { ...input.reviewer },
+      resolvedBy: reviewer,
       resultingAssessmentVersionId: version.id,
     };
     const saved = await this.#store.resolveDispute({

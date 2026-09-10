@@ -90,6 +90,17 @@ describe('Objective assessment HTTP interface', () => {
       dependencyProbes: [],
       familyAccess,
       learningContentService: learningContent,
+      professionalReviewAccess: {
+        async authorize(input) {
+          expect(input.authorization).toBe('Bearer professional-review-token');
+          expect(input.familySpaceId).toBe(family.id);
+          expect(input.learningProfileId).toBe(profile.id);
+          return {
+            id: '00000000-0000-4000-8000-000000000109',
+            type: 'professional',
+          };
+        },
+      },
     });
     await app.init();
 
@@ -213,6 +224,54 @@ describe('Objective assessment HTTP interface', () => {
         },
         openDisputeId: null,
         versions: [{ revision: 1 }, { revision: 2 }],
+      },
+    });
+
+    const repeatedDisputeResponse = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'POST',
+      payload: {
+        correctionText: '采用答案仍需要专业核对。',
+        reason: '重复质疑采用答案',
+        target: 'assessment',
+      },
+      url: `${baseUrl}/objective-assessments/${graded.id}/disputes`,
+    });
+    expect(repeatedDisputeResponse.statusCode).toBe(201);
+    const repeatedDispute = repeatedDisputeResponse.json<{
+      data: { disputes: Array<{ reviewRoute: string }>; openDisputeId: string };
+    }>().data;
+    expect(repeatedDispute.disputes.at(-1)?.reviewRoute).toBe('professional');
+
+    const professionalResolution = await app.inject({
+      headers: { authorization: 'Bearer professional-review-token' },
+      method: 'POST',
+      payload: {
+        correction: { rule: { expected: '43', kind: 'numeric' } },
+        reason: '专业复核确认当前采用答案为 43',
+        reviewCaseId: 'professional-review-case-1',
+      },
+      url: `/v1/professional-reviews/family-spaces/${family.id}/learning-profiles/${profile.id}/objective-assessments/${graded.id}/disputes/${repeatedDispute.openDisputeId}/resolution`,
+    });
+    expect(professionalResolution.statusCode).toBe(201);
+    expect(professionalResolution.json()).toMatchObject({
+      data: {
+        currentVersion: {
+          createdBy: {
+            id: '00000000-0000-4000-8000-000000000109',
+            type: 'professional',
+          },
+          inputAuthority: {
+            kind: 'professional_review',
+            reviewCaseId: 'professional-review-case-1',
+          },
+          revision: 3,
+        },
+        openDisputeId: null,
+        resolutions: [
+          { resolvedBy: { type: 'guardian' } },
+          { resolvedBy: { type: 'professional' } },
+        ],
       },
     });
   });

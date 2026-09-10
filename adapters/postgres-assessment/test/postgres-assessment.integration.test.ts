@@ -397,7 +397,7 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
         fixture.learningProfileId,
       ]);
       const outbox = await trace.query(
-        `SELECT event_type
+        `SELECT event_type, payload
          FROM learning.domain_outbox
          WHERE aggregate_id = $1
          ORDER BY occurred_at, id`,
@@ -418,6 +418,21 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
           'objective_assessment.dispute_resolved',
         ]),
       );
+      expect(
+        outbox.rows.find(({ event_type }) => event_type === 'objective_assessment.disputed')
+          ?.payload,
+      ).toMatchObject({
+        downstreamEligibility: { eligible: false, reason: 'disputed' },
+      });
+      expect(
+        outbox.rows.find(({ event_type }) => event_type === 'objective_assessment.dispute_resolved')
+          ?.payload,
+      ).toMatchObject({
+        downstreamEligibility: {
+          assessmentVersionId: resolved.currentVersion.id,
+          eligible: true,
+        },
+      });
       expect(audit.rows).toHaveLength(2);
       expect(audit.rows.map(({ action }) => action)).toEqual(
         expect.arrayContaining(['assessment.downstream_reference.read', 'assessment.read']),
@@ -441,7 +456,7 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
          ) AS can_insert_rule_directly,
          has_function_privilege(
            'rhea_assessment_app',
-           'learning.confirm_objective_grading_rule(uuid,uuid,uuid,uuid,uuid,text,text,uuid,integer,integer,uuid,jsonb,uuid,timestamptz)',
+           'learning.confirm_objective_grading_rule(uuid,uuid,uuid,uuid,uuid,text,text,uuid,integer,integer,text,text,text,uuid,jsonb,uuid,timestamptz)',
            'EXECUTE'
          ) AS can_confirm_rule,
          has_function_privilege(

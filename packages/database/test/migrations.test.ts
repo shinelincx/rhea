@@ -75,9 +75,11 @@ describe('database migration interface', () => {
     expect(migrations[5]?.sql).toMatch(/CREATE TABLE learning\.objective_assessments/i);
     expect(migrations[5]?.sql).toMatch(/CREATE TABLE learning\.objective_grading_rule_versions/i);
     expect(migrations[5]?.sql).toMatch(/CREATE ROLE rhea_assessment_app/i);
-    expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.lock_current_assessment_basis/i);
-    expect(migrations[5]?.sql).toMatch(/SECURITY DEFINER/i);
-    expect(migrations[5]?.sql).toMatch(
+    expect(migrations[3]?.sql).toMatch(/FUNCTION learning\.resolve_confirmed_objective_regions/i);
+    expect(migrations[4]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_basis/i);
+    expect(migrations[4]?.sql).toMatch(/FUNCTION learning\.lock_current_assessment_basis/i);
+    expect(migrations[4]?.sql).toMatch(/SECURITY DEFINER/i);
+    expect(migrations[4]?.sql).toMatch(
       /REVOKE ALL ON FUNCTION learning\.lock_current_assessment_basis/i,
     );
     expect(migrations[5]?.sql).toMatch(/FUNCTION learning\.resolve_objective_assessment_input/i);
@@ -88,6 +90,9 @@ describe('database migration interface', () => {
     expect(migrations[5]?.sql).toMatch(/input_authority jsonb NOT NULL/i);
     expect(migrations[5]?.sql).toMatch(/resolved_by_type IN \('guardian', 'professional'\)/i);
     expect(migrations[5]?.sql).toMatch(/SET search_path = pg_catalog, learning/i);
+    expect(migrations[5]?.sql).not.toMatch(
+      /(?:FROM|JOIN) learning\.(?:confirmed_content_versions|classification_versions|basis_selection_versions|learning_source_versions)/i,
+    );
     expect(migrations[5]?.sql).toMatch(
       /ALTER TABLE learning\.objective_grading_rule_versions FORCE ROW LEVEL SECURITY/i,
     );

@@ -8,6 +8,11 @@ import type { AssessmentService } from '@rhea/assessment';
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
 import { ASSESSMENT_SERVICE } from './assessment/assessment.provider.js';
+import { ProfessionalReviewController } from './assessment/professional-review.controller.js';
+import {
+  PROFESSIONAL_REVIEW_ACCESS,
+  type ProfessionalReviewAccess,
+} from './assessment/professional-review.provider.js';
 import { DEPENDENCY_PROBES, type DependencyProbe } from './health/dependency-probe.js';
 import { FamilyAccessController } from './family-access/family-access.controller.js';
 import { FamilyAccessExceptionFilter } from './family-access/family-access-exception.filter.js';
@@ -38,6 +43,7 @@ export class AppModule {
     jobClient: JobClient,
     familyAccess: FamilyAccess,
     assessmentService: AssessmentService,
+    professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
@@ -51,6 +57,7 @@ export class AppModule {
         HealthController,
         LearningContentController,
         ProbeJobsController,
+        ProfessionalReviewController,
         SubmissionController,
         TodayRouteController,
       ],
@@ -74,6 +81,10 @@ export class AppModule {
         {
           provide: ASSESSMENT_SERVICE,
           useValue: assessmentService,
+        },
+        {
+          provide: PROFESSIONAL_REVIEW_ACCESS,
+          useValue: professionalReviewAccess,
         },
         {
           provide: FAMILY_ACCESS,

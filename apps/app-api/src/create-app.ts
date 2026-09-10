@@ -11,6 +11,10 @@ import type { SubmissionService } from '@rhea/submission';
 import { AppModule } from './app.module.js';
 import type { DependencyProbe } from './health/dependency-probe.js';
 import { createLocalAssessment } from './assessment/create-local-assessment.js';
+import {
+  type ProfessionalReviewAccess,
+  unavailableProfessionalReviewAccess,
+} from './assessment/professional-review.provider.js';
 import { createEnvironmentDependencyProbes } from './health/environment-probes.js';
 import { createLocalLearningContent } from './learning-content/create-local-learning-content.js';
 import { createLocalSubmission } from './submission/create-local-submission.js';
@@ -23,6 +27,7 @@ export interface CreateAppOptions {
   familyAccess?: FamilyAccess;
   jobClient?: JobClient;
   learningContentService?: LearningContentService;
+  professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
   shutdownResources?: Array<{ close(): Promise<void> }>;
@@ -66,6 +71,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       jobClient,
       familyAccess,
       assessment,
+      options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
       submissions,
       options.submissionScheduler ?? localSubmission.scheduler,

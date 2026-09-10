@@ -6,6 +6,7 @@ import type {
   MobileLearningMaterial,
   MobileObjectiveAssessment,
   MobileProcessingJob,
+  MobileRecognitionRegion,
   SubmissionGateway,
 } from './submission-gateway';
 
@@ -27,6 +28,41 @@ interface ObjectiveAssessmentCardProps {
   onNotice: (message: string) => void;
   processingJobId: string;
   submissionGateway: SubmissionGateway;
+}
+
+interface ObjectivePair {
+  question: MobileRecognitionRegion;
+  response: MobileRecognitionRegion;
+}
+
+export function pairObjectiveRegions(
+  regions: ReadonlyArray<MobileRecognitionRegion>,
+): ObjectivePair[] {
+  const pageIds = [...new Set(regions.map(({ pageId }) => pageId))];
+  return pageIds.flatMap((pageId) => {
+    const pageRegions = regions.filter((region) => region.pageId === pageId);
+    const questions = pageRegions
+      .filter((region) => region.kind === 'question')
+      .sort((left, right) => left.readingOrder - right.readingOrder);
+    const responses = pageRegions
+      .filter((region) => region.kind === 'answer')
+      .sort((left, right) => left.readingOrder - right.readingOrder);
+    return questions.flatMap((question, index) => {
+      const response = responses[index];
+      return response ? [{ question, response }] : [];
+    });
+  });
+}
+
+interface ObjectiveAssessmentItemProps extends Omit<
+  ObjectiveAssessmentCardProps,
+  'completedContent'
+> {
+  completedContentId: string;
+  question: MobileRecognitionRegion;
+  questionNumber: number;
+  response: MobileRecognitionRegion;
+  totalQuestions: number;
 }
 
 function ActionButton({
@@ -60,25 +96,27 @@ function ActionButton({
   );
 }
 
-export function ObjectiveAssessmentCard({
+function ObjectiveAssessmentItem({
   accessToken,
-  completedContent,
+  completedContentId,
   familySpaceId,
   learningMaterial,
   learningProfileId,
   onError,
   onNotice,
   processingJobId,
+  question,
+  questionNumber,
+  response,
   submissionGateway,
-}: ObjectiveAssessmentCardProps) {
+  totalQuestions,
+}: ObjectiveAssessmentItemProps) {
   const [assessment, setAssessment] = useState<MobileObjectiveAssessment | null>(null);
   const [correctionText, setCorrectionText] = useState('');
   const [disputeReason, setDisputeReason] = useState('');
   const [disputeTarget, setDisputeTarget] = useState<DisputeTarget>('response');
   const [showDispute, setShowDispute] = useState(false);
   const [working, setWorking] = useState(false);
-  const question = completedContent.regions.find((region) => region.kind === 'question');
-  const response = completedContent.regions.find((region) => region.kind === 'answer');
   const latestDispute = assessment?.disputes.at(-1);
 
   async function gradeObjective() {
@@ -93,7 +131,7 @@ export function ObjectiveAssessmentCard({
         accessToken,
         familySpaceId,
         inputReference: {
-          confirmedContentVersionId: completedContent.id,
+          confirmedContentVersionId: completedContentId,
           processingJobId,
           questionRegionId: question.id,
           responseRegionId: response.id,
@@ -148,7 +186,9 @@ export function ObjectiveAssessmentCard({
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>客观题批改</Text>
+      <Text style={styles.title}>
+        {totalQuestions === 1 ? '客观题批改' : `第 ${questionNumber} 题`}
+      </Text>
       {!assessment ? (
         <>
           <Text style={styles.guideText}>
@@ -259,6 +299,43 @@ export function ObjectiveAssessmentCard({
   );
 }
 
+export function ObjectiveAssessmentCard(props: ObjectiveAssessmentCardProps) {
+  const pairs = pairObjectiveRegions(props.completedContent.regions);
+  const questionCount = props.completedContent.regions.filter(
+    (region) => region.kind === 'question',
+  ).length;
+  return (
+    <View style={styles.assessmentList}>
+      {pairs.length > 1 ? (
+        <Text style={styles.sectionTitle}>客观题批改 · 共 {pairs.length} 题</Text>
+      ) : null}
+      {pairs.map(({ question, response }, index) => (
+        <ObjectiveAssessmentItem
+          {...props}
+          completedContentId={props.completedContent.id}
+          key={`${question.id}:${response.id}`}
+          question={question}
+          questionNumber={index + 1}
+          response={response}
+          totalQuestions={pairs.length}
+        />
+      ))}
+      {questionCount > pairs.length ? (
+        <View style={styles.card}>
+          <Text style={styles.warningText}>
+            还有 {questionCount - pairs.length} 道题缺少可配对的已确认作答，暂无法可靠批改。
+          </Text>
+        </View>
+      ) : null}
+      {questionCount === 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.warningText}>确认内容中没有找到可批改的题目。</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
@@ -274,6 +351,7 @@ const styles = StyleSheet.create({
   actionButtonPrimary: { backgroundColor: colors.primary, borderColor: colors.primary },
   actionButtonPrimaryText: { color: colors.surface, fontSize: 15, fontWeight: '700' },
   actionButtonText: { color: colors.primary, fontSize: 15, fontWeight: '700' },
+  assessmentList: { gap: spacing.md },
   card: {
     backgroundColor: '#FFFCF5',
     borderColor: '#F2C94C',
@@ -299,6 +377,7 @@ const styles = StyleSheet.create({
   multilineInput: { minHeight: 72 },
   outcome: { color: colors.primary, fontSize: 22, fontWeight: '800' },
   pressed: { opacity: 0.8 },
+  sectionTitle: { color: colors.foreground, fontSize: 20, fontWeight: '800' },
   targetOption: {
     alignItems: 'center',
     backgroundColor: colors.surface,

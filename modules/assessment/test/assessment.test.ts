@@ -117,6 +117,22 @@ it('lets a guardian confirm a versioned trusted rule while rejecting learner aut
   const result = await grade(service, inputReference);
   expect(confirmed.id).toBe(result.currentVersion.gradingRuleVersionId);
   expect(result.currentVersion.decision.outcome).toBe('correct');
+  const reconfirmed = await service.confirmObjectiveRule({
+    actor: guardian,
+    familySpaceId: '00000000-0000-4000-8000-000000000002',
+    inputReference,
+    learningProfileId: learner.id,
+    materialId: basis.materialId,
+    rule: {
+      acceptedAnswers: ['dog'],
+      caseSensitive: false,
+      collapseWhitespace: true,
+      kind: 'accepted_text',
+    },
+  });
+  const regraded = await grade(service, inputReference);
+  expect(regraded.id).not.toBe(result.id);
+  expect(regraded.currentVersion.gradingRuleVersionId).toBe(reconfirmed.id);
 });
 
 function grade(service: AssessmentService, inputReference: ObjectiveAssessmentInputReference) {
