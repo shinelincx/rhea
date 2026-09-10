@@ -9,6 +9,7 @@ import type {
   StoredLearningMaterial,
   Subject,
 } from '@rhea/learning-content';
+import { syncSourceRevisionInTransaction } from '@rhea/postgres-source-lineage';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 interface MaterialRow extends QueryResultRow {
@@ -81,6 +82,14 @@ async function setProfile(client: PoolClient, learningProfileId: string): Promis
   ]);
 }
 
+function basisLineageVersion(
+  sourceVersionId: string,
+  selectionVersion: number,
+  validityEpoch: number,
+): string {
+  return `${sourceVersionId}:${selectionVersion}:${validityEpoch}`;
+}
+
 export class PostgresLearningContentStore implements LearningContentStore {
   constructor(private readonly pool: Pool) {}
 
@@ -110,6 +119,8 @@ export class PostgresLearningContentStore implements LearningContentStore {
       await this.#insertClassification(client, material, material.classificationHistory[0]!);
       await this.#insertSourceVersion(client, material, material.sourceVersions[0]!);
       await this.#insertBasisSelection(client, material, material.basisSelectionHistory[0]!);
+      await this.#setFamily(client, material.familySpaceId);
+      await this.#syncMaterialSources(client, material);
       await this.#recordChange(client, material, {
         actor: material.classificationHistory[0]!.changedBy,
         eventId: material.id,
@@ -148,6 +159,18 @@ export class PostgresLearningContentStore implements LearningContentStore {
         this.#materialReference(material),
         input.classification,
       );
+      await this.#setFamily(client, material.family_space_id);
+      await syncSourceRevisionInTransaction(client, {
+        occurredAt: input.classification.changedAt,
+        reason: input.classification.reason ?? 'learning classification changed',
+        source: {
+          familySpaceId: material.family_space_id,
+          id: input.materialId,
+          kind: 'classification',
+          learningProfileId: input.learningProfileId,
+        },
+        version: `revision:${input.classification.revision}`,
+      });
       await this.#recordChange(client, this.#materialReference(material), {
         actor: input.classification.changedBy,
         eventId: input.classification.id,
@@ -182,6 +205,18 @@ export class PostgresLearningContentStore implements LearningContentStore {
         this.#materialReference(material),
         input.sourceVersion,
       );
+      await this.#setFamily(client, material.family_space_id);
+      await syncSourceRevisionInTransaction(client, {
+        occurredAt: input.sourceVersion.createdAt,
+        reason: 'learning source version added',
+        source: {
+          familySpaceId: material.family_space_id,
+          id: `${input.materialId}:${input.sourceVersion.kind}:${input.sourceVersion.sourceKey}`,
+          kind: 'learning_source',
+          learningProfileId: input.learningProfileId,
+        },
+        version: `${input.sourceVersion.id}:${input.sourceVersion.versionNumber}:${input.sourceVersion.contentHash}`,
+      });
       await this.#recordChange(client, this.#materialReference(material), {
         actor: input.sourceVersion.createdBy,
         eventId: input.sourceVersion.id,
@@ -216,6 +251,22 @@ export class PostgresLearningContentStore implements LearningContentStore {
       );
       if (count !== input.expectedSelectionRevision) return false;
       await this.#insertBasisSelection(client, this.#materialReference(material), input.selection);
+      await this.#setFamily(client, material.family_space_id);
+      await syncSourceRevisionInTransaction(client, {
+        occurredAt: input.selection.selectedAt,
+        reason: input.selection.reason,
+        source: {
+          familySpaceId: material.family_space_id,
+          id: input.materialId,
+          kind: 'current_learning_basis',
+          learningProfileId: input.learningProfileId,
+        },
+        version: basisLineageVersion(
+          input.selection.sourceVersionId,
+          input.selection.version,
+          input.expectedValidityEpoch,
+        ),
+      });
       await this.#recordChange(client, this.#materialReference(material), {
         actor: input.selection.selectedBy,
         eventId: input.selection.id,
@@ -280,6 +331,18 @@ export class PostgresLearningContentStore implements LearningContentStore {
         ],
       );
       if (updated.rowCount !== 1) return false;
+      await this.#setFamily(client, material.family_space_id);
+      await syncSourceRevisionInTransaction(client, {
+        occurredAt: input.invalidatedAt,
+        reason: input.reason,
+        source: {
+          familySpaceId: material.family_space_id,
+          id: input.materialId,
+          kind: 'current_learning_basis',
+          learningProfileId: input.learningProfileId,
+        },
+        version: `invalidated:${input.expectedValidityEpoch + 1}`,
+      });
       await this.#recordChange(client, this.#materialReference(material), {
         actor: input.actor,
         eventId: input.eventId,
@@ -447,6 +510,52 @@ export class PostgresLearningContentStore implements LearningContentStore {
         selection.selectedAt,
       ],
     );
+  }
+
+  async #syncMaterialSources(client: PoolClient, material: StoredLearningMaterial): Promise<void> {
+    const classification = material.classificationHistory.at(-1)!;
+    const source = material.sourceVersions.at(-1)!;
+    const selection = material.basisSelectionHistory.at(-1)!;
+    const scope = {
+      familySpaceId: material.familySpaceId,
+      learningProfileId: material.learningProfileId,
+    };
+    await syncSourceRevisionInTransaction(client, {
+      occurredAt: material.createdAt,
+      reason: 'confirmed learning content organized',
+      source: { ...scope, id: material.id, kind: 'confirmed_content' },
+      version: material.confirmedContentVersionId,
+    });
+    await syncSourceRevisionInTransaction(client, {
+      occurredAt: classification.changedAt,
+      reason: classification.reason ?? 'initial learning classification',
+      source: { ...scope, id: material.id, kind: 'classification' },
+      version: `revision:${classification.revision}`,
+    });
+    await syncSourceRevisionInTransaction(client, {
+      occurredAt: source.createdAt,
+      reason: 'initial learning source',
+      source: {
+        ...scope,
+        id: `${material.id}:${source.kind}:${source.sourceKey}`,
+        kind: 'learning_source',
+      },
+      version: `${source.id}:${source.versionNumber}:${source.contentHash}`,
+    });
+    await syncSourceRevisionInTransaction(client, {
+      occurredAt: selection.selectedAt,
+      reason: selection.reason,
+      source: { ...scope, id: material.id, kind: 'current_learning_basis' },
+      version: basisLineageVersion(
+        selection.sourceVersionId,
+        selection.version,
+        material.validityEpoch,
+      ),
+    });
+  }
+
+  async #setFamily(client: PoolClient, familySpaceId: string): Promise<void> {
+    await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [familySpaceId]);
   }
 
   async #hydrate(client: PoolClient, row: MaterialRow): Promise<StoredLearningMaterial> {

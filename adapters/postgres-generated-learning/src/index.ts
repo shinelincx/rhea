@@ -15,6 +15,11 @@ import {
   type ModelRunRecord,
   type StoredGenerationRequest,
 } from '@rhea/generated-learning';
+import {
+  publishArtifactInTransaction,
+  syncSourceRevisionInTransaction,
+} from '@rhea/postgres-source-lineage';
+import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-lineage';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 interface RequestRow extends QueryResultRow {
@@ -243,7 +248,11 @@ export class PostgresGeneratedLearningStore
           input.version.createdAt,
         ],
       );
-      return result.rows[0]?.result ?? 'conflict';
+      const completion = result.rows[0]?.result ?? 'conflict';
+      if (completion === 'completed') {
+        await this.#publishGeneratedLineage(client, request, input.version);
+      }
+      return completion;
     });
   }
 
@@ -423,6 +432,78 @@ export class PostgresGeneratedLearningStore
       );
       return result.rows[0]?.result ?? 'conflict';
     });
+  }
+
+  async #publishGeneratedLineage(
+    client: PoolClient,
+    request: RequestRow,
+    version: GeneratedLearningContentVersion,
+  ): Promise<void> {
+    const source = json<GenerationSourceSnapshot>(request.source_snapshot);
+    const scope = {
+      familySpaceId: request.family_space_id,
+      learningProfileId: request.learning_profile_id,
+    };
+    const dependencies: SourceDependency[] = [];
+    const sync = async (
+      id: string,
+      kind: Parameters<typeof syncSourceRevisionInTransaction>[1]['source']['kind'],
+      value: string,
+      reason: string,
+      usage: string,
+    ) => {
+      const revision = await syncSourceRevisionInTransaction(client, {
+        occurredAt: version.createdAt,
+        reason,
+        source: { ...scope, id, kind },
+        version: value,
+      });
+      dependencies.push({ source: revision, usage });
+    };
+    await sync(
+      request.material_id,
+      'confirmed_content',
+      source.confirmedContentVersionId,
+      'generated learning confirmed content snapshot',
+      'confirmed_content',
+    );
+    await sync(
+      request.material_id,
+      'classification',
+      `revision:${source.classificationRevision}`,
+      'generated learning classification snapshot',
+      'classification',
+    );
+    await sync(
+      request.material_id,
+      'current_learning_basis',
+      `${source.basis.sourceVersionId}:${source.basis.selectionVersion}:${source.basis.validityEpoch}`,
+      'generated learning current basis snapshot',
+      'current_learning_basis',
+    );
+
+    for (const kind of ['generated_learning', 'explanation'] as const) {
+      const input = {
+        artifact: {
+          ...scope,
+          id: request.id,
+          kind,
+          rebuildable: true,
+          version: version.id,
+        },
+        commandId: `lineage:${kind}:${version.id}`,
+        dependencies,
+        expectedPreviousVersion: null,
+        occurredAt: version.createdAt,
+      };
+      const saved = await publishArtifactInTransaction(client, input, {
+        commandId: input.commandId,
+        fingerprint: sourceLineageFingerprint(input),
+      });
+      if (saved.status === 'conflict' || saved.status === 'idempotency_conflict') {
+        throw new Error('Generated learning lineage publication conflicted');
+      }
+    }
   }
 
   async #hydrateRequest(client: PoolClient, row: RequestRow): Promise<StoredGenerationRequest> {

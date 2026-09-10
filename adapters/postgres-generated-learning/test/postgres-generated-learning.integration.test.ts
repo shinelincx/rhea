@@ -888,7 +888,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
       await evidence.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
         fixture.learningProfileId,
       ]);
-      const [events, edges, lineage] = await Promise.all([
+      const [events, edges, lineage, sharedLineage] = await Promise.all([
         evidence.query(
           `SELECT event_type, payload FROM learning.domain_outbox
            WHERE aggregate_id = $1 ORDER BY occurred_at, id`,
@@ -914,6 +914,20 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
            JOIN learning.generated_learning_content_versions AS version
              ON version.request_id = request.id
            WHERE request.id = $1 AND version.id = $2`,
+          [fixture.request.id, version.id],
+        ),
+        evidence.query(
+          `SELECT artifact.artifact_kind, artifact.status, count(edge.*)::integer AS edge_count
+           FROM learning.derived_artifacts artifact
+           JOIN learning.derivation_edges edge
+             ON edge.family_space_id = artifact.family_space_id
+            AND edge.learning_profile_id = artifact.learning_profile_id
+            AND edge.artifact_kind = artifact.artifact_kind
+            AND edge.artifact_id = artifact.artifact_id
+            AND edge.artifact_version = artifact.version
+           WHERE artifact.artifact_id = $1 AND artifact.version = $2
+           GROUP BY artifact.artifact_kind, artifact.status
+           ORDER BY artifact.artifact_kind`,
           [fixture.request.id, version.id],
         ),
       ]);
@@ -958,6 +972,10 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
         },
         { source_id: 'question-1', source_type: 'question', usage: 'model_input' },
         { source_id: 'answer-1', source_type: 'answer', usage: 'model_input' },
+      ]);
+      expect(sharedLineage.rows).toEqual([
+        { artifact_kind: 'explanation', edge_count: 3, status: 'current' },
+        { artifact_kind: 'generated_learning', edge_count: 3, status: 'current' },
       ]);
       await evidence.query('COMMIT');
     } catch (error) {

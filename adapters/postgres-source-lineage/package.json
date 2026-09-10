@@ -1,5 +1,5 @@
 {
-  "name": "@rhea/postgres-learning-content",
+  "name": "@rhea/postgres-source-lineage",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,14 +11,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@rhea/database": "workspace:*",
-    "@rhea/learning-content": "workspace:*",
-    "@rhea/postgres-source-lineage": "workspace:*",
-    "pg": "8.16.3"
+    "@rhea/source-lineage": "workspace:*",
+    "pg": "8.23.0"
   },
   "devDependencies": {
+    "@rhea/database": "workspace:*",
     "@types/node": "24.10.13",
-    "@types/pg": "8.16.0",
+    "@types/pg": "8.23.1",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
   }

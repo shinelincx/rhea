@@ -288,8 +288,28 @@ describeWithDatabase('PostgreSQL learning content adapter', () => {
         'SELECT action FROM learning.learning_access_audit WHERE resource_id = $1',
         [material.id],
       );
+      const lineage = await evidence.query(
+        `SELECT source_kind, current_version, current_epoch
+         FROM learning.source_heads
+         WHERE learning_profile_id = $1 AND source_id = $2
+         ORDER BY source_kind`,
+        [fixture.learningProfileId, material.id],
+      );
       expect(outbox.rows).toHaveLength(5);
       expect(audit.rows).toHaveLength(7);
+      expect(lineage.rows).toEqual([
+        { current_epoch: '2', current_version: 'revision:2', source_kind: 'classification' },
+        {
+          current_epoch: '1',
+          current_version: fixture.confirmedContentVersionId,
+          source_kind: 'confirmed_content',
+        },
+        {
+          current_epoch: '2',
+          current_version: `${answer.id}:2:1`,
+          source_kind: 'current_learning_basis',
+        },
+      ]);
       await evidence.query('COMMIT');
     } catch (error) {
       await evidence.query('ROLLBACK');

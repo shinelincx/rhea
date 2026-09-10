@@ -75,6 +75,7 @@ describe('database migration interface', () => {
       '0013',
       '0014',
       '0015',
+      '0016',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -164,6 +165,14 @@ describe('database migration interface', () => {
     expect(migrations[14]?.sql).toMatch(
       /CREATE OR REPLACE FUNCTION learning\.reveal_generated_learning_hint[\s\S]*?metrics\.lock_current_family_capability_authorization\([\s\S]*?'before_publish',[\s\S]*?'primary'[\s\S]*?REVOKE ALL ON FUNCTION learning\.reveal_generated_learning_hint/i,
     );
+    expect(migrations[15]?.sql).toMatch(/CREATE TABLE learning\.source_revisions/i);
+    expect(migrations[15]?.sql).toMatch(/CREATE TABLE learning\.derivation_edges/i);
+    expect(migrations[15]?.sql).toMatch(/CREATE TABLE learning\.rebuild_jobs/i);
+    expect(migrations[15]?.sql).toMatch(/FUNCTION learning\.record_source_revision/i);
+    expect(migrations[15]?.sql).toMatch(/FUNCTION learning\.publish_derived_artifact/i);
+    expect(migrations[15]?.sql).toMatch(/FUNCTION learning\.claim_lineage_rebuild/i);
+    expect(migrations[15]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[15]?.sql).toMatch(/CREATE ROLE rhea_lineage_runtime/i);
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -175,9 +184,21 @@ describe('database migration interface', () => {
     const result = await applyMigrations(database, await loadDefaultMigrations());
 
     expect(result).toEqual({
-      applied: ['0006', '0007', '0008', '0009', '0010', '0011', '0012', '0013', '0014', '0015'],
+      applied: [
+        '0006',
+        '0007',
+        '0008',
+        '0009',
+        '0010',
+        '0011',
+        '0012',
+        '0013',
+        '0014',
+        '0015',
+        '0016',
+      ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(10);
+    expect(database.executedMigrationSql).toHaveLength(11);
   });
 });

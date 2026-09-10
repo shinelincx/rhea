@@ -568,6 +568,20 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
          ORDER BY occurred_at, id`,
         [original.id],
       );
+      const lineage = await trace.query(
+        `SELECT artifact.version, artifact.status, count(edge.*)::integer AS edge_count
+         FROM learning.derived_artifacts artifact
+         JOIN learning.derivation_edges edge
+           ON edge.family_space_id = artifact.family_space_id
+          AND edge.learning_profile_id = artifact.learning_profile_id
+          AND edge.artifact_kind = artifact.artifact_kind
+          AND edge.artifact_id = artifact.artifact_id
+          AND edge.artifact_version = artifact.version
+         WHERE artifact.artifact_kind = 'assessment' AND artifact.artifact_id = $1
+         GROUP BY artifact.version, artifact.status, artifact.published_at
+         ORDER BY artifact.published_at`,
+        [original.id],
+      );
       expect(outbox.rows).toHaveLength(3);
       expect(outbox.rows.map(({ event_type }) => event_type)).toEqual(
         expect.arrayContaining([
@@ -595,6 +609,10 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       expect(audit.rows.map(({ action }) => action)).toEqual(
         expect.arrayContaining(['assessment.downstream_reference.read', 'assessment.read']),
       );
+      expect(lineage.rows).toEqual([
+        { edge_count: 5, status: 'superseded', version: original.currentVersion.id },
+        { edge_count: 5, status: 'current', version: resolved.currentVersion.id },
+      ]);
       await trace.query('COMMIT');
     } catch (error) {
       await trace.query('ROLLBACK');

@@ -14,6 +14,8 @@
     "@rhea/assessment": "workspace:*",
     "@rhea/database": "workspace:*",
     "@rhea/learning-content": "workspace:*",
+    "@rhea/postgres-source-lineage": "workspace:*",
+    "@rhea/source-lineage": "workspace:*",
     "pg": "8.16.3"
   },
   "devDependencies": {

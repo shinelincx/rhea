@@ -17,6 +17,11 @@ import {
   type ResolvedObjectiveAssessmentInput,
 } from '@rhea/assessment';
 import type { CurrentLearningBasisReference } from '@rhea/learning-content';
+import {
+  publishArtifactInTransaction,
+  syncSourceRevisionInTransaction,
+} from '@rhea/postgres-source-lineage';
+import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-lineage';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 interface AssessmentRow extends QueryResultRow {
@@ -91,6 +96,10 @@ function json<Value>(value: unknown): Value {
 
 function timestamp(value: Date): string {
   return value.toISOString();
+}
+
+function basisLineageVersion(basis: CurrentLearningBasisReference): string {
+  return `${basis.sourceVersionId}:${basis.selectionVersion}:${basis.validityEpoch}`;
 }
 
 export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssessmentInputReader {
@@ -184,6 +193,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       );
       if (!inserted.rows[0]) return false;
       await this.#insertVersion(client, assessment, version);
+      await this.#publishVersionLineage(client, assessment, version);
       await client.query(
         `UPDATE learning.objective_assessments SET current_version_id = $1 WHERE id = $2`,
         [version.id, assessment.id],
@@ -399,7 +409,22 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
           input.confirmedAt,
         ],
       );
-      return result.rows[0]?.confirmed === true;
+      if (result.rows[0]?.confirmed !== true) return false;
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        input.familySpaceId,
+      ]);
+      await syncSourceRevisionInTransaction(client, {
+        occurredAt: input.confirmedAt,
+        reason: 'guardian confirmed grading basis',
+        source: {
+          familySpaceId: input.familySpaceId,
+          id: `${input.materialId}:${input.reference.confirmedContentVersionId}:${input.reference.questionRegionId}`,
+          kind: 'grading_basis',
+          learningProfileId: input.learningProfileId,
+        },
+        version: input.gradingRuleVersionId,
+      });
+      return true;
     });
   }
 
@@ -493,6 +518,7 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       const stored = await this.#hydrate(client, assessment);
       if (!stored) return false;
       await this.#insertVersion(client, stored, input.version);
+      await this.#publishVersionLineage(client, stored, input.version);
       const resolution = input.resolution;
       await client.query(
         `INSERT INTO learning.assessment_dispute_resolutions
@@ -616,6 +642,94 @@ export class PostgresAssessmentStore implements AssessmentStore, ObjectiveAssess
       rule: row.grading_rule ? json<ObjectiveGradingRule>(row.grading_rule) : null,
       requiresProfessionalReview: row.requires_professional_review,
     };
+  }
+
+  async #publishVersionLineage(
+    client: PoolClient,
+    assessment: Pick<
+      StoredObjectiveAssessment,
+      'familySpaceId' | 'id' | 'learningProfileId' | 'materialId'
+    >,
+    version: ObjectiveAssessmentVersion,
+  ): Promise<void> {
+    await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+      assessment.familySpaceId,
+    ]);
+    const scope = {
+      familySpaceId: assessment.familySpaceId,
+      learningProfileId: assessment.learningProfileId,
+    };
+    const dependencies: SourceDependency[] = [];
+    const sync = async (
+      id: string,
+      kind: Parameters<typeof syncSourceRevisionInTransaction>[1]['source']['kind'],
+      value: string,
+      reason: string,
+      usage: string,
+    ) => {
+      const source = await syncSourceRevisionInTransaction(client, {
+        occurredAt: version.createdAt,
+        reason,
+        source: { ...scope, id, kind },
+        version: value,
+      });
+      dependencies.push({ source, usage });
+    };
+    await sync(
+      assessment.materialId,
+      'confirmed_content',
+      version.inputReference.confirmedContentVersionId,
+      'assessment confirmed content snapshot',
+      'confirmed_content',
+    );
+    await sync(
+      assessment.materialId,
+      'current_learning_basis',
+      basisLineageVersion(version.basis),
+      'assessment current learning basis snapshot',
+      'current_learning_basis',
+    );
+    await sync(
+      `${assessment.materialId}:${version.inputReference.questionRegionId}`,
+      'question',
+      version.question.versionId,
+      'assessment question version',
+      'question',
+    );
+    await sync(
+      `${assessment.materialId}:${version.inputReference.responseRegionId}`,
+      'response',
+      version.response.versionId,
+      'assessment response version',
+      'response',
+    );
+    await sync(
+      `${assessment.materialId}:${version.question.versionId}`,
+      'grading_basis',
+      version.gradingRuleVersionId ?? `ungradable:${version.id}`,
+      'assessment grading basis version',
+      'grading_basis',
+    );
+    const input = {
+      artifact: {
+        ...scope,
+        id: assessment.id,
+        kind: 'assessment' as const,
+        rebuildable: true,
+        version: version.id,
+      },
+      commandId: `lineage:assessment:${version.id}`,
+      dependencies,
+      expectedPreviousVersion: version.predecessorId,
+      occurredAt: version.createdAt,
+    };
+    const saved = await publishArtifactInTransaction(client, input, {
+      commandId: input.commandId,
+      fingerprint: sourceLineageFingerprint(input),
+    });
+    if (saved.status === 'conflict' || saved.status === 'idempotency_conflict') {
+      throw new Error('Assessment lineage publication conflicted');
+    }
   }
 
   async #insertVersion(

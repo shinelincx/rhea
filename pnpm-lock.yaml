@@ -89,6 +89,12 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../../modules/learning-content
+      '@rhea/postgres-source-lineage':
+        specifier: workspace:*
+        version: link:../postgres-source-lineage
+      '@rhea/source-lineage':
+        specifier: workspace:*
+        version: link:../../modules/source-lineage
       pg:
         specifier: 8.16.3
         version: 8.16.3
@@ -139,6 +145,12 @@ importers:
       '@rhea/generated-learning':
         specifier: workspace:*
         version: link:../../modules/generated-learning
+      '@rhea/postgres-source-lineage':
+        specifier: workspace:*
+        version: link:../postgres-source-lineage
+      '@rhea/source-lineage':
+        specifier: workspace:*
+        version: link:../../modules/source-lineage
       pg:
         specifier: 8.16.3
         version: 8.16.3
@@ -167,6 +179,9 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../../modules/learning-content
+      '@rhea/postgres-source-lineage':
+        specifier: workspace:*
+        version: link:../postgres-source-lineage
       pg:
         specifier: 8.16.3
         version: 8.16.3
@@ -202,6 +217,31 @@ importers:
       '@types/pg':
         specifier: 8.16.0
         version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  adapters/postgres-source-lineage:
+    dependencies:
+      '@rhea/source-lineage':
+        specifier: workspace:*
+        version: link:../../modules/source-lineage
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -502,6 +542,18 @@ importers:
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
   modules/quality-control:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/source-lineage:
     devDependencies:
       '@types/node':
         specifier: 24.10.13
