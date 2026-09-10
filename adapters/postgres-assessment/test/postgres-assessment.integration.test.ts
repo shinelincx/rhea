@@ -503,6 +503,16 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
            'learning.lock_current_assessment_basis(uuid,uuid,uuid,integer,integer,text,text,text)',
            'EXECUTE'
          ) AS can_lock_current_basis,
+         has_function_privilege(
+           'rhea_assessment_app',
+           'learning.resolve_confirmed_objective_regions(uuid,uuid,uuid,text,text)',
+           'EXECUTE'
+         ) AS can_resolve_regions_directly,
+         has_function_privilege(
+           'rhea_assessment_app',
+           'learning.resolve_objective_assessment_basis(uuid,uuid,uuid,uuid,integer,integer)',
+           'EXECUTE'
+         ) AS can_resolve_basis_directly,
          has_schema_privilege('rhea_assessment_app', 'safety', 'USAGE') AS can_use_safety`,
     );
     expect(evidence.rows[0]).toEqual({
@@ -511,6 +521,8 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       can_lock_current_basis: true,
       can_mutate_material: false,
       can_read_material: false,
+      can_resolve_basis_directly: false,
+      can_resolve_regions_directly: false,
       can_use_safety: false,
     });
   });

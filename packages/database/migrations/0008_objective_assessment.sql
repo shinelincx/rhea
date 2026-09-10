@@ -364,12 +364,6 @@ GRANT USAGE ON SCHEMA learning TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.lock_current_assessment_basis(
   uuid, uuid, uuid, integer, integer, text, text, text
 ) TO rhea_assessment_app;
-GRANT EXECUTE ON FUNCTION learning.resolve_objective_assessment_basis(
-  uuid, uuid, uuid, uuid, integer, integer
-) TO rhea_assessment_app;
-GRANT EXECUTE ON FUNCTION learning.resolve_confirmed_objective_regions(
-  uuid, uuid, uuid, text, text
-) TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.resolve_objective_assessment_input(
   uuid, uuid, uuid, uuid, text, text, uuid, integer, integer
 ) TO rhea_assessment_app;
