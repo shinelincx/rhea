@@ -11,6 +11,7 @@ import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
+import type { LearningProgressService } from '@rhea/learning-progress';
 import type { SubmissionService } from '@rhea/submission';
 
 import { AppModule } from './app.module.js';
@@ -28,6 +29,7 @@ import type { SubmissionScheduler } from './submission/submission.provider.js';
 import { createLocalGeneratedLearning } from './generated-learning/create-local-generated-learning.js';
 import type { GeneratedLearningScheduler } from './generated-learning/generated-learning.provider.js';
 import type { SuggestedAssessmentScheduler } from './assessment/assessment.provider.js';
+import { createLocalLearningProgress } from './learning-progress/create-local-learning-progress.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
@@ -41,6 +43,7 @@ export interface CreateAppOptions {
   generatedLearningService?: GeneratedLearningService;
   jobClient?: JobClient;
   learningContentService?: LearningContentService;
+  learningProgressService?: LearningProgressService;
   professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
@@ -76,6 +79,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const learningContent = options.learningContentService ?? createLocalLearningContent();
   const assessment =
     options.assessmentService ?? createLocalAssessment(learningContent, submissions);
+  const learningProgress =
+    options.learningProgressService ?? createLocalLearningProgress(assessment, learningContent);
   const consentReader =
     options.generatedLearningConsentReader ??
     (isConsentPublicationReader(familyAccess)
@@ -115,6 +120,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       suggestedAssessmentScheduler,
       options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
+      learningProgress,
       submissions,
       options.submissionScheduler ?? localSubmission.scheduler,
       options.generatedLearningService ?? generatedLearning.service,

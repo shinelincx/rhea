@@ -5,6 +5,7 @@ import type { FamilyAccess } from '@rhea/family-access';
 import type { JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
+import type { LearningProgressService } from '@rhea/learning-progress';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
@@ -31,6 +32,9 @@ import {
   LEARNING_CONTENT_SERVICE,
   type LearningContentService,
 } from './learning-content/learning-content.provider.js';
+import { LearningProgressController } from './learning-progress/learning-progress.controller.js';
+import { LearningProgressExceptionFilter } from './learning-progress/learning-progress-exception.filter.js';
+import { LEARNING_PROGRESS_SERVICE } from './learning-progress/learning-progress.provider.js';
 import { ProbeJobsController } from './jobs/probe-jobs.controller.js';
 import { SubmissionController } from './submission/submission.controller.js';
 import { SubmissionExceptionFilter } from './submission/submission-exception.filter.js';
@@ -60,6 +64,7 @@ export class AppModule {
     suggestedAssessmentScheduler: SuggestedAssessmentScheduler,
     professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
+    learningProgressService: LearningProgressService,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
     generatedLearningService: GeneratedLearningService,
@@ -74,6 +79,7 @@ export class AppModule {
         GeneratedLearningController,
         HealthController,
         LearningContentController,
+        LearningProgressController,
         ProbeJobsController,
         ProfessionalReviewController,
         SubmissionController,
@@ -95,6 +101,10 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: LearningContentExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: LearningProgressExceptionFilter,
         },
         {
           provide: APP_FILTER,
@@ -131,6 +141,10 @@ export class AppModule {
         {
           provide: LEARNING_CONTENT_SERVICE,
           useValue: learningContentService,
+        },
+        {
+          provide: LEARNING_PROGRESS_SERVICE,
+          useValue: learningProgressService,
         },
         {
           provide: SUBMISSION_SERVICE,

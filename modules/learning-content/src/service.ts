@@ -381,6 +381,8 @@ export class LearningContentService {
       confirmedContentVersionId: material.confirmedContentVersionId,
       coursePathName: material.currentClassification.coursePath?.name ?? null,
       knowledgePointNames: material.currentClassification.knowledgePoints.map(({ name }) => name),
+      primaryKnowledgePointName:
+        material.currentClassification.knowledgePoints.find(({ primary }) => primary)?.name ?? null,
       subject: material.currentClassification.primarySubject,
       unitName: material.currentClassification.unit?.name ?? null,
     };

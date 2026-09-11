@@ -11,8 +11,10 @@ import type {
   AssessmentDispute,
   AssessmentDisputeResolution,
   AssessmentDisputeTarget,
+  AcceptedObjectiveAssessmentSnapshot,
   ConfirmedObjectiveGradingRule,
   DownstreamAssessmentReference,
+  ImmediateCorrectionEvaluation,
   ObjectiveAssessment,
   ObjectiveAssessmentInputReference,
   ObjectiveGradingRule,
@@ -461,6 +463,71 @@ export class AssessmentService {
       );
     }
     return read.reference;
+  }
+
+  async getAcceptedObjectiveAssessmentSnapshot(input: {
+    actor: AssessmentActorReference;
+    assessmentId: string;
+    learningProfileId: string;
+  }): Promise<AcceptedObjectiveAssessmentSnapshot> {
+    const assessment = await this.#requireAssessment(input.assessmentId, input.learningProfileId);
+    const reference = await this.getDownstreamReference(input);
+    const current = assessment.versions.at(-1)!;
+    const firstIncorrect = assessment.versions.find(
+      (version) => version.decision.outcome === 'incorrect',
+    );
+    if (
+      !current.gradingRuleVersionId ||
+      current.decision.expectedDisplay === null ||
+      current.decision.outcome === 'ungradable'
+    ) {
+      throw new AssessmentError(
+        'DOWNSTREAM_INELIGIBLE',
+        '缺少可复用的正确依据，不能进入错题或即时订正',
+      );
+    }
+    return {
+      assessmentId: assessment.id,
+      assessmentVersionId: reference.assessmentVersionId,
+      basis: structuredClone(current.basis),
+      correctBasis: {
+        expectedDisplay: current.decision.expectedDisplay,
+        gradingRuleVersionId: current.gradingRuleVersionId,
+      },
+      familySpaceId: assessment.familySpaceId,
+      firstIncorrectAt: firstIncorrect?.createdAt ?? current.createdAt,
+      inputReference: structuredClone(current.inputReference),
+      learningProfileId: assessment.learningProfileId,
+      materialId: assessment.materialId,
+      outcome: reference.outcome,
+      question: structuredClone(current.question),
+      response: structuredClone(current.response),
+    };
+  }
+
+  async evaluateImmediateCorrection(input: {
+    actor: AssessmentActorReference;
+    assessmentId: string;
+    learningProfileId: string;
+    responseText: string;
+  }): Promise<ImmediateCorrectionEvaluation> {
+    const assessment = await this.#requireAssessment(input.assessmentId, input.learningProfileId);
+    const reference = await this.getDownstreamReference(input);
+    const current = assessment.versions.at(-1)!;
+    const responseText = requiredText(input.responseText, '订正作答');
+    const evaluated = decision(current.question.text, responseText, current.rule);
+    if (evaluated.outcome === 'ungradable' || evaluated.expectedDisplay === null) {
+      throw new AssessmentError('DOWNSTREAM_INELIGIBLE', '当前正确依据不能自动评价这次即时订正');
+    }
+    return {
+      assessmentId: assessment.id,
+      assessmentVersionId: reference.assessmentVersionId,
+      basis: structuredClone(current.basis),
+      evaluatedResponse: responseText,
+      expectedDisplay: evaluated.expectedDisplay,
+      normalizedResponse: evaluated.normalizedResponse,
+      outcome: evaluated.outcome,
+    };
   }
 
   async getAssessment(input: {

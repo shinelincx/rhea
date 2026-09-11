@@ -1,0 +1,30 @@
+{
+  "name": "@rhea/postgres-learning-progress",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rhea/learning-progress": "workspace:*",
+    "@rhea/postgres-source-lineage": "workspace:*",
+    "@rhea/source-lineage": "workspace:*",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@rhea/assessment": "workspace:*",
+    "@rhea/database": "workspace:*",
+    "@rhea/learning-content": "workspace:*",
+    "@rhea/postgres-assessment": "workspace:*",
+    "@rhea/postgres-learning-content": "workspace:*",
+    "@types/node": "24.10.13",
+    "@types/pg": "8.16.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}

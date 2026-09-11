@@ -142,6 +142,34 @@ export interface DownstreamAssessmentReference {
   subject: Subject;
 }
 
+export interface AcceptedObjectiveAssessmentSnapshot {
+  assessmentId: string;
+  assessmentVersionId: string;
+  basis: CurrentLearningBasisReference;
+  correctBasis: {
+    expectedDisplay: string;
+    gradingRuleVersionId: string;
+  };
+  familySpaceId: string;
+  firstIncorrectAt: string;
+  inputReference: ObjectiveAssessmentInputReference;
+  learningProfileId: string;
+  materialId: string;
+  outcome: 'correct' | 'incorrect';
+  question: QuestionVersionSnapshot;
+  response: ResponseVersionSnapshot;
+}
+
+export interface ImmediateCorrectionEvaluation {
+  assessmentId: string;
+  assessmentVersionId: string;
+  basis: CurrentLearningBasisReference;
+  evaluatedResponse: string;
+  expectedDisplay: string;
+  normalizedResponse: string | null;
+  outcome: 'correct' | 'incorrect';
+}
+
 export interface ObjectiveAssessment {
   currentVersion: ObjectiveAssessmentVersion;
   disputes: AssessmentDispute[];

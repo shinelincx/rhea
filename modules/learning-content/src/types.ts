@@ -103,6 +103,7 @@ export interface CurrentLearningContextReference {
   confirmedContentVersionId: string;
   coursePathName: string | null;
   knowledgePointNames: string[];
+  primaryKnowledgePointName: string | null;
   subject: Subject | null;
   unitName: string | null;
 }

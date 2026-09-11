@@ -94,6 +94,7 @@ describe('database migration interface', () => {
       '0015',
       '0016',
       '0017',
+      '0018',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -205,6 +206,13 @@ describe('database migration interface', () => {
       /FUNCTION learning\.review_suggested_assessment[\s\S]*metrics\.lock_current_family_capability_authorization/i,
     );
     expect(migrations[16]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[17]?.sql).toMatch(/CREATE TABLE learning\.wrong_items/i);
+    expect(migrations[17]?.sql).toMatch(/FUNCTION learning\.create_wrong_item/i);
+    expect(migrations[17]?.sql).toMatch(/CREATE ROLE rhea_learning_progress_app/i);
+    expect(migrations[17]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[17]?.sql).toMatch(
+      /REVOKE ALL ON FUNCTION learning\.create_wrong_item\(jsonb\) FROM PUBLIC/i,
+    );
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -229,9 +237,10 @@ describe('database migration interface', () => {
         '0015',
         '0016',
         '0017',
+        '0018',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(12);
+    expect(database.executedMigrationSql).toHaveLength(13);
   });
 });

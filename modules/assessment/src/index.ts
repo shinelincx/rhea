@@ -48,6 +48,7 @@ export type {
 } from './suggested-assessment.types.js';
 export { deriveTrustedBuiltInRule, type TrustedBuiltInRule } from './trusted-rules.js';
 export type {
+  AcceptedObjectiveAssessmentSnapshot,
   AcceptedTextGradingRule,
   AssessmentCorrection,
   AssessmentActorReference,
@@ -57,6 +58,7 @@ export type {
   AssessmentVersionActorReference,
   ConfirmedObjectiveGradingRule,
   DownstreamAssessmentReference,
+  ImmediateCorrectionEvaluation,
   NumericGradingRule,
   ObjectiveAssessment,
   ObjectiveAssessmentDecision,

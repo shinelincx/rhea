@@ -9,6 +9,10 @@ import { FamilyAccessError, type Actor } from '@rhea/family-access';
 
 import { FAMILY_ACCESS, type FamilyAccess } from '../family-access/family-access.provider.js';
 import {
+  LEARNING_PROGRESS_SERVICE,
+  type LearningProgressService,
+} from '../learning-progress/learning-progress.provider.js';
+import {
   ASSESSMENT_SERVICE,
   SUGGESTED_ASSESSMENT_SCHEDULER,
   SUGGESTED_ASSESSMENT_SERVICE,
@@ -46,6 +50,8 @@ export class AssessmentController {
   constructor(
     @Inject(FAMILY_ACCESS) private readonly familyAccess: FamilyAccess,
     @Inject(ASSESSMENT_SERVICE) private readonly assessments: AssessmentService,
+    @Inject(LEARNING_PROGRESS_SERVICE)
+    private readonly learningProgress: LearningProgressService,
     @Inject(SUGGESTED_ASSESSMENT_SERVICE)
     private readonly suggestedAssessments: SuggestedAssessmentService,
     @Inject(SUGGESTED_ASSESSMENT_SCHEDULER)
@@ -176,14 +182,21 @@ export class AssessmentController {
     @Body() body: Record<string, unknown>,
   ) {
     const actor = await this.authorize(authorization, familySpaceId, learningProfileId);
+    const actorRef = actorReference(actor);
+    const assessment = await this.assessments.gradeObjective({
+      actor: actorRef,
+      familySpaceId,
+      inputReference: assessmentInputReference(body.inputReference),
+      learningProfileId,
+      materialId: stringValue(body.materialId, '学习资料'),
+    });
+    await this.learningProgress.captureAcceptedError({
+      actor: actorRef,
+      assessmentId: assessment.id,
+      learningProfileId,
+    });
     return {
-      data: await this.assessments.gradeObjective({
-        actor: actorReference(actor),
-        familySpaceId,
-        inputReference: assessmentInputReference(body.inputReference),
-        learningProfileId,
-        materialId: stringValue(body.materialId, '学习资料'),
-      }),
+      data: assessment,
     };
   }
 
@@ -256,20 +269,27 @@ export class AssessmentController {
     @Body() body: Record<string, unknown>,
   ) {
     const actor = await this.authorize(authorization, familySpaceId, learningProfileId);
+    const actorRef = actorReference(actor);
+    const assessment = await this.assessments.resolveDispute({
+      actor: actorRef,
+      assessmentId,
+      ...(body.correction === undefined
+        ? {}
+        : { correction: assessmentCorrection(body.correction) }),
+      disputeId,
+      ...(body.inputReference === undefined
+        ? {}
+        : { inputReference: assessmentInputReference(body.inputReference) }),
+      learningProfileId,
+      reason: stringValue(body.reason, '解决说明'),
+    });
+    await this.learningProgress.captureAcceptedError({
+      actor: actorRef,
+      assessmentId: assessment.id,
+      learningProfileId,
+    });
     return {
-      data: await this.assessments.resolveDispute({
-        actor: actorReference(actor),
-        assessmentId,
-        ...(body.correction === undefined
-          ? {}
-          : { correction: assessmentCorrection(body.correction) }),
-        disputeId,
-        ...(body.inputReference === undefined
-          ? {}
-          : { inputReference: assessmentInputReference(body.inputReference) }),
-        learningProfileId,
-        reason: stringValue(body.reason, '解决说明'),
-      }),
+      data: assessment,
     };
   }
 

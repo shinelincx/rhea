@@ -183,6 +183,99 @@ describe('Objective assessment HTTP interface', () => {
       response: { text: '41' },
     });
 
+    const wrongItemLibraryResponse = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'GET',
+      url: `${baseUrl}/wrong-items?subject=mathematics&unitName=${encodeURIComponent('乘法')}&knowledgePointName=${encodeURIComponent('乘法')}`,
+    });
+    expect(wrongItemLibraryResponse.statusCode).toBe(200);
+    const wrongItemLibrary = wrongItemLibraryResponse.json<{
+      data: {
+        items: Array<{
+          assessment: { assessmentId: string; correctBasis: { expectedDisplay: string } };
+          currentReason: { status: string };
+          firstIncorrectAt: string;
+          id: string;
+          stateRevision: number;
+          status: string;
+        }>;
+        themes: Array<{ itemCount: number; knowledgePointName: string }>;
+      };
+    }>().data;
+    expect(wrongItemLibrary.items).toHaveLength(1);
+    expect(wrongItemLibrary.items[0]).toMatchObject({
+      assessment: {
+        assessmentId: graded.id,
+        correctBasis: { expectedDisplay: '42' },
+      },
+      currentReason: { status: 'suggested' },
+      stateRevision: 1,
+      status: 'pending_correction',
+    });
+    expect(wrongItemLibrary.items[0]?.firstIncorrectAt).toBeTruthy();
+    expect(wrongItemLibrary.themes).toMatchObject([{ itemCount: 1, knowledgePointName: '乘法' }]);
+    const wrongItemId = wrongItemLibrary.items[0]!.id;
+
+    const confirmedReasonResponse = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'POST',
+      payload: { action: 'confirm', expectedStateRevision: 1 },
+      url: `${baseUrl}/wrong-items/${wrongItemId}/reason-revisions`,
+    });
+    expect(confirmedReasonResponse.statusCode).toBe(201);
+    expect(confirmedReasonResponse.json()).toMatchObject({
+      data: { currentReason: { status: 'confirmed' }, stateRevision: 2 },
+    });
+
+    const correctedClassificationResponse = await app.inject({
+      headers: { authorization: `Bearer ${guardian.accessToken}` },
+      method: 'POST',
+      payload: {
+        expectedStateRevision: 2,
+        knowledgePointNames: ['表内乘法'],
+        primaryKnowledgePointName: '表内乘法',
+        subject: 'mathematics',
+        unitName: '乘法基础',
+      },
+      url: `${baseUrl}/wrong-items/${wrongItemId}/classification-revisions`,
+    });
+    expect(correctedClassificationResponse.statusCode).toBe(201);
+    expect(correctedClassificationResponse.json()).toMatchObject({
+      data: {
+        classification: {
+          primaryKnowledgePointName: '表内乘法',
+          revision: 2,
+          status: 'classified',
+          unitName: '乘法基础',
+        },
+        stateRevision: 3,
+      },
+    });
+
+    const correctionRequest = {
+      headers: {
+        authorization: `Bearer ${learnerSession.accessToken}`,
+        'idempotency-key': 'assessment-e2e-correction-1',
+      },
+      method: 'POST' as const,
+      payload: { expectedStateRevision: 3, responseText: '42' },
+      url: `${baseUrl}/wrong-items/${wrongItemId}/immediate-corrections`,
+    };
+    const correctionResponse = await app.inject(correctionRequest);
+    expect(correctionResponse.statusCode).toBe(201);
+    expect(correctionResponse.json()).toMatchObject({
+      data: {
+        correctionAttempts: [{ outcome: 'correct', responseText: '42' }],
+        stateRevision: 4,
+        status: 'pending_consolidation',
+      },
+    });
+    const correctionRetryResponse = await app.inject(correctionRequest);
+    expect(correctionRetryResponse.statusCode).toBe(201);
+    expect(correctionRetryResponse.json()).toMatchObject({
+      data: { correctionAttempts: [{ outcome: 'correct' }], stateRevision: 4 },
+    });
+
     const disputedResponse = await app.inject({
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },
       method: 'POST',
@@ -195,6 +288,16 @@ describe('Objective assessment HTTP interface', () => {
     });
     expect(disputedResponse.statusCode).toBe(201);
     const disputed = disputedResponse.json<{ data: { openDisputeId: string } }>().data;
+
+    const hiddenDuringDisputeResponse = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'GET',
+      url: `${baseUrl}/wrong-items`,
+    });
+    expect(hiddenDuringDisputeResponse.statusCode).toBe(200);
+    expect(hiddenDuringDisputeResponse.json()).toMatchObject({
+      data: { items: [], themes: [] },
+    });
 
     const paused = await app.inject({
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },

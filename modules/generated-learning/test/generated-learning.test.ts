@@ -166,6 +166,7 @@ function setup(
         confirmedContentVersionId: 'content-1',
         coursePathName: '三年级上册',
         knowledgePointNames: ['两位数除以一位数'],
+        primaryKnowledgePointName: '两位数除以一位数',
         subject: 'mathematics',
         unitName: '除法',
       }),

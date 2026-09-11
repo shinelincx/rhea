@@ -10,6 +10,7 @@ import { createConfiguredLearningContent } from './learning-content/create-confi
 import { createConfiguredSubmission } from './submission/create-configured-submission.js';
 import { createQueuedGeneratedLearningScheduler } from './generated-learning/create-queued-generated-learning-scheduler.js';
 import { createConfiguredGeneratedLearning } from './generated-learning/create-configured-generated-learning.js';
+import { createConfiguredLearningProgress } from './learning-progress/create-configured-learning-progress.js';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -28,6 +29,11 @@ const configuredGeneratedLearning = createConfiguredGeneratedLearning(
   configuredLearningContent.service,
   configuredFamilyAccess.familyAccess,
 );
+const configuredLearningProgress = createConfiguredLearningProgress(
+  process.env,
+  configuredAssessment.service,
+  configuredLearningContent.service,
+);
 const aiJobClient = createConfiguredAiJobClient(process.env);
 const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<void> };
 const app = await createApp({
@@ -40,12 +46,14 @@ const app = await createApp({
   generatedLearningService: configuredGeneratedLearning.service,
   jobClient: createConfiguredJobClient(process.env),
   learningContentService: configuredLearningContent.service,
+  learningProgressService: configuredLearningProgress.service,
   shutdownResources: [
     ...configuredFamilyAccess.shutdownResources,
     ...configuredSubmission.shutdownResources,
     ...configuredLearningContent.shutdownResources,
     ...configuredAssessment.shutdownResources,
     ...configuredGeneratedLearning.shutdownResources,
+    ...configuredLearningProgress.shutdownResources,
     ...(typeof closeableAiJobClient.close === 'function'
       ? [{ close: () => closeableAiJobClient.close!() }]
       : []),
