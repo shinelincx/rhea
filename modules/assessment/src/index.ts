@@ -1,7 +1,10 @@
 export { AssessmentError, type AssessmentErrorCode } from './error.js';
 export { MemoryAssessmentStore } from './memory.js';
 export { MemorySuggestedAssessmentStore } from './suggested-assessment.memory.js';
-export { deriveProfessionallyReviewedOpenRubric } from './open-rubrics.js';
+export {
+  deriveProfessionallyReviewedOpenRubric,
+  openAssessmentAgeBandForGrade,
+} from './open-rubrics.js';
 export { SuggestedAssessmentService } from './suggested-assessment.service.js';
 export {
   AssessmentService,

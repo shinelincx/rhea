@@ -6,6 +6,7 @@ import { AssessmentError } from './error.js';
 import type { AssessmentStore } from './store.js';
 import type {
   AssessmentActorReference,
+  AssessmentVersionActorReference,
   AssessmentCorrection,
   AssessmentDispute,
   AssessmentDisputeResolution,
@@ -27,7 +28,7 @@ const DISPUTE_TARGETS = new Set<AssessmentDisputeTarget>(['assessment', 'questio
 
 export interface LearningBasisReader {
   getCurrentBasisReference(input: {
-    actor: AssessmentActorReference;
+    actor: AssessmentVersionActorReference;
     learningProfileId: string;
     materialId: string;
   }): Promise<CurrentLearningBasisReference>;

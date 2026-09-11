@@ -7,6 +7,11 @@ export interface LearningActorReference {
   type: 'guardian' | 'learner';
 }
 
+export interface ProfessionalLearningReviewerReference {
+  id: string;
+  type: 'professional';
+}
+
 export interface ClassificationDraft {
   coursePathName: string | null;
   knowledgePointNames: string[];

@@ -74,6 +74,10 @@ function setup(
     responseText?: string;
     requiresProfessionalReview?: boolean;
     tasks?: OpenAssessmentModelTask[];
+    basisActors?: Array<{ id: string; type: 'guardian' | 'learner' | 'professional' }>;
+    candidateValue?: OpenAssessmentModelCandidate;
+    optionalDimension?: boolean;
+    revalidationPhases?: string[];
   } = {},
 ) {
   const dimensionKeys = ['evidence', 'reasoning'];
@@ -100,7 +104,12 @@ function setup(
     status: 'authorized',
   };
   const service = new SuggestedAssessmentService({
-    basisReader: { getCurrentBasisReference: async () => basis },
+    basisReader: {
+      async getCurrentBasisReference({ actor }) {
+        options.basisActors?.push(structuredClone(actor));
+        return basis;
+      },
+    },
     clock: { now: new Date('2026-09-10T08:00:00.000Z') },
     inputReader: {
       async resolveOpenAssessmentInput() {
@@ -122,7 +131,7 @@ function setup(
               description: `${key}的可观察要求`,
               key,
               label: key === 'evidence' ? '证据' : '推理',
-              required: true,
+              required: !(options.optionalDimension && key === 'reasoning'),
             })),
             id: `rubric-${subject}`,
             name: `${subject}开放题评分量规`,
@@ -144,7 +153,7 @@ function setup(
         if (options.modelError) throw options.modelError;
         options.tasks?.push(structuredClone(task));
         return {
-          candidate: candidate(dimensionKeys),
+          candidate: options.candidateValue ?? candidate(dimensionKeys),
           externalTraceId: `trace-${subject}`,
           inputTokens: 120,
           outputTokens: 240,
@@ -158,12 +167,15 @@ function setup(
         ...structuredClone(decision),
         scope: { ...structuredClone(decision.scope), slice: structuredClone(slice) },
       }),
-      revalidateAuthorization: async () => ({
-        capabilityVersion: capability,
-        containmentEpoch: decision.containmentEpoch,
-        decisionId: decision.decisionId,
-        status: 'authorized' as const,
-      }),
+      revalidateAuthorization: async ({ phase }) => {
+        options.revalidationPhases?.push(phase);
+        return {
+          capabilityVersion: capability,
+          containmentEpoch: decision.containmentEpoch,
+          decisionId: decision.decisionId,
+          status: 'authorized' as const,
+        };
+      },
     },
     store: new MemorySuggestedAssessmentStore(),
   });
@@ -189,6 +201,22 @@ function request(taskType: OpenAssessmentTaskType = 'chinese_expression') {
 }
 
 describe('建议评价', () => {
+  it('先创建可恢复任务，再由 AI 工作进程生成待复核建议', async () => {
+    const tasks: OpenAssessmentModelTask[] = [];
+    const service = setup('chinese', { tasks });
+
+    const queued = await service.requestSuggestion(request());
+
+    expect(queued.status).toBe('queued');
+    expect(tasks).toHaveLength(0);
+    const processed = await service.processSuggestion({
+      learningProfileId: learner.id,
+      suggestionId: queued.id,
+    });
+    expect(processed.status).toBe('pending_review');
+    expect(tasks).toHaveLength(1);
+  });
+
   it.each(samples)('为 $subject 开放题生成待复核而非正式成绩的分维度建议', async ({ taskType }) => {
     const subject = samples.find((sample) => sample.taskType === taskType)!.subject;
     const service = setup(subject);
@@ -329,7 +357,8 @@ describe('建议评价', () => {
   );
 
   it('仅允许有权成年人逐维接受或修改，并完整保留原建议与能力版本', async () => {
-    const service = setup('chinese');
+    const revalidationPhases: string[] = [];
+    const service = setup('chinese', { revalidationPhases });
     const pending = await service.suggest(request());
     const decisions = [
       { action: 'accept' as const, dimensionKey: 'evidence' },
@@ -381,10 +410,11 @@ describe('建议评价', () => {
         reviewedAt: '2026-09-10T08:00:00.000Z',
         reviewedBy: { id: 'guardian-1', type: 'guardian' },
       },
-      stateRevision: 2,
+      stateRevision: 4,
       status: 'accepted',
     });
     expect(accepted.suggestion).toEqual(pending.suggestion);
+    expect(revalidationPhases).toEqual(['before_send', 'after_receive', 'before_publish']);
     await expect(
       service.getAcceptedResultReference({
         actor: learner,
@@ -400,7 +430,8 @@ describe('建议评价', () => {
   });
 
   it('将高影响或依据冲突评价锁定到专业复核，并允许专业复核者逐维拒绝', async () => {
-    const service = setup('science', { requiresProfessionalReview: true });
+    const basisActors: Array<{ id: string; type: 'guardian' | 'learner' | 'professional' }> = [];
+    const service = setup('science', { basisActors, requiresProfessionalReview: true });
     const pending = await service.suggest(request('science_inquiry'));
     const decisions = [
       { action: 'accept' as const, dimensionKey: 'evidence' },
@@ -441,6 +472,7 @@ describe('建议评价', () => {
       status: 'rejected',
     });
     expect(rejected.suggestion).toEqual(pending.suggestion);
+    expect(basisActors).toContainEqual({ id: 'professional-1', type: 'professional' });
     await expect(
       service.getAcceptedResultReference({
         actor: learner,
@@ -508,5 +540,53 @@ describe('建议评价', () => {
         suggestionId: pending.id,
       }),
     ).rejects.toMatchObject({ code: 'AI_PROCESSING_CONSENT_REQUIRED' });
+  });
+
+  it('安全敏感内容进入专业复核，普通监护人不能直接接受', async () => {
+    const service = setup('chinese', {
+      responseText: '我先观察叶片，然后记录颜色变化。题目里还提到了自残。',
+    });
+    const pending = await service.suggest(request());
+
+    expect(pending.requiresProfessionalReview).toBe(true);
+    await expect(
+      service.review({
+        decisions: pending.suggestion!.dimensions.map(({ dimensionKey }) => ({
+          action: 'accept' as const,
+          dimensionKey,
+        })),
+        expectedStateRevision: pending.stateRevision,
+        learningProfileId: learner.id,
+        reviewer: { id: 'guardian-1', type: 'guardian' },
+        suggestionId: pending.id,
+      }),
+    ).rejects.toMatchObject({ code: 'PROFESSIONAL_REVIEW_REQUIRED' });
+  });
+
+  it('量规未覆盖到足够证据时保留建议但升级为专业复核', async () => {
+    const candidateValue = candidate(['evidence', 'reasoning']);
+    candidateValue.dimensions[1]!.state = 'insufficient_evidence';
+    const service = setup('chinese', { candidateValue });
+
+    await expect(service.suggest(request())).resolves.toMatchObject({
+      requiresProfessionalReview: true,
+      status: 'pending_review',
+    });
+  });
+
+  it('只要求完成量规中的必需维度，可选维度不会阻断接受', async () => {
+    const service = setup('chinese', { optionalDimension: true });
+    const pending = await service.suggest(request());
+    const accepted = await service.review({
+      decisions: [{ action: 'accept', dimensionKey: 'evidence' }],
+      expectedStateRevision: pending.stateRevision,
+      learningProfileId: learner.id,
+      reviewer: { id: 'guardian-1', type: 'guardian' },
+      suggestionId: pending.id,
+    });
+
+    expect(accepted.acceptedResult?.dimensions).toEqual([
+      expect.objectContaining({ dimensionKey: 'evidence' }),
+    ]);
   });
 });

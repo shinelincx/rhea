@@ -3,6 +3,8 @@ import type {
   ClassificationVersion,
   LearningSourceVersion,
   StoredLearningMaterial,
+  ProfessionalLearningReviewerReference,
+  LearningActorReference,
 } from './types.js';
 
 export interface LearningContentStore {
@@ -44,7 +46,7 @@ export interface LearningContentStore {
   }): Promise<boolean>;
   recordAccess(input: {
     action: string;
-    actor: { id: string; type: 'guardian' | 'learner' };
+    actor: LearningActorReference | ProfessionalLearningReviewerReference;
     familySpaceId: string;
     learningProfileId: string;
     materialId: string;

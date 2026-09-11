@@ -10,6 +10,7 @@ import type { AuthorizationDecision, CapabilityVersion } from '@rhea/quality-con
 import { applyMigrations, loadDefaultMigrations } from '@rhea/database';
 import { LearningContentService, type Subject } from '@rhea/learning-content';
 import { PostgresLearningContentStore } from '@rhea/postgres-learning-content';
+import { syncSourceRevisionInTransaction } from '@rhea/postgres-source-lineage';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -505,7 +506,7 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
           source: { authority: 'rhea_professionally_reviewed' },
           subject,
           taskType,
-          version: '1.0.0',
+          version: '2.0.0',
         },
       });
       expect(resolved?.rubric?.dimensions.length).toBeGreaterThanOrEqual(2);
@@ -565,7 +566,7 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       publicationGate: store,
       store,
     });
-    const pending = await service.suggest({
+    const queued = await service.requestSuggestion({
       actor,
       ageBand: 'middle_primary',
       consentRevision: 1,
@@ -579,6 +580,32 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
       learningProfileId: fixture.learningProfileId,
       materialId: fixture.material.id,
       taskType: 'science_inquiry',
+    });
+    expect(queued.status).toBe('queued');
+    const currentBasis = await fixture.learningContent.getCurrentBasisReference({
+      actor,
+      learningProfileId: fixture.learningProfileId,
+      materialId: fixture.material.id,
+    });
+    await expect(
+      store.resolveOpenAssessmentInput({
+        actor,
+        ageBand: 'middle_primary',
+        basis: currentBasis,
+        learningProfileId: fixture.learningProfileId,
+        materialId: fixture.material.id,
+        reference: {
+          confirmedContentVersionId: fixture.confirmedContentVersionId,
+          processingJobId: fixture.processingJobId,
+          questionRegionId: fixture.questionRegionId,
+          responseRegionId: fixture.responseRegionId,
+        },
+        taskType: 'science_inquiry',
+      }),
+    ).resolves.not.toBeNull();
+    const pending = await service.processSuggestion({
+      learningProfileId: fixture.learningProfileId,
+      suggestionId: queued.id,
     });
 
     expect(pending.status).toBe('pending_review');
@@ -624,10 +651,51 @@ describeWithDatabase('PostgreSQL assessment adapter', () => {
     expect(persisted).toMatchObject({
       review: {
         capabilityVersionId: openAssessmentCapability.id,
-        rubricVersion: '1.0.0',
+        rubricVersion: '2.0.0',
       },
       suggestion: pending.suggestion,
     });
+    await expect(
+      service.getAcceptedResultReference({
+        actor,
+        learningProfileId: fixture.learningProfileId,
+        suggestionId: pending.id,
+      }),
+    ).resolves.toMatchObject({ assessmentVersionId: accepted.acceptedResult!.id });
+    const sourceClient = await pool.connect();
+    try {
+      await sourceClient.query('BEGIN');
+      await sourceClient.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        fixture.familySpaceId,
+      ]);
+      await sourceClient.query(`SELECT set_config('rhea.learning_profile_id', $1, true)`, [
+        fixture.learningProfileId,
+      ]);
+      await syncSourceRevisionInTransaction(sourceClient, {
+        occurredAt: '2026-09-10T09:00:00.000Z',
+        reason: 'question corrected after accepted suggestion',
+        source: {
+          familySpaceId: fixture.familySpaceId,
+          id: `${fixture.material.id}:${fixture.questionRegionId}`,
+          kind: 'question',
+          learningProfileId: fixture.learningProfileId,
+        },
+        version: 'question-corrected-v2',
+      });
+      await sourceClient.query('COMMIT');
+    } catch (error) {
+      await sourceClient.query('ROLLBACK');
+      throw error;
+    } finally {
+      sourceClient.release();
+    }
+    await expect(
+      service.getAcceptedResultReference({
+        actor,
+        learningProfileId: fixture.learningProfileId,
+        suggestionId: pending.id,
+      }),
+    ).rejects.toMatchObject({ code: 'DOWNSTREAM_INELIGIBLE' });
   });
 
   it.each<{

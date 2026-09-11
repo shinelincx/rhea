@@ -12,12 +12,15 @@ import type {
   OpenAssessmentTaskType,
   ResolvedOpenAssessmentInput,
 } from './suggested-assessment.types.js';
-import type { AssessmentActorReference, ObjectiveAssessmentInputReference } from './types.js';
+import type {
+  AssessmentVersionActorReference,
+  ObjectiveAssessmentInputReference,
+} from './types.js';
 import type { CurrentLearningBasisReference } from '@rhea/learning-content';
 
 export interface OpenAssessmentInputReader {
   resolveOpenAssessmentInput(input: {
-    actor: AssessmentActorReference;
+    actor: AssessmentVersionActorReference;
     ageBand: OpenAssessmentModelTask['ageBand'];
     basis: CurrentLearningBasisReference;
     learningProfileId: string;

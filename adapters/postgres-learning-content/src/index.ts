@@ -735,7 +735,7 @@ export class PostgresLearningContentStore implements LearningContentStore {
     client: PoolClient,
     input: {
       action: string;
-      actor: { id: string; type: 'guardian' | 'learner' };
+      actor: { id: string; type: 'guardian' | 'learner' | 'professional' };
       familySpaceId: string;
       learningProfileId: string;
       materialId: string;

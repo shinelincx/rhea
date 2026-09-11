@@ -1,8 +1,14 @@
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 
 import type { GeneratedLearningPackCandidate, ModelTask } from '@rhea/generated-learning';
 
-import { FixedModelGateway } from '../src/index.js';
+import {
+  FixedModelGateway,
+  HttpOpenAssessmentModelGateway,
+  createConfiguredOpenAssessmentModelGateway,
+} from '../src/index.js';
+
+afterEach(() => vi.restoreAllMocks());
 
 it('returns cloned fixed structured output and records the minimized task', async () => {
   const candidate = {
@@ -50,4 +56,55 @@ it('returns cloned fixed structured output and records the minimized task', asyn
 
   expect(candidate.summary.title).toBe('认识加法');
   expect(gateway.tasks).toEqual([task]);
+});
+
+it('posts an open assessment task to the configured backend model gateway', async () => {
+  const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    new Response(
+      JSON.stringify({
+        candidate: { confidence: 0.9, dimensions: [] },
+        externalTraceId: 'trace-1',
+        inputTokens: 10,
+        outputTokens: 20,
+        provider: 'approved-provider',
+      }),
+      { status: 200 },
+    ),
+  );
+  const gateway = new HttpOpenAssessmentModelGateway({
+    authorizationToken: 'secret-token',
+    url: 'https://model.example/v1/structured',
+  });
+  const task = { purpose: 'open_assessment_suggestion' } as never;
+
+  await expect(gateway.runStructured(task)).resolves.toMatchObject({
+    externalTraceId: 'trace-1',
+    provider: 'approved-provider',
+  });
+  expect(fetchMock).toHaveBeenCalledWith(
+    'https://model.example/v1/structured',
+    expect.objectContaining({
+      body: JSON.stringify({ task }),
+      headers: expect.objectContaining({ authorization: 'Bearer secret-token' }),
+      method: 'POST',
+    }),
+  );
+});
+
+it('fails production startup when the backend model gateway is not configured', () => {
+  expect(() => createConfiguredOpenAssessmentModelGateway({ NODE_ENV: 'production' })).toThrow(
+    'MODEL_GATEWAY_URL is required',
+  );
+  expect(() =>
+    createConfiguredOpenAssessmentModelGateway({
+      MODEL_GATEWAY_URL: 'https://model.example/v1/structured',
+      NODE_ENV: 'production',
+    }),
+  ).toThrow('MODEL_GATEWAY_TOKEN is required');
+  expect(() =>
+    createConfiguredOpenAssessmentModelGateway({
+      MODEL_GATEWAY_TIMEOUT_MS: 'not-a-number',
+      MODEL_GATEWAY_URL: 'https://model.example/v1/structured',
+    }),
+  ).toThrow('MODEL_GATEWAY_TIMEOUT_MS');
 });

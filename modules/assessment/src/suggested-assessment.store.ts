@@ -12,6 +12,24 @@ export interface SuggestedAssessmentStore {
     learningProfileId: string,
   ): Promise<StoredSuggestedAssessment | null>;
   findById(id: string, learningProfileId: string): Promise<StoredSuggestedAssessment | null>;
+  markGenerating(input: {
+    expectedStateRevision: number;
+    learningProfileId: string;
+    processingLeaseExpiresAt: string;
+    suggestionId: string;
+    updatedAt: string;
+  }): Promise<boolean>;
+  completeGeneration(input: {
+    expectedStateRevision: number;
+    learningProfileId: string;
+    modelRun: StoredSuggestedAssessment['modelRun'];
+    requiresProfessionalReview: boolean;
+    status: 'pending_review' | 'unavailable';
+    suggestion: StoredSuggestedAssessment['suggestion'];
+    suggestionId: string;
+    unavailableReason: StoredSuggestedAssessment['unavailableReason'];
+    updatedAt: string;
+  }): Promise<boolean>;
   readAcceptedResultReference(input: {
     learningProfileId: string;
     suggestionId: string;

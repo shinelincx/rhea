@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
-export const JOB_KINDS = ['system.probe', 'generated-learning.generate'] as const;
+export const JOB_KINDS = [
+  'system.probe',
+  'generated-learning.generate',
+  'open-assessment.generate',
+] as const;
 
 export type JobKind = (typeof JOB_KINDS)[number];
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -15,6 +19,10 @@ export interface JobRetryPolicy {
 
 const JOB_RETRY_POLICIES: Record<JobKind, JobRetryPolicy> = {
   'generated-learning.generate': {
+    attempts: 4,
+    backoff: { delayMs: 65_000, strategy: 'fixed' },
+  },
+  'open-assessment.generate': {
     attempts: 4,
     backoff: { delayMs: 65_000, strategy: 'fixed' },
   },
@@ -38,6 +46,11 @@ export type SubmitJobInput =
       deduplicationKey?: string;
       kind: 'generated-learning.generate';
       payload: { learningProfileId: string; requestId: string };
+    }
+  | {
+      deduplicationKey?: string;
+      kind: 'open-assessment.generate';
+      payload: { learningProfileId: string; suggestionId: string };
     }
   | {
       deduplicationKey?: string;
@@ -74,6 +87,10 @@ type StoredJob =
   | (Omit<ObservableJob, 'kind'> & {
       kind: 'generated-learning.generate';
       payload: { learningProfileId: string; requestId: string };
+    })
+  | (Omit<ObservableJob, 'kind'> & {
+      kind: 'open-assessment.generate';
+      payload: { learningProfileId: string; suggestionId: string };
     })
   | (Omit<ObservableJob, 'kind'> & {
       kind: 'system.probe';
@@ -121,7 +138,9 @@ class MemoryJobRuntime implements JobRuntime {
       id,
       input.kind === 'generated-learning.generate'
         ? { ...job, kind: input.kind, payload: { ...input.payload } }
-        : { ...job, kind: input.kind, payload: { ...input.payload } },
+        : input.kind === 'open-assessment.generate'
+          ? { ...job, kind: input.kind, payload: { ...input.payload } }
+          : { ...job, kind: input.kind, payload: { ...input.payload } },
     );
     this.#queue.push(id);
     if (input.deduplicationKey) {
@@ -147,7 +166,9 @@ class MemoryJobRuntime implements JobRuntime {
       job.result = await handler(
         job.kind === 'generated-learning.generate'
           ? { kind: job.kind, payload: { ...job.payload } }
-          : { kind: job.kind, payload: { ...job.payload } },
+          : job.kind === 'open-assessment.generate'
+            ? { kind: job.kind, payload: { ...job.payload } }
+            : { kind: job.kind, payload: { ...job.payload } },
       );
       job.status = 'succeeded';
     } catch {

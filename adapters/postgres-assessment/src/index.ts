@@ -126,6 +126,7 @@ interface SuggestedAssessmentRow extends QueryResultRow {
   learning_profile_id: string;
   material_id: string;
   model_run: unknown | null;
+  processing_lease_expires_at: Date | null;
   question: unknown;
   requires_professional_review: boolean;
   response: unknown;
@@ -990,24 +991,93 @@ export class PostgresSuggestedAssessmentStore
     });
   }
 
+  async markGenerating(
+    input: Parameters<SuggestedAssessmentStore['markGenerating']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const result = await client.query<{ marked: boolean }>(
+        `SELECT learning.mark_suggested_assessment_generating(
+           $1, $2, $3, $4, $5
+         ) AS marked`,
+        [
+          input.suggestionId,
+          input.learningProfileId,
+          input.expectedStateRevision,
+          input.processingLeaseExpiresAt,
+          input.updatedAt,
+        ],
+      );
+      return result.rows[0]?.marked === true;
+    });
+  }
+
+  async completeGeneration(
+    input: Parameters<SuggestedAssessmentStore['completeGeneration']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const current = await client.query<{ family_space_id: string }>(
+        `SELECT family_space_id FROM learning.suggested_assessments
+         WHERE learning_profile_id = $1 AND id = $2`,
+        [input.learningProfileId, input.suggestionId],
+      );
+      const familySpaceId = current.rows[0]?.family_space_id;
+      if (!familySpaceId) return false;
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [familySpaceId]);
+      const result = await client.query<{ completed: boolean }>(
+        `SELECT learning.complete_suggested_assessment_generation(
+           $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9
+         ) AS completed`,
+        [
+          input.suggestionId,
+          input.learningProfileId,
+          input.expectedStateRevision,
+          input.status,
+          input.modelRun ? JSON.stringify(input.modelRun) : null,
+          input.suggestion ? JSON.stringify(input.suggestion) : null,
+          input.unavailableReason,
+          input.requiresProfessionalReview,
+          input.updatedAt,
+        ],
+      );
+      return result.rows[0]?.completed === true;
+    });
+  }
+
   async readAcceptedResultReference(input: {
     learningProfileId: string;
     suggestionId: string;
   }): Promise<AcceptedOpenAssessmentResultReference | null> {
-    const item = await this.findById(input.suggestionId, input.learningProfileId);
-    if (!item?.acceptedResult || !item.rubric) return null;
-    return {
-      assessmentId: item.id,
-      assessmentVersionId: item.acceptedResult.id,
-      basisSelectionVersion: item.basis.selectionVersion,
-      basisSourceVersionId: item.basis.sourceVersionId,
-      basisValidityEpoch: item.basis.validityEpoch,
-      questionVersionId: item.question.versionId,
-      responseVersionId: item.response.versionId,
-      rubricId: item.rubric.id,
-      rubricVersion: item.rubric.version,
-      subject: item.question.subject,
-    };
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const selected = await client.query<SuggestedAssessmentRow>(
+        `${this.#select()} WHERE learning_profile_id = $1 AND id = $2`,
+        [input.learningProfileId, input.suggestionId],
+      );
+      const item = selected.rows[0] ? this.#hydrate(selected.rows[0]) : null;
+      if (!item?.acceptedResult || !item.rubric) return null;
+      await client.query(`SELECT set_config('rhea.family_space_id', $1, true)`, [
+        item.familySpaceId,
+      ]);
+      const lineage = await client.query<{ value: unknown | null }>(
+        `SELECT learning.read_lineage_artifact($1, $2, 'assessment', $3, $4) AS value`,
+        [item.familySpaceId, item.learningProfileId, item.id, item.acceptedResult.id],
+      );
+      const artifact = lineage.rows[0]?.value
+        ? json<{ freshness: 'current' | 'stale' }>(lineage.rows[0].value)
+        : null;
+      if (artifact?.freshness !== 'current') return null;
+      return {
+        assessmentId: item.id,
+        assessmentVersionId: item.acceptedResult.id,
+        basisSelectionVersion: item.basis.selectionVersion,
+        basisSourceVersionId: item.basis.sourceVersionId,
+        basisValidityEpoch: item.basis.validityEpoch,
+        questionVersionId: item.question.versionId,
+        responseVersionId: item.response.versionId,
+        rubricId: item.rubric.id,
+        rubricVersion: item.rubric.version,
+        subject: item.question.subject,
+      };
+    });
   }
 
   async resolveOpenAssessmentInput(
@@ -1204,6 +1274,9 @@ export class PostgresSuggestedAssessmentStore
       learningProfileId: row.learning_profile_id,
       materialId: row.material_id,
       modelRun: row.model_run ? json<StoredSuggestedAssessment['modelRun']>(row.model_run) : null,
+      processingLeaseExpiresAt: row.processing_lease_expires_at
+        ? timestamp(row.processing_lease_expires_at)
+        : null,
       question: json<StoredSuggestedAssessment['question']>(row.question),
       requiresProfessionalReview: row.requires_professional_review,
       response: json<StoredSuggestedAssessment['response']>(row.response),
@@ -1226,6 +1299,7 @@ export class PostgresSuggestedAssessmentStore
                    input_reference, basis, question, response, rubric,
                    requires_professional_review,
                    authorization_snapshot, capability_snapshot, model_run, suggestion,
+                   processing_lease_expires_at,
                    status, unavailable_reason, state_revision, review, accepted_result,
                    created_at, updated_at
             FROM learning.suggested_assessments`;

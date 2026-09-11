@@ -1,17 +1,19 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import {
   AssessmentError,
+  openAssessmentAgeBandForGrade,
   type AssessmentActorReference,
   type AssessmentDisputeTarget,
-  type OpenAssessmentAgeBand,
 } from '@rhea/assessment';
-import { FamilyAccessError, type Actor, type Grade } from '@rhea/family-access';
+import { FamilyAccessError, type Actor } from '@rhea/family-access';
 
 import { FAMILY_ACCESS, type FamilyAccess } from '../family-access/family-access.provider.js';
 import {
   ASSESSMENT_SERVICE,
+  SUGGESTED_ASSESSMENT_SCHEDULER,
   SUGGESTED_ASSESSMENT_SERVICE,
   type AssessmentService,
+  type SuggestedAssessmentScheduler,
   type SuggestedAssessmentService,
 } from './assessment.provider.js';
 import {
@@ -20,6 +22,7 @@ import {
   objectiveGradingRule,
   openAssessmentReviewDecisions,
   openAssessmentTaskType,
+  stateRevision,
   stringValue,
 } from './assessment-request.js';
 
@@ -38,11 +41,6 @@ function actorReference(actor: Actor): AssessmentActorReference {
     : { id: actor.learningProfileId, type: 'learner' };
 }
 
-function ageBand(grade: Grade | null): OpenAssessmentAgeBand {
-  if (grade === null || grade <= 2) return 'lower_primary';
-  return grade <= 4 ? 'middle_primary' : 'upper_primary';
-}
-
 @Controller('v1/family-spaces/:familySpaceId/learning-profiles/:learningProfileId')
 export class AssessmentController {
   constructor(
@@ -50,9 +48,12 @@ export class AssessmentController {
     @Inject(ASSESSMENT_SERVICE) private readonly assessments: AssessmentService,
     @Inject(SUGGESTED_ASSESSMENT_SERVICE)
     private readonly suggestedAssessments: SuggestedAssessmentService,
+    @Inject(SUGGESTED_ASSESSMENT_SCHEDULER)
+    private readonly suggestedAssessmentScheduler: SuggestedAssessmentScheduler,
   ) {}
 
   @Post('open-assessment-suggestions')
+  @HttpCode(202)
   async suggestOpenAssessment(
     @Headers('authorization') authorization: string | undefined,
     @Param('familySpaceId') familySpaceId: string,
@@ -74,18 +75,23 @@ export class AssessmentController {
         kind: 'ai_processing',
       }),
     ]);
-    return {
-      data: await this.suggestedAssessments.suggest({
-        actor: actorReference(actor),
-        ageBand: ageBand(profile.grade),
-        consentRevision: consent.revision,
-        familySpaceId,
-        inputReference: assessmentInputReference(body.inputReference),
-        learningProfileId,
-        materialId: stringValue(body.materialId, '学习资料'),
-        taskType: openAssessmentTaskType(body.taskType),
-      }),
-    };
+    const requested = await this.suggestedAssessments.requestSuggestion({
+      actor: actorReference(actor),
+      ageBand: openAssessmentAgeBandForGrade(profile.grade),
+      consentRevision: consent.revision,
+      familySpaceId,
+      inputReference: assessmentInputReference(body.inputReference),
+      learningProfileId,
+      materialId: stringValue(body.materialId, '学习资料'),
+      taskType: openAssessmentTaskType(body.taskType),
+    });
+    if (requested.status === 'queued') {
+      await this.suggestedAssessmentScheduler.schedule({
+        id: requested.id,
+        learningProfileId: requested.learningProfileId,
+      });
+    }
+    return { data: requested };
   }
 
   @Get('open-assessment-suggestions/:suggestionId')
@@ -117,8 +123,7 @@ export class AssessmentController {
     return {
       data: await this.suggestedAssessments.review({
         decisions: openAssessmentReviewDecisions(body.decisions),
-        expectedStateRevision:
-          typeof body.expectedStateRevision === 'number' ? body.expectedStateRevision : 0,
+        expectedStateRevision: stateRevision(body.expectedStateRevision),
         learningProfileId,
         reviewer: actorReference(actor),
         suggestionId,

@@ -73,6 +73,13 @@ export function openAssessmentReviewDecisions(value: unknown): OpenAssessmentRev
   });
 }
 
+export function stateRevision(value: unknown): number {
+  if (!Number.isInteger(value) || (value as number) < 1) {
+    throw new AssessmentError('INPUT_INVALID', '状态版本必须是正整数');
+  }
+  return value as number;
+}
+
 export function stringValue(value: unknown, label: string): string {
   if (typeof value !== 'string') {
     throw new AssessmentError('INPUT_INVALID', `${label}必须是文本`);

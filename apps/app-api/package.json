@@ -22,6 +22,7 @@
     "@rhea/family-access": "workspace:*",
     "@rhea/generated-learning": "workspace:*",
     "@rhea/job-runtime": "workspace:*",
+    "@rhea/model-gateway-adapter": "workspace:*",
     "@rhea/learning-content": "workspace:*",
     "@rhea/postgres-family-access": "workspace:*",
     "@rhea/postgres-generated-learning": "workspace:*",

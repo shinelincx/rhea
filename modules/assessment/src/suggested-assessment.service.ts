@@ -34,6 +34,8 @@ const TASK_SUBJECT = {
   mathematics_process: 'mathematics',
   science_inquiry: 'science',
 } as const;
+const SAFETY_SENSITIVE_CONTENT =
+  /(自杀|自残|伤害自己|虐待|猥亵|性侵|爆炸物|毒品|杀死|杀人|suicide|self[- ]?harm|sexual abuse)/i;
 
 export interface SuggestedAssessmentServiceDependencies {
   basisReader: OpenAssessmentBasisReader;
@@ -132,6 +134,7 @@ function view(item: StoredSuggestedAssessment): SuggestedAssessmentView {
     id: item.id,
     learningProfileId: item.learningProfileId,
     review: structuredClone(item.review),
+    requiresProfessionalReview: item.requiresProfessionalReview,
     stateRevision: item.stateRevision,
     status: item.status,
     suggestion: structuredClone(item.suggestion),
@@ -147,6 +150,10 @@ function unavailableDetail(reason: SuggestedAssessmentUnavailableReason | null) 
     CAPABILITY_UNAVAILABLE: {
       explanation: '当前没有通过质量授权的 AI 建议评价能力，因此不会给出评价。',
       needs: ['已通过质量门禁的能力版本'],
+    },
+    CONSENT_WITHDRAWN: {
+      explanation: 'AI 处理同意已撤回或版本已经变化，本次任务不会发布建议评价。',
+      needs: ['由监护人重新确认 AI 处理同意后发起新任务'],
     },
     LOW_CONFIDENCE: {
       explanation: '现有作答证据不足以支持可靠的分维度建议，因此选择不评价。',
@@ -223,13 +230,13 @@ function checkedCandidate(
 
 function modelRun(
   result: OpenAssessmentModelResult | null,
-  decision: AuthorizationDecision,
+  authorization: SuggestedAssessmentAuthorizationSnapshot,
+  capability: NonNullable<StoredSuggestedAssessment['capability']>,
   finishedAt: string,
   succeeded: boolean,
 ) {
-  const capability = decision.primary!.capabilityVersion;
   return {
-    authorizationDecisionId: decision.decisionId,
+    authorizationDecisionId: authorization.decisionId,
     capabilityVersionId: capability.id,
     externalTraceId: result?.externalTraceId ?? null,
     finishedAt,
@@ -278,7 +285,7 @@ export class SuggestedAssessmentService {
     this.#store = dependencies.store;
   }
 
-  async suggest(input: {
+  async requestSuggestion(input: {
     actor: AssessmentActorReference;
     ageBand: OpenAssessmentAgeBand;
     consentRevision: number;
@@ -322,6 +329,9 @@ export class SuggestedAssessmentService {
           resolved.rubric.ageBand !== input.ageBand))
     ) {
       throw new AssessmentError('INPUT_INVALID', '适用评分量规与学科、题型或年龄层级不一致');
+    }
+    if (resolved.rubric && !resolved.rubric.dimensions.some(({ required }) => required)) {
+      throw new AssessmentError('INPUT_INVALID', '适用评分量规至少需要一个必需评价维度');
     }
     const now = this.#clock.now.toISOString();
     const question = {
@@ -369,63 +379,11 @@ export class SuggestedAssessmentService {
     const existing = await this.#store.findByDeduplicationKey(key, input.learningProfileId);
     if (existing) return view(existing);
 
-    let suggestion: OpenAssessmentModelCandidate | null = null;
-    let modelResult: OpenAssessmentModelResult | null = null;
-    let modelAttempted = false;
-    let modelSucceeded = false;
     let unavailableReason: SuggestedAssessmentUnavailableReason | null = null;
     if (!resolved.rubric) {
       unavailableReason = 'RUBRIC_REQUIRED';
     } else if (!isAuthorized(decision)) {
       unavailableReason = 'CAPABILITY_UNAVAILABLE';
-    } else {
-      modelAttempted = true;
-      try {
-        modelResult = await this.#modelGateway.runStructured({
-          ageBand: input.ageBand,
-          capability: structuredClone(decision.primary!.capabilityVersion),
-          learningBasis: structuredClone(basis),
-          purpose: 'open_assessment_suggestion',
-          question: { subject: question.subject, text: sanitizeModelText(question.text) },
-          response: { text: sanitizeModelText(response.text) },
-          rubric: structuredClone(resolved.rubric),
-          taskType: input.taskType,
-        });
-        if (modelResult.provider !== decision.primary!.capabilityVersion.provider.id) {
-          throw new Error('MODEL_PROVIDER_MISMATCH');
-        }
-        suggestion = checkedCandidate(modelResult.candidate, {
-          ...resolved,
-          question,
-          response,
-          rubric: resolved.rubric,
-        });
-        modelSucceeded = true;
-      } catch {
-        suggestion = null;
-        unavailableReason = 'MODEL_UNAVAILABLE';
-      }
-      if (
-        suggestion &&
-        (suggestion.confidence < 0.75 ||
-          suggestion.dimensions.some(({ confidence }) => confidence < 0.75))
-      ) {
-        suggestion = null;
-        unavailableReason = 'LOW_CONFIDENCE';
-      }
-    }
-    if (
-      !(await this.#publicationGate.authorize({
-        ageBand: input.ageBand,
-        consentRevision: input.consentRevision,
-        familySpaceId: input.familySpaceId,
-        learningProfileId: input.learningProfileId,
-      }))
-    ) {
-      throw new AssessmentError(
-        'AI_PROCESSING_CONSENT_REQUIRED',
-        'AI 处理同意在生成期间已撤回，建议评价不会发布',
-      );
     }
     const item: StoredSuggestedAssessment = {
       acceptedResult: null,
@@ -444,15 +402,19 @@ export class SuggestedAssessmentService {
       inputReference: structuredClone(input.inputReference),
       learningProfileId: requiredText(input.learningProfileId, '学习档案', 200),
       materialId: requiredText(input.materialId, '学习资料', 200),
-      modelRun: modelAttempted ? modelRun(modelResult, decision, now, modelSucceeded) : null,
+      modelRun: null,
+      processingLeaseExpiresAt: null,
       question,
-      requiresProfessionalReview: resolved.requiresProfessionalReview,
+      requiresProfessionalReview:
+        resolved.requiresProfessionalReview ||
+        resolved.rubric?.source.authority === 'formal_exam' ||
+        SAFETY_SENSITIVE_CONTENT.test(`${question.text}\n${response.text}`),
       response,
       review: null,
       rubric: structuredClone(resolved.rubric),
       stateRevision: 1,
-      status: unavailableReason ? 'unavailable' : 'pending_review',
-      suggestion,
+      status: unavailableReason ? 'unavailable' : 'queued',
+      suggestion: null,
       taskType: input.taskType,
       unavailableReason,
       updatedAt: now,
@@ -462,6 +424,178 @@ export class SuggestedAssessmentService {
       if (concurrent) return view(concurrent);
       throw new AssessmentError('VERSION_CONFLICT', '建议评价状态已变化，请刷新后重试');
     }
+    return view(item);
+  }
+
+  /** Test/CLI convenience. HTTP callers must use requestSuggestion and enqueue a worker job. */
+  async suggest(input: Parameters<SuggestedAssessmentService['requestSuggestion']>[0]) {
+    const requested = await this.requestSuggestion(input);
+    return requested.status === 'queued'
+      ? this.processSuggestion({
+          learningProfileId: requested.learningProfileId,
+          suggestionId: requested.id,
+        })
+      : requested;
+  }
+
+  async processSuggestion(input: {
+    learningProfileId: string;
+    suggestionId: string;
+  }): Promise<SuggestedAssessmentView> {
+    const learningProfileId = requiredText(input.learningProfileId, '学习档案', 200);
+    const suggestionId = requiredText(input.suggestionId, '建议评价', 200);
+    const item = await this.#store.findById(suggestionId, learningProfileId);
+    if (!item) throw new AssessmentError('ASSESSMENT_NOT_FOUND', '没有找到这次建议评价');
+    if (item.status !== 'queued' && item.status !== 'generating') return view(item);
+    if (!item.rubric || !item.capability || !item.authorization) {
+      throw new AssessmentError('CAPABILITY_UNAVAILABLE', '建议评价任务缺少不可变的生成依据');
+    }
+
+    const now = this.#clock.now;
+    if (
+      item.status === 'generating' &&
+      item.processingLeaseExpiresAt !== null &&
+      item.processingLeaseExpiresAt > now.toISOString()
+    ) {
+      return view(item);
+    }
+    const claimed = await this.#store.markGenerating({
+      expectedStateRevision: item.stateRevision,
+      learningProfileId,
+      processingLeaseExpiresAt: new Date(now.getTime() + 60_000).toISOString(),
+      suggestionId,
+      updatedAt: now.toISOString(),
+    });
+    if (!claimed) {
+      const concurrent = await this.#store.findById(suggestionId, learningProfileId);
+      if (concurrent) return view(concurrent);
+      throw new AssessmentError('VERSION_CONFLICT', '建议评价任务已被其他工作进程更新');
+    }
+    const generationRevision = item.stateRevision + 1;
+    let result: OpenAssessmentModelResult | null = null;
+    let modelAttempted = false;
+    let suggestion: OpenAssessmentModelCandidate | null = null;
+    let unavailableReason: SuggestedAssessmentUnavailableReason | null = null;
+    let succeeded = false;
+
+    const authorized = async (phase: 'before_send' | 'after_receive') => {
+      const current = await this.#qualityControl.revalidateAuthorization({
+        decisionId: item.authorization!.decisionId,
+        expectedContainmentEpoch: item.authorization!.containmentEpoch,
+        phase,
+        route: 'primary',
+      });
+      return (
+        current.status === 'authorized' &&
+        current.decisionId === item.authorization!.decisionId &&
+        current.capabilityVersion.id === item.capability!.id
+      );
+    };
+    const consentGranted = () =>
+      this.#publicationGate.authorize({
+        ageBand: item.ageBand,
+        consentRevision: item.consentRevision,
+        familySpaceId: item.familySpaceId,
+        learningProfileId: item.learningProfileId,
+      });
+
+    try {
+      if (!(await consentGranted())) unavailableReason = 'CONSENT_WITHDRAWN';
+      else if (!(await authorized('before_send'))) unavailableReason = 'CAPABILITY_UNAVAILABLE';
+      else {
+        await this.#requireCurrentBasis(item, item.actor);
+        modelAttempted = true;
+        result = await this.#modelGateway.runStructured({
+          ageBand: item.ageBand,
+          capability: structuredClone(item.capability),
+          learningBasis: structuredClone(item.basis),
+          purpose: 'open_assessment_suggestion',
+          question: { subject: item.question.subject, text: sanitizeModelText(item.question.text) },
+          response: { text: sanitizeModelText(item.response.text) },
+          rubric: structuredClone(item.rubric),
+          taskType: item.taskType,
+        });
+        if (result.provider !== item.capability.provider.id)
+          throw new Error('MODEL_PROVIDER_MISMATCH');
+        if (!(await authorized('after_receive'))) unavailableReason = 'CAPABILITY_UNAVAILABLE';
+        else if (!(await consentGranted())) unavailableReason = 'CONSENT_WITHDRAWN';
+        else {
+          await this.#requireCurrentBasis(item, item.actor);
+          suggestion = checkedCandidate(result.candidate, {
+            question: item.question,
+            requiresProfessionalReview: item.requiresProfessionalReview,
+            response: item.response,
+            rubric: item.rubric,
+          });
+          succeeded = true;
+          if (
+            suggestion.confidence < 0.75 ||
+            suggestion.dimensions.some(({ confidence }) => confidence < 0.75)
+          ) {
+            suggestion = null;
+            unavailableReason = 'LOW_CONFIDENCE';
+          }
+        }
+      }
+    } catch (error) {
+      suggestion = null;
+      unavailableReason =
+        error instanceof AssessmentError && error.code === 'BASIS_CHANGED'
+          ? 'SOURCE_CHANGED'
+          : 'MODEL_UNAVAILABLE';
+    }
+
+    const finishedAt = this.#clock.now.toISOString();
+    const requiresProfessionalReview =
+      item.requiresProfessionalReview ||
+      suggestion?.dimensions.some(({ state }) => state === 'insufficient_evidence') === true;
+    const completedRun = modelAttempted
+      ? modelRun(result, item.authorization, item.capability, finishedAt, succeeded)
+      : null;
+    let completed = await this.#store.completeGeneration({
+      expectedStateRevision: generationRevision,
+      learningProfileId,
+      modelRun: completedRun,
+      requiresProfessionalReview,
+      status: unavailableReason ? 'unavailable' : 'pending_review',
+      suggestion,
+      suggestionId,
+      unavailableReason,
+      updatedAt: finishedAt,
+    });
+    if (!completed && unavailableReason === null) {
+      suggestion = null;
+      unavailableReason = 'CAPABILITY_UNAVAILABLE';
+      completed = await this.#store.completeGeneration({
+        expectedStateRevision: generationRevision,
+        learningProfileId,
+        modelRun: modelAttempted
+          ? modelRun(result, item.authorization, item.capability, finishedAt, false)
+          : null,
+        requiresProfessionalReview,
+        status: 'unavailable',
+        suggestion: null,
+        suggestionId,
+        unavailableReason,
+        updatedAt: finishedAt,
+      });
+    }
+    if (!completed) {
+      const concurrent = await this.#store.findById(suggestionId, learningProfileId);
+      if (concurrent && concurrent.status !== 'generating') return view(concurrent);
+      throw new AssessmentError('VERSION_CONFLICT', '建议评价任务完成状态发生冲突');
+    }
+    item.modelRun =
+      modelAttempted && unavailableReason === 'CAPABILITY_UNAVAILABLE'
+        ? modelRun(result, item.authorization, item.capability, finishedAt, false)
+        : completedRun;
+    item.processingLeaseExpiresAt = null;
+    item.requiresProfessionalReview = requiresProfessionalReview;
+    item.stateRevision = generationRevision + 1;
+    item.status = unavailableReason ? 'unavailable' : 'pending_review';
+    item.suggestion = suggestion;
+    item.unavailableReason = unavailableReason;
+    item.updatedAt = finishedAt;
     return view(item);
   }
 
@@ -576,6 +710,14 @@ export class SuggestedAssessmentService {
       rubricId: item.rubric.id,
       rubricVersion: item.rubric.version,
     };
+    const reviewedImprovementDimensionKey = decisions.some(
+      ({ dimensionKey }) => dimensionKey === item.suggestion!.improvementDimensionKey,
+    )
+      ? item.suggestion.improvementDimensionKey
+      : decisions[0]!.dimensionKey;
+    const reviewedImprovement = item.suggestion.dimensions.find(
+      ({ dimensionKey }) => dimensionKey === reviewedImprovementDimensionKey,
+    )!;
     const acceptedResult: AcceptedOpenAssessmentResult | null = rejected
       ? null
       : {
@@ -600,8 +742,11 @@ export class SuggestedAssessmentService {
                 };
           }),
           feedback: {
-            improvementDimensionKey: item.suggestion.improvementDimensionKey,
-            nextAction: item.suggestion.nextAction,
+            improvementDimensionKey: reviewedImprovementDimensionKey,
+            nextAction:
+              reviewedImprovementDimensionKey === item.suggestion.improvementDimensionKey
+                ? item.suggestion.nextAction
+                : reviewedImprovement.improvementSuggestion,
             strengthEvidence: item.suggestion.strengthEvidence,
           },
           id: randomUUID(),
@@ -638,12 +783,16 @@ export class SuggestedAssessmentService {
     },
   ): OpenAssessmentReviewDecision[] {
     const keys = item.rubric.dimensions.map(({ key }) => key);
+    const requiredKeys = item.rubric.dimensions
+      .filter(({ required }) => required)
+      .map(({ key }) => key);
+    const decidedKeys = new Set(decisions.map(({ dimensionKey }) => dimensionKey));
     if (
-      decisions.length !== keys.length ||
-      new Set(decisions.map(({ dimensionKey }) => dimensionKey)).size !== keys.length ||
+      decidedKeys.size !== decisions.length ||
+      requiredKeys.some((key) => !decidedKeys.has(key)) ||
       decisions.some(({ dimensionKey }) => !keys.includes(dimensionKey))
     ) {
-      throw new AssessmentError('INPUT_INVALID', '必须逐一复核评分量规中的全部评价维度');
+      throw new AssessmentError('INPUT_INVALID', '必须完成全部必需维度，且每个维度只能复核一次');
     }
     return decisions.map((decision) => {
       if (decision.action === 'accept') return structuredClone(decision);
@@ -677,8 +826,7 @@ export class SuggestedAssessmentService {
     actor: AssessmentActorReference | OpenAssessmentReviewerReference,
   ): Promise<void> {
     const current = await this.#basisReader.getCurrentBasisReference({
-      actor:
-        actor.type === 'professional' ? { id: item.learningProfileId, type: 'learner' } : actor,
+      actor,
       learningProfileId: item.learningProfileId,
       materialId: item.materialId,
     });
@@ -689,6 +837,32 @@ export class SuggestedAssessmentService {
       current.contentHash !== item.basis.contentHash
     ) {
       throw new AssessmentError('BASIS_CHANGED', '当前学习依据已经变化，请重新评价');
+    }
+    const resolved = await this.#inputReader.resolveOpenAssessmentInput({
+      actor,
+      ageBand: item.ageBand,
+      basis: current,
+      learningProfileId: item.learningProfileId,
+      materialId: item.materialId,
+      reference: structuredClone(item.inputReference),
+      taskType: item.taskType,
+    });
+    const currentRubric = resolved?.rubric;
+    if (
+      !resolved ||
+      resolved.question.versionId !== item.question.versionId ||
+      contentHash('question', resolved.question.versionId, resolved.question.text) !==
+        item.question.contentHash ||
+      resolved.response.versionId !== item.response.versionId ||
+      contentHash('response', resolved.response.versionId, resolved.response.text) !==
+        item.response.contentHash ||
+      currentRubric?.id !== item.rubric?.id ||
+      currentRubric?.version !== item.rubric?.version
+    ) {
+      throw new AssessmentError(
+        'BASIS_CHANGED',
+        '题目、作答或评分量规已经变化，请基于当前版本重新评价',
+      );
     }
   }
 

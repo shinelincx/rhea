@@ -40,6 +40,52 @@ export class MemorySuggestedAssessmentStore implements SuggestedAssessmentStore 
     return item?.learningProfileId === learningProfileId ? clone(item) : null;
   }
 
+  async markGenerating(
+    input: Parameters<SuggestedAssessmentStore['markGenerating']>[0],
+  ): Promise<boolean> {
+    const item = this.#items.get(input.suggestionId);
+    const leaseExpired =
+      item?.status === 'generating' &&
+      item.processingLeaseExpiresAt !== null &&
+      item.processingLeaseExpiresAt <= input.updatedAt;
+    if (
+      !item ||
+      item.learningProfileId !== input.learningProfileId ||
+      (item.status !== 'queued' && !leaseExpired) ||
+      item.stateRevision !== input.expectedStateRevision
+    ) {
+      return false;
+    }
+    item.processingLeaseExpiresAt = input.processingLeaseExpiresAt;
+    item.stateRevision += 1;
+    item.status = 'generating';
+    item.updatedAt = input.updatedAt;
+    return true;
+  }
+
+  async completeGeneration(
+    input: Parameters<SuggestedAssessmentStore['completeGeneration']>[0],
+  ): Promise<boolean> {
+    const item = this.#items.get(input.suggestionId);
+    if (
+      !item ||
+      item.learningProfileId !== input.learningProfileId ||
+      item.status !== 'generating' ||
+      item.stateRevision !== input.expectedStateRevision
+    ) {
+      return false;
+    }
+    item.modelRun = clone(input.modelRun);
+    item.processingLeaseExpiresAt = null;
+    item.requiresProfessionalReview = input.requiresProfessionalReview;
+    item.stateRevision += 1;
+    item.status = input.status;
+    item.suggestion = clone(input.suggestion);
+    item.unavailableReason = input.unavailableReason;
+    item.updatedAt = input.updatedAt;
+    return true;
+  }
+
   async readAcceptedResultReference(
     input: Parameters<SuggestedAssessmentStore['readAcceptedResultReference']>[0],
   ) {

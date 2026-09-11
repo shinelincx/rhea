@@ -13,9 +13,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@rhea/assessment": "workspace:*",
     "@rhea/generated-learning": "workspace:*",
     "@rhea/learning-content": "workspace:*",
     "@rhea/model-gateway-adapter": "workspace:*",
+    "@rhea/postgres-assessment": "workspace:*",
     "@rhea/postgres-generated-learning": "workspace:*",
     "@rhea/postgres-learning-content": "workspace:*",
     "@rhea/postgres-quality-control": "workspace:*",

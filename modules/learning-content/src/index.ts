@@ -11,6 +11,7 @@ export type {
   CurrentLearningContextReference,
   KnowledgePointReference,
   LearningActorReference,
+  ProfessionalLearningReviewerReference,
   LearningBasisView,
   LearningMaterial,
   LearningSourceKind,

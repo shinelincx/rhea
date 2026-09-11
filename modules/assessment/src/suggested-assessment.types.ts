@@ -111,10 +111,12 @@ export interface OpenAssessmentModelRun {
   succeeded: boolean;
 }
 
-export type SuggestedAssessmentStatus = 'pending_review' | 'accepted' | 'rejected' | 'unavailable';
+export type SuggestedAssessmentStatus =
+  'queued' | 'generating' | 'pending_review' | 'accepted' | 'rejected' | 'unavailable';
 
 export type SuggestedAssessmentUnavailableReason =
   | 'CAPABILITY_UNAVAILABLE'
+  | 'CONSENT_WITHDRAWN'
   | 'LOW_CONFIDENCE'
   | 'MODEL_UNAVAILABLE'
   | 'RUBRIC_REQUIRED'
@@ -210,6 +212,7 @@ export interface StoredSuggestedAssessment {
   learningProfileId: string;
   materialId: string;
   modelRun: OpenAssessmentModelRun | null;
+  processingLeaseExpiresAt: string | null;
   question: { contentHash: string; subject: Subject; text: string; versionId: string };
   requiresProfessionalReview: boolean;
   response: { contentHash: string; text: string; versionId: string };
@@ -250,6 +253,7 @@ export interface SuggestedAssessmentView {
   id: string;
   learningProfileId: string;
   review: StoredSuggestedAssessment['review'];
+  requiresProfessionalReview: boolean;
   stateRevision: number;
   status: SuggestedAssessmentStatus;
   suggestion: OpenAssessmentModelCandidate | null;

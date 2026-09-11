@@ -8,6 +8,7 @@ import type { SubmissionService } from '@rhea/submission';
 import { createLocalAssessment } from './create-local-assessment.js';
 import { createLocalSuggestedAssessment } from './create-local-suggested-assessment.js';
 import type { AiProcessingConsentPublicationReader } from '@rhea/family-access';
+import { unavailableOpenAssessmentModelGateway } from '@rhea/model-gateway-adapter';
 
 export function createConfiguredAssessment(
   environment: Record<string, string | undefined>,
@@ -33,11 +34,7 @@ export function createConfiguredAssessment(
     suggestedService: new SuggestedAssessmentService({
       basisReader: learningContent,
       inputReader: suggestedStore,
-      modelGateway: {
-        async runStructured() {
-          throw new Error('MODEL_CAPABILITY_UNAVAILABLE');
-        },
-      },
+      modelGateway: unavailableOpenAssessmentModelGateway,
       publicationGate: suggestedStore,
       qualityControl,
       store: suggestedStore,

@@ -1,6 +1,7 @@
 import { createApp } from './create-app.js';
 import { createConfiguredFamilyAccess } from './family-access/create-configured-family-access.js';
 import { createConfiguredAssessment } from './assessment/create-configured-assessment.js';
+import { createQueuedSuggestedAssessmentScheduler } from './assessment/create-queued-suggested-assessment-scheduler.js';
 import {
   createConfiguredAiJobClient,
   createConfiguredJobClient,
@@ -32,6 +33,7 @@ const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<v
 const app = await createApp({
   assessmentService: configuredAssessment.service,
   suggestedAssessmentService: configuredAssessment.suggestedService,
+  suggestedAssessmentScheduler: createQueuedSuggestedAssessmentScheduler(aiJobClient),
   familyAccess: configuredFamilyAccess.familyAccess,
   generatedLearningConsentReader: configuredFamilyAccess.familyAccess,
   generatedLearningScheduler: createQueuedGeneratedLearningScheduler(aiJobClient),

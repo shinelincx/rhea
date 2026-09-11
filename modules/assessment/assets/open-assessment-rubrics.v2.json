@@ -1,0 +1,138 @@
+{
+  "sourceLabel": "Rhea 学科组审核模板",
+  "version": "2.0.0",
+  "templates": {
+    "chinese_expression": {
+      "name": "语文表达评分量规",
+      "subject": "chinese",
+      "dimensions": [
+        {
+          "key": "task_completion",
+          "label": "任务理解与完成",
+          "description": "回应题目要求，不遗漏必要任务。",
+          "required": true
+        },
+        {
+          "key": "content_evidence",
+          "label": "内容证据",
+          "description": "写出具体内容；阅读任务引用材料中可核对的信息。",
+          "required": true
+        },
+        {
+          "key": "reasoning_organization",
+          "label": "推理与组织",
+          "description": "阅读任务给出推理或概括；写作任务让内容有顺序和联系。",
+          "required": true
+        },
+        {
+          "key": "expression_clarity",
+          "label": "表达清楚",
+          "description": "使用与年龄层级相符的清楚、完整语句表达。",
+          "required": true
+        }
+      ]
+    },
+    "mathematics_process": {
+      "name": "数学过程评分量规",
+      "subject": "mathematics",
+      "dimensions": [
+        {
+          "key": "strategy",
+          "label": "策略",
+          "description": "选择与题意相符且允许多种正确路径的策略。",
+          "required": true
+        },
+        {
+          "key": "key_steps",
+          "label": "关键步骤",
+          "description": "写出足以核对解题过程的关键步骤。",
+          "required": true
+        },
+        {
+          "key": "consistency",
+          "label": "一致性",
+          "description": "中间结果与最终结果前后一致。",
+          "required": true
+        },
+        {
+          "key": "explanation",
+          "label": "解释",
+          "description": "说明关键步骤为什么成立。",
+          "required": true
+        },
+        {
+          "key": "unit_representation",
+          "label": "单位与表示",
+          "description": "按题意正确使用单位、符号、图或其他表示。",
+          "required": true
+        }
+      ]
+    },
+    "english_expression": {
+      "name": "英语表达评分量规",
+      "subject": "english",
+      "dimensions": [
+        {
+          "key": "task_meaning",
+          "label": "任务与意思",
+          "description": "完成题目任务并表达可理解的主要意思。",
+          "required": true
+        },
+        {
+          "key": "vocabulary_grammar",
+          "label": "词汇与语法",
+          "description": "使用与年龄层级相符且能传达意思的词汇和语法。",
+          "required": true
+        },
+        {
+          "key": "organization",
+          "label": "组织",
+          "description": "按可理解的顺序组织句子和信息。",
+          "required": true
+        }
+      ]
+    },
+    "science_inquiry": {
+      "name": "科学探究评分量规",
+      "subject": "science",
+      "dimensions": [
+        {
+          "key": "observation",
+          "label": "观察记录",
+          "description": "记录可观察、可核对的现象或变化。",
+          "required": true
+        },
+        {
+          "key": "evidence",
+          "label": "证据",
+          "description": "区分观察到的证据和自己的解释。",
+          "required": true
+        },
+        {
+          "key": "variables_conditions",
+          "label": "变量与条件",
+          "description": "说明相关变量、条件或比较方式。",
+          "required": true
+        },
+        {
+          "key": "reasoning",
+          "label": "推理",
+          "description": "用观察证据支持推理过程。",
+          "required": true
+        },
+        {
+          "key": "conclusion",
+          "label": "结论",
+          "description": "结论回应问题，且不超出已有证据。",
+          "required": true
+        },
+        {
+          "key": "safety",
+          "label": "安全意识",
+          "description": "仅在题目或量规明确要求时描述安全注意事项，不从照片断言规范操作。",
+          "required": false
+        }
+      ]
+    }
+  }
+}

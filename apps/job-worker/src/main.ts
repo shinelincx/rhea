@@ -3,16 +3,21 @@ import process from 'node:process';
 import { parseWorkerConfig } from './config.js';
 import { createRoleWorker } from './worker.js';
 import { createConfiguredGeneratedLearningProcessor } from './create-generated-learning-processor.js';
+import { createConfiguredOpenAssessmentProcessor } from './create-open-assessment-processor.js';
 
 const config = parseWorkerConfig(process.env, process.argv[2]);
 const generatedLearning =
   config.role === 'ai'
     ? createConfiguredGeneratedLearningProcessor(process.env)
     : { handler: undefined, shutdownResources: [] };
-const worker = createRoleWorker(
-  config,
-  generatedLearning.handler ? { generatedLearningHandler: generatedLearning.handler } : {},
-);
+const openAssessment =
+  config.role === 'ai'
+    ? createConfiguredOpenAssessmentProcessor(process.env)
+    : { handler: undefined, shutdownResources: [] };
+const worker = createRoleWorker(config, {
+  ...(generatedLearning.handler ? { generatedLearningHandler: generatedLearning.handler } : {}),
+  ...(openAssessment.handler ? { openAssessmentHandler: openAssessment.handler } : {}),
+});
 
 worker.on('ready', () => {
   console.log(JSON.stringify({ event: 'worker_ready', role: config.role }));
@@ -43,6 +48,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(JSON.stringify({ event: 'worker_stopping', role: config.role, signal }));
   await worker.close();
   await Promise.all(generatedLearning.shutdownResources.map((resource) => resource.close()));
+  await Promise.all(openAssessment.shutdownResources.map((resource) => resource.close()));
 }
 
 process.once('SIGINT', () => void shutdown('SIGINT'));

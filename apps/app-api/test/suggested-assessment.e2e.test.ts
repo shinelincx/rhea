@@ -79,6 +79,7 @@ describe('Suggested assessment HTTP interface', () => {
       versionLabel: '教师答案第 2 版',
     };
     let receivedTask: OpenAssessmentModelTask | undefined;
+    const scheduled: Array<{ id: string; learningProfileId: string }> = [];
     const suggestedAssessment = new SuggestedAssessmentService({
       basisReader: { getCurrentBasisReference: async () => basis },
       inputReader: {
@@ -165,6 +166,11 @@ describe('Suggested assessment HTTP interface', () => {
     app = await createApp({
       dependencyProbes: [],
       familyAccess,
+      suggestedAssessmentScheduler: {
+        async schedule(request) {
+          scheduled.push({ id: request.id, learningProfileId: request.learningProfileId });
+        },
+      },
       suggestedAssessmentService: suggestedAssessment,
     });
     await app.init();
@@ -185,10 +191,17 @@ describe('Suggested assessment HTTP interface', () => {
       },
       url: `${baseUrl}/open-assessment-suggestions`,
     });
-    expect(createdResponse.statusCode).toBe(201);
-    const pending = createdResponse.json<{
+    expect(createdResponse.statusCode).toBe(202);
+    const queued = createdResponse.json<{
       data: { id: string; stateRevision: number; status: string };
     }>().data;
+    expect(queued.status).toBe('queued');
+    expect(receivedTask).toBeUndefined();
+    expect(scheduled).toEqual([{ id: queued.id, learningProfileId: profile.id }]);
+    const pending = await suggestedAssessment.processSuggestion({
+      learningProfileId: profile.id,
+      suggestionId: queued.id,
+    });
     expect(pending.status).toBe('pending_review');
     expect(receivedTask?.ageBand).toBe('middle_primary');
 

@@ -64,6 +64,15 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
   ) {
     throw new Error('INVALID_JOB_PAYLOAD');
   }
+  if (
+    kind === 'open-assessment.generate' &&
+    (typeof payload.suggestionId !== 'string' ||
+      !payload.suggestionId.trim() ||
+      typeof payload.learningProfileId !== 'string' ||
+      !payload.learningProfileId.trim())
+  ) {
+    throw new Error('INVALID_JOB_PAYLOAD');
+  }
   return kind === 'generated-learning.generate'
     ? {
         kind,
@@ -72,7 +81,15 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
           requestId: payload.requestId as string,
         },
       }
-    : { kind, payload: { outcome: payload.outcome } };
+    : kind === 'open-assessment.generate'
+      ? {
+          kind,
+          payload: {
+            learningProfileId: payload.learningProfileId as string,
+            suggestionId: payload.suggestionId as string,
+          },
+        }
+      : { kind, payload: { outcome: payload.outcome } };
 }
 
 export class BullMqJobClient implements JobClient {

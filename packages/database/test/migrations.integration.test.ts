@@ -60,6 +60,7 @@ describeWithDatabase('PostgreSQL migrations', () => {
         '0014',
         '0015',
         '0016',
+        '0017',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
@@ -82,6 +83,7 @@ describeWithDatabase('PostgreSQL migrations', () => {
         '0014',
         '0015',
         '0016',
+        '0017',
       ],
     });
     expect(schemas.rows.map(({ schema_name }) => schema_name)).toEqual([

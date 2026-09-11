@@ -1,6 +1,7 @@
 import {
   deriveProfessionallyReviewedOpenRubric,
   MemorySuggestedAssessmentStore,
+  openAssessmentAgeBandForGrade,
   SuggestedAssessmentService,
   type OpenAssessmentInputReader,
 } from '@rhea/assessment';
@@ -86,12 +87,7 @@ export function createLocalSuggestedAssessment(
           familySpaceId: input.familySpaceId,
           learningProfileId: input.learningProfileId,
         });
-        const expectedAgeBand =
-          consent?.grade === null || (consent?.grade ?? 0) <= 2
-            ? 'lower_primary'
-            : consent!.grade! <= 4
-              ? 'middle_primary'
-              : 'upper_primary';
+        const expectedAgeBand = openAssessmentAgeBandForGrade(consent?.grade ?? null);
         return (
           consent?.status === 'granted' &&
           consent.revision === input.consentRevision &&

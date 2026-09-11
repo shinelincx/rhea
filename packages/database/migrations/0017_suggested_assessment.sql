@@ -1,3 +1,9 @@
+ALTER TABLE learning.learning_access_audit
+  DROP CONSTRAINT learning_access_audit_actor_type_check;
+ALTER TABLE learning.learning_access_audit
+  ADD CONSTRAINT learning_access_audit_actor_type_check
+  CHECK (actor_type IN ('guardian', 'learner', 'professional'));
+
 CREATE TABLE learning.open_assessment_rubric_versions (
   id text NOT NULL CHECK (length(btrim(id)) BETWEEN 1 AND 200),
   version text NOT NULL CHECK (length(btrim(version)) BETWEEN 1 AND 100),
@@ -42,8 +48,10 @@ WITH templates(subject, task_type, name, dimensions) AS (
       'chinese_expression',
       '语文表达评分量规',
       '[
-        {"key":"content_evidence","label":"内容证据","description":"引用题目或材料中可核对的信息支持表达。","required":true},
-        {"key":"expression","label":"表达组织","description":"句意完整，前后有顺序或联系。","required":true}
+        {"key":"task_completion","label":"任务理解与完成","description":"回应题目要求，不遗漏必要任务。","required":true},
+        {"key":"content_evidence","label":"内容证据","description":"写出具体内容；阅读任务引用材料中可核对的信息。","required":true},
+        {"key":"reasoning_organization","label":"推理与组织","description":"阅读任务给出推理或概括；写作任务让内容有顺序和联系。","required":true},
+        {"key":"expression_clarity","label":"表达清楚","description":"使用与年龄层级相符的清楚、完整语句表达。","required":true}
       ]'::jsonb
     ),
     (
@@ -51,8 +59,11 @@ WITH templates(subject, task_type, name, dimensions) AS (
       'mathematics_process',
       '数学过程评分量规',
       '[
-        {"key":"method","label":"方法","description":"呈现与题意相符的解题方法或步骤。","required":true},
-        {"key":"reasoning","label":"推理","description":"说明关键步骤为什么成立。","required":true}
+        {"key":"strategy","label":"策略","description":"选择与题意相符且允许多种正确路径的策略。","required":true},
+        {"key":"key_steps","label":"关键步骤","description":"写出足以核对解题过程的关键步骤。","required":true},
+        {"key":"consistency","label":"一致性","description":"中间结果与最终结果前后一致。","required":true},
+        {"key":"explanation","label":"解释","description":"说明关键步骤为什么成立。","required":true},
+        {"key":"unit_representation","label":"单位与表示","description":"按题意正确使用单位、符号、图或其他表示。","required":true}
       ]'::jsonb
     ),
     (
@@ -60,8 +71,9 @@ WITH templates(subject, task_type, name, dimensions) AS (
       'english_expression',
       '英语表达评分量规',
       '[
-        {"key":"meaning","label":"意思表达","description":"围绕题目表达可理解的主要意思。","required":true},
-        {"key":"language_use","label":"语言运用","description":"使用与年龄层级相符的词句连接信息。","required":true}
+        {"key":"task_meaning","label":"任务与意思","description":"完成题目任务并表达可理解的主要意思。","required":true},
+        {"key":"vocabulary_grammar","label":"词汇与语法","description":"使用与年龄层级相符且能传达意思的词汇和语法。","required":true},
+        {"key":"organization","label":"组织","description":"按可理解的顺序组织句子和信息。","required":true}
       ]'::jsonb
     ),
     (
@@ -70,7 +82,11 @@ WITH templates(subject, task_type, name, dimensions) AS (
       '科学探究评分量规',
       '[
         {"key":"observation","label":"观察记录","description":"记录可观察、可核对的现象或变化。","required":true},
-        {"key":"evidence_reasoning","label":"证据推理","description":"用观察证据支持解释或结论。","required":true}
+        {"key":"evidence","label":"证据","description":"区分观察到的证据和自己的解释。","required":true},
+        {"key":"variables_conditions","label":"变量与条件","description":"说明相关变量、条件或比较方式。","required":true},
+        {"key":"reasoning","label":"推理","description":"用观察证据支持推理过程。","required":true},
+        {"key":"conclusion","label":"结论","description":"结论回应问题，且不超出已有证据。","required":true},
+        {"key":"safety","label":"安全意识","description":"仅在题目或量规明确要求时描述安全注意事项，不从照片断言规范操作。","required":false}
       ]'::jsonb
     )
 ), age_bands(age_band, suffix) AS (
@@ -85,7 +101,7 @@ INSERT INTO learning.open_assessment_rubric_versions (
 )
 SELECT
   'rhea-' || templates.task_type || '-' || age_bands.suffix,
-  '1.0.0',
+  '2.0.0',
   templates.subject,
   templates.task_type,
   age_bands.age_band,
@@ -125,11 +141,12 @@ CREATE TABLE learning.suggested_assessments (
   capability_snapshot jsonb,
   model_run jsonb,
   suggestion jsonb,
+  processing_lease_expires_at timestamptz,
   status text NOT NULL CHECK (status IN (
-    'pending_review', 'accepted', 'rejected', 'unavailable'
+    'queued', 'generating', 'pending_review', 'accepted', 'rejected', 'unavailable'
   )),
   unavailable_reason text CHECK (unavailable_reason IN (
-    'CAPABILITY_UNAVAILABLE', 'LOW_CONFIDENCE', 'MODEL_UNAVAILABLE',
+    'CAPABILITY_UNAVAILABLE', 'CONSENT_WITHDRAWN', 'LOW_CONFIDENCE', 'MODEL_UNAVAILABLE',
     'RUBRIC_REQUIRED', 'SOURCE_CHANGED'
   )),
   state_revision integer NOT NULL CHECK (state_revision >= 1),
@@ -151,7 +168,14 @@ CREATE TABLE learning.suggested_assessments (
     OR (capability_version_id IS NOT NULL AND capability_snapshot IS NOT NULL)
   ),
   CHECK (
-    (status = 'pending_review' AND suggestion IS NOT NULL AND review IS NULL
+    (status = 'queued' AND suggestion IS NULL AND model_run IS NULL
+      AND processing_lease_expires_at IS NULL AND review IS NULL
+      AND accepted_result IS NULL AND unavailable_reason IS NULL)
+    OR (status = 'generating' AND suggestion IS NULL
+      AND processing_lease_expires_at IS NOT NULL AND review IS NULL
+      AND accepted_result IS NULL AND unavailable_reason IS NULL)
+    OR (status = 'pending_review' AND suggestion IS NOT NULL AND model_run IS NOT NULL
+      AND processing_lease_expires_at IS NULL AND review IS NULL
       AND accepted_result IS NULL AND unavailable_reason IS NULL)
     OR (status = 'accepted' AND suggestion IS NOT NULL AND review IS NOT NULL
       AND accepted_result IS NOT NULL AND unavailable_reason IS NULL)
@@ -209,6 +233,21 @@ AS $$
       'dimensions', selected.dimensions
     ) END,
     basis.requires_professional_review
+      OR COALESCE(selected.source_authority = 'formal_exam', false)
+      OR EXISTS (
+        SELECT 1
+        FROM learning.objective_assessment_versions prior_version
+        JOIN learning.objective_assessments prior
+          ON prior.id = prior_version.assessment_id
+        JOIN learning.assessment_disputes dispute
+          ON dispute.assessment_id = prior.id
+        WHERE prior.learning_profile_id = p_learning_profile_id
+          AND prior_version.input_reference ->> 'confirmedContentVersionId' =
+            p_confirmed_content_version_id::text
+          AND prior_version.input_reference ->> 'questionRegionId' = p_question_region_id
+        GROUP BY prior.id
+        HAVING count(dispute.id) >= 2
+      )
   FROM learning.resolve_objective_assessment_basis(
     p_learning_profile_id,
     p_material_id,
@@ -274,7 +313,7 @@ BEGIN
        current_setting('rhea.learning_profile_id', true)
      OR v_family_space_id::text IS DISTINCT FROM
        current_setting('rhea.family_space_id', true)
-     OR v_status NOT IN ('pending_review', 'unavailable') THEN
+     OR v_status NOT IN ('queued', 'unavailable') THEN
     RETURN false;
   END IF;
   IF learning.lock_current_generated_learning_eligibility(
@@ -305,6 +344,7 @@ BEGIN
     requires_professional_review, authorization_snapshot,
     authorization_decision_id, authorization_containment_epoch,
     capability_version_id, capability_snapshot, model_run, suggestion,
+    processing_lease_expires_at,
     status, unavailable_reason, state_revision, review, accepted_result,
     created_at, updated_at
   ) VALUES (
@@ -331,6 +371,7 @@ BEGIN
     NULLIF(p_payload -> 'capability', 'null'::jsonb),
     NULLIF(p_payload -> 'modelRun', 'null'::jsonb),
     NULLIF(p_payload -> 'suggestion', 'null'::jsonb),
+    NULL,
     v_status,
     p_payload ->> 'unavailableReason',
     1,
@@ -367,6 +408,159 @@ $$;
 
 REVOKE ALL ON FUNCTION learning.create_suggested_assessment(jsonb) FROM PUBLIC;
 
+CREATE OR REPLACE FUNCTION learning.mark_suggested_assessment_generating(
+  p_suggestion_id uuid,
+  p_learning_profile_id uuid,
+  p_expected_state_revision integer,
+  p_lease_expires_at timestamptz,
+  p_updated_at timestamptz
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, learning
+AS $$
+DECLARE
+  current_row learning.suggested_assessments%ROWTYPE;
+BEGIN
+  IF p_learning_profile_id::text IS DISTINCT FROM
+     current_setting('rhea.learning_profile_id', true)
+     OR p_lease_expires_at <= p_updated_at THEN
+    RETURN false;
+  END IF;
+  SELECT * INTO current_row
+  FROM learning.suggested_assessments
+  WHERE id = p_suggestion_id AND learning_profile_id = p_learning_profile_id
+  FOR UPDATE;
+  IF NOT FOUND OR current_row.state_revision <> p_expected_state_revision
+     OR (current_row.status <> 'queued' AND NOT (
+       current_row.status = 'generating'
+       AND current_row.processing_lease_expires_at <= p_updated_at
+     )) THEN
+    RETURN false;
+  END IF;
+  UPDATE learning.suggested_assessments
+  SET status = 'generating',
+      processing_lease_expires_at = p_lease_expires_at,
+      state_revision = state_revision + 1,
+      updated_at = p_updated_at
+  WHERE id = current_row.id;
+  RETURN true;
+END
+$$;
+
+REVOKE ALL ON FUNCTION learning.mark_suggested_assessment_generating(
+  uuid, uuid, integer, timestamptz, timestamptz
+) FROM PUBLIC;
+
+CREATE OR REPLACE FUNCTION learning.complete_suggested_assessment_generation(
+  p_suggestion_id uuid,
+  p_learning_profile_id uuid,
+  p_expected_state_revision integer,
+  p_status text,
+  p_model_run jsonb,
+  p_suggestion jsonb,
+  p_unavailable_reason text,
+  p_requires_professional_review boolean,
+  p_updated_at timestamptz
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, learning
+AS $$
+DECLARE
+  current_row learning.suggested_assessments%ROWTYPE;
+  current_input record;
+BEGIN
+  IF p_learning_profile_id::text IS DISTINCT FROM
+     current_setting('rhea.learning_profile_id', true)
+     OR p_status NOT IN ('pending_review', 'unavailable')
+     OR (p_status = 'pending_review') IS DISTINCT FROM (p_suggestion IS NOT NULL)
+     OR (p_status = 'pending_review' AND (
+       jsonb_typeof(p_model_run) IS DISTINCT FROM 'object'
+       OR (p_model_run ->> 'succeeded')::boolean IS DISTINCT FROM true
+     ))
+     OR (p_status = 'unavailable') IS DISTINCT FROM (p_unavailable_reason IS NOT NULL) THEN
+    RETURN false;
+  END IF;
+  SELECT * INTO current_row
+  FROM learning.suggested_assessments
+  WHERE id = p_suggestion_id AND learning_profile_id = p_learning_profile_id
+  FOR UPDATE;
+  IF NOT FOUND OR current_row.status <> 'generating'
+     OR current_row.state_revision <> p_expected_state_revision THEN
+    RETURN false;
+  END IF;
+  IF p_status = 'pending_review' THEN
+    IF learning.lock_current_generated_learning_eligibility(
+         current_row.learning_profile_id,
+         current_row.family_space_id,
+         current_row.consent_revision,
+         current_row.age_band
+       ) <> 'authorized'
+       OR NOT learning.lock_current_assessment_basis(
+         current_row.learning_profile_id,
+         current_row.material_id,
+         (current_row.basis ->> 'sourceVersionId')::uuid,
+         (current_row.basis ->> 'selectionVersion')::integer,
+         (current_row.basis ->> 'validityEpoch')::integer,
+         current_row.basis ->> 'contentHash',
+         current_row.basis ->> 'kind',
+         current_row.basis ->> 'versionLabel'
+       ) THEN
+      RETURN false;
+    END IF;
+    SELECT * INTO current_input
+    FROM learning.resolve_open_assessment_input(
+      current_row.learning_profile_id,
+      current_row.material_id,
+      (current_row.input_reference ->> 'processingJobId')::uuid,
+      (current_row.input_reference ->> 'confirmedContentVersionId')::uuid,
+      current_row.input_reference ->> 'questionRegionId',
+      current_row.input_reference ->> 'responseRegionId',
+      (current_row.basis ->> 'sourceVersionId')::uuid,
+      (current_row.basis ->> 'selectionVersion')::integer,
+      (current_row.basis ->> 'validityEpoch')::integer,
+      current_row.age_band,
+      current_row.task_type
+    );
+    IF NOT FOUND
+       OR current_input.question_text IS DISTINCT FROM current_row.question ->> 'text'
+       OR current_input.response_text IS DISTINCT FROM current_row.response ->> 'text'
+       OR current_input.rubric ->> 'id' IS DISTINCT FROM current_row.rubric ->> 'id'
+       OR current_input.rubric ->> 'version' IS DISTINCT FROM current_row.rubric ->> 'version' THEN
+      RETURN false;
+    END IF;
+    BEGIN
+      PERFORM * FROM metrics.lock_current_family_capability_authorization(
+        current_row.authorization_decision_id,
+        current_row.capability_version_id,
+        current_row.authorization_containment_epoch,
+        current_row.family_space_hash,
+        'after_receive',
+        'primary'
+      );
+    EXCEPTION WHEN SQLSTATE 'P0001' THEN
+      RETURN false;
+    END;
+  END IF;
+  UPDATE learning.suggested_assessments
+  SET status = p_status,
+      model_run = p_model_run,
+      suggestion = p_suggestion,
+      unavailable_reason = p_unavailable_reason,
+      requires_professional_review = p_requires_professional_review,
+      processing_lease_expires_at = NULL,
+      state_revision = state_revision + 1,
+      updated_at = p_updated_at
+  WHERE id = current_row.id;
+  RETURN true;
+END
+$$;
+
+REVOKE ALL ON FUNCTION learning.complete_suggested_assessment_generation(
+  uuid, uuid, integer, text, jsonb, jsonb, text, boolean, timestamptz
+) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION learning.review_suggested_assessment(
   p_suggestion_id uuid,
   p_learning_profile_id uuid,
@@ -382,6 +576,7 @@ SET search_path = pg_catalog, learning
 AS $$
 DECLARE
   current_row learning.suggested_assessments%ROWTYPE;
+  current_input record;
 BEGIN
   IF p_learning_profile_id::text IS DISTINCT FROM
      current_setting('rhea.learning_profile_id', true) THEN
@@ -413,6 +608,27 @@ BEGIN
     current_row.basis ->> 'kind',
     current_row.basis ->> 'versionLabel'
   ) THEN
+    RETURN false;
+  END IF;
+  SELECT * INTO current_input
+  FROM learning.resolve_open_assessment_input(
+    current_row.learning_profile_id,
+    current_row.material_id,
+    (current_row.input_reference ->> 'processingJobId')::uuid,
+    (current_row.input_reference ->> 'confirmedContentVersionId')::uuid,
+    current_row.input_reference ->> 'questionRegionId',
+    current_row.input_reference ->> 'responseRegionId',
+    (current_row.basis ->> 'sourceVersionId')::uuid,
+    (current_row.basis ->> 'selectionVersion')::integer,
+    (current_row.basis ->> 'validityEpoch')::integer,
+    current_row.age_band,
+    current_row.task_type
+  );
+  IF NOT FOUND
+     OR current_input.question_text IS DISTINCT FROM current_row.question ->> 'text'
+     OR current_input.response_text IS DISTINCT FROM current_row.response ->> 'text'
+     OR current_input.rubric ->> 'id' IS DISTINCT FROM current_row.rubric ->> 'id'
+     OR current_input.rubric ->> 'version' IS DISTINCT FROM current_row.rubric ->> 'version' THEN
     RETURN false;
   END IF;
   IF p_status = 'accepted' THEN
@@ -490,6 +706,12 @@ REVOKE ALL ON learning.suggested_assessments FROM rhea_assessment_app;
 GRANT SELECT ON learning.suggested_assessments TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.create_suggested_assessment(jsonb)
   TO rhea_assessment_app;
+GRANT EXECUTE ON FUNCTION learning.mark_suggested_assessment_generating(
+  uuid, uuid, integer, timestamptz, timestamptz
+) TO rhea_assessment_app;
+GRANT EXECUTE ON FUNCTION learning.complete_suggested_assessment_generation(
+  uuid, uuid, integer, text, jsonb, jsonb, text, boolean, timestamptz
+) TO rhea_assessment_app;
 GRANT EXECUTE ON FUNCTION learning.resolve_open_assessment_input(
   uuid, uuid, uuid, uuid, text, text, uuid, integer, integer, text, text
 ) TO rhea_assessment_app;

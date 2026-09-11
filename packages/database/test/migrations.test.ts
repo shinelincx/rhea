@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import rubricCatalog from '../../../modules/assessment/assets/open-assessment-rubrics.v2.json' with { type: 'json' };
+
 import {
   applyMigrations,
   loadDefaultMigrations,
@@ -37,6 +39,21 @@ class RecordingDatabase implements DatabaseClient {
 }
 
 describe('database migration interface', () => {
+  it('keeps the immutable SQL rubric seed synchronized with the shared reviewed catalog', async () => {
+    const migration = (await loadDefaultMigrations()).find(({ version }) => version === '0017');
+    const seededDimensions = [
+      ...(migration?.sql.matchAll(/'(\[\s*\{[\s\S]*?\}\s*\])'::jsonb/g) ?? []),
+    ]
+      .slice(0, 4)
+      .map((match) => JSON.parse(match[1]!));
+
+    expect(seededDimensions).toEqual(
+      Object.values(rubricCatalog.templates).map(({ dimensions }) => dimensions),
+    );
+    expect(migration?.sql).toContain(`'${rubricCatalog.version}'`);
+    expect(migration?.sql).toContain(`'${rubricCatalog.sourceLabel}'`);
+  });
+
   it('applies an ordered migration once and safely skips it on a repeat run', async () => {
     const database = new RecordingDatabase();
     const migrations: Migration[] = [
@@ -178,7 +195,11 @@ describe('database migration interface', () => {
     expect(migrations[16]?.sql).toMatch(/CREATE TABLE learning\.suggested_assessments/i);
     expect(migrations[16]?.sql).toMatch(/FUNCTION learning\.resolve_open_assessment_input/i);
     expect(migrations[16]?.sql).toMatch(
-      /FUNCTION learning\.create_suggested_assessment[\s\S]*v_status NOT IN \('pending_review', 'unavailable'\)/i,
+      /FUNCTION learning\.create_suggested_assessment[\s\S]*v_status NOT IN \('queued', 'unavailable'\)/i,
+    );
+    expect(migrations[16]?.sql).toMatch(/FUNCTION learning\.mark_suggested_assessment_generating/i);
+    expect(migrations[16]?.sql).toMatch(
+      /FUNCTION learning\.complete_suggested_assessment_generation[\s\S]*'after_receive'/i,
     );
     expect(migrations[16]?.sql).toMatch(
       /FUNCTION learning\.review_suggested_assessment[\s\S]*metrics\.lock_current_family_capability_authorization/i,

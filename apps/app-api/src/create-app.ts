@@ -27,11 +27,13 @@ import { createLocalSubmission } from './submission/create-local-submission.js';
 import type { SubmissionScheduler } from './submission/submission.provider.js';
 import { createLocalGeneratedLearning } from './generated-learning/create-local-generated-learning.js';
 import type { GeneratedLearningScheduler } from './generated-learning/generated-learning.provider.js';
+import type { SuggestedAssessmentScheduler } from './assessment/assessment.provider.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
   assessmentService?: AssessmentService;
   suggestedAssessmentService?: SuggestedAssessmentService;
+  suggestedAssessmentScheduler?: SuggestedAssessmentScheduler;
   dependencyProbes?: DependencyProbe[];
   familyAccess?: FamilyAccess;
   generatedLearningConsentReader?: AiProcessingConsentPublicationReader;
@@ -82,6 +84,17 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const suggestedAssessment =
     options.suggestedAssessmentService ??
     createLocalSuggestedAssessment(learningContent, submissions, consentReader);
+  const suggestedAssessmentScheduler: SuggestedAssessmentScheduler =
+    options.suggestedAssessmentScheduler ?? {
+      async schedule(request) {
+        setTimeout(() => {
+          void suggestedAssessment.processSuggestion({
+            learningProfileId: request.learningProfileId,
+            suggestionId: request.id,
+          });
+        }, 0);
+      },
+    };
   const generatedLearning = createLocalGeneratedLearning(learningContent, consentReader);
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
@@ -99,6 +112,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       familyAccess,
       assessment,
       suggestedAssessment,
+      suggestedAssessmentScheduler,
       options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
       submissions,

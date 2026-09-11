@@ -10,7 +10,9 @@ import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
 import {
   ASSESSMENT_SERVICE,
+  SUGGESTED_ASSESSMENT_SCHEDULER,
   SUGGESTED_ASSESSMENT_SERVICE,
+  type SuggestedAssessmentScheduler,
 } from './assessment/assessment.provider.js';
 import { ProfessionalReviewController } from './assessment/professional-review.controller.js';
 import {
@@ -55,6 +57,7 @@ export class AppModule {
     familyAccess: FamilyAccess,
     assessmentService: AssessmentService,
     suggestedAssessmentService: SuggestedAssessmentService,
+    suggestedAssessmentScheduler: SuggestedAssessmentScheduler,
     professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
     submissionService: SubmissionService,
@@ -104,6 +107,10 @@ export class AppModule {
         {
           provide: SUGGESTED_ASSESSMENT_SERVICE,
           useValue: suggestedAssessmentService,
+        },
+        {
+          provide: SUGGESTED_ASSESSMENT_SCHEDULER,
+          useValue: suggestedAssessmentScheduler,
         },
         {
           provide: PROFESSIONAL_REVIEW_ACCESS,

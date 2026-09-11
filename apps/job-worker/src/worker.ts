@@ -4,6 +4,7 @@ import type { WorkerRole } from './config.js';
 
 export interface RoleJobHandlers {
   generatedLearningHandler?: JobHandler;
+  openAssessmentHandler?: JobHandler;
 }
 
 export interface RoleWorkerOptions extends BullMqOptions {
@@ -23,11 +24,15 @@ export function createRoleJobHandler(role: WorkerRole, handlers: RoleJobHandlers
     if (role !== 'ai') {
       throw new Error('JOB_KIND_NOT_ALLOWED_FOR_ROLE');
     }
-    if (!handlers.generatedLearningHandler) {
-      throw new Error('JOB_HANDLER_UNAVAILABLE');
+    if (input.kind === 'generated-learning.generate') {
+      if (!handlers.generatedLearningHandler) throw new Error('JOB_HANDLER_UNAVAILABLE');
+      return handlers.generatedLearningHandler(input);
     }
-
-    return handlers.generatedLearningHandler(input);
+    if (input.kind === 'open-assessment.generate') {
+      if (!handlers.openAssessmentHandler) throw new Error('JOB_HANDLER_UNAVAILABLE');
+      return handlers.openAssessmentHandler(input);
+    }
+    throw new Error('JOB_KIND_NOT_ALLOWED_FOR_ROLE');
   };
 }
 

@@ -6,11 +6,16 @@ describe('Background job runtime interface', () => {
   it('recognizes only supported job kinds', () => {
     expect(isJobKind('system.probe')).toBe(true);
     expect(isJobKind('generated-learning.generate')).toBe(true);
+    expect(isJobKind('open-assessment.generate')).toBe(true);
     expect(isJobKind('generated-learning.unknown')).toBe(false);
   });
 
   it('keeps generated-learning retries beyond the processing lease without slowing probes', () => {
     expect(getJobRetryPolicy('generated-learning.generate')).toEqual({
+      attempts: 4,
+      backoff: { delayMs: 65_000, strategy: 'fixed' },
+    });
+    expect(getJobRetryPolicy('open-assessment.generate')).toEqual({
       attempts: 4,
       backoff: { delayMs: 65_000, strategy: 'fixed' },
     });
@@ -66,6 +71,22 @@ describe('Background job runtime interface', () => {
     expect(await runtime.get(job.id)).toMatchObject({
       kind: 'generated-learning.generate',
       result: { processedKind: 'generated-learning.generate' },
+      status: 'succeeded',
+    });
+  });
+
+  it('preserves the open-assessment job kind through processing and observation', async () => {
+    const runtime = createMemoryJobRuntime();
+    const job = await runtime.submit({
+      kind: 'open-assessment.generate',
+      payload: { learningProfileId: 'profile-1', suggestionId: 'suggestion-1' },
+    });
+
+    await runtime.workNext(async (input) => ({ processedKind: input.kind }));
+
+    expect(await runtime.get(job.id)).toMatchObject({
+      kind: 'open-assessment.generate',
+      result: { processedKind: 'open-assessment.generate' },
       status: 'succeeded',
     });
   });

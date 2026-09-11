@@ -30,6 +30,21 @@ describe('role worker interface', () => {
     ).rejects.toThrow('JOB_HANDLER_UNAVAILABLE');
   });
 
+  it('routes open assessment generation only through the AI worker handler', async () => {
+    const openAssessmentHandler = vi.fn(async () => ({ suggestionId: 'suggestion-1' }));
+    const handler = createRoleJobHandler('ai', { openAssessmentHandler });
+    const input = {
+      kind: 'open-assessment.generate' as const,
+      payload: { learningProfileId: 'profile-1', suggestionId: 'suggestion-1' },
+    };
+
+    await expect(handler(input)).resolves.toEqual({ suggestionId: 'suggestion-1' });
+    expect(openAssessmentHandler).toHaveBeenCalledWith(input);
+    await expect(createRoleJobHandler('domain', { openAssessmentHandler })(input)).rejects.toThrow(
+      'JOB_KIND_NOT_ALLOWED_FOR_ROLE',
+    );
+  });
+
   it.each(['domain', 'safety'] as const)(
     'rejects generated-learning jobs in the %s worker without invoking a handler',
     async (role) => {

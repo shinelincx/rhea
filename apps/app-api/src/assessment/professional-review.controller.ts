@@ -9,6 +9,7 @@ import {
 import {
   assessmentCorrection,
   openAssessmentReviewDecisions,
+  stateRevision,
   stringValue,
 } from './assessment-request.js';
 import {
@@ -44,8 +45,7 @@ export class ProfessionalReviewController {
     return {
       data: await this.suggestedAssessments.review({
         decisions: openAssessmentReviewDecisions(body.decisions),
-        expectedStateRevision:
-          typeof body.expectedStateRevision === 'number' ? body.expectedStateRevision : 0,
+        expectedStateRevision: stateRevision(body.expectedStateRevision),
         learningProfileId,
         reviewer,
         suggestionId,

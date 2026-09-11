@@ -9,6 +9,7 @@ import type {
   CurrentLearningBasisReference,
   CurrentLearningContextReference,
   LearningActorReference,
+  ProfessionalLearningReviewerReference,
   LearningMaterial,
   LearningSourceKind,
   LearningSourceVersion,
@@ -310,7 +311,7 @@ export class LearningContentService {
   }
 
   async getMaterial(input: {
-    actor: LearningActorReference;
+    actor: LearningActorReference | ProfessionalLearningReviewerReference;
     learningProfileId: string;
     materialId: string;
   }): Promise<LearningMaterial> {
@@ -328,7 +329,7 @@ export class LearningContentService {
   }
 
   async getCurrentBasisReference(input: {
-    actor: LearningActorReference;
+    actor: LearningActorReference | ProfessionalLearningReviewerReference;
     learningProfileId: string;
     materialId: string;
   }): Promise<CurrentLearningBasisReference> {

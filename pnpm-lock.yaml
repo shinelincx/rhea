@@ -45,6 +45,9 @@ importers:
 
   adapters/model-gateway:
     dependencies:
+      '@rhea/assessment':
+        specifier: workspace:*
+        version: link:../../modules/assessment
       '@rhea/generated-learning':
         specifier: workspace:*
         version: link:../../modules/generated-learning
@@ -328,6 +331,9 @@ importers:
       '@rhea/media-inspection-adapter':
         specifier: workspace:*
         version: link:../../adapters/media-inspection
+      '@rhea/model-gateway-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/model-gateway
       '@rhea/object-storage-adapter':
         specifier: workspace:*
         version: link:../../adapters/object-storage
@@ -368,9 +374,6 @@ importers:
       '@nestjs/testing':
         specifier: 12.0.1
         version: 12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))
-      '@rhea/model-gateway-adapter':
-        specifier: workspace:*
-        version: link:../../adapters/model-gateway
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
@@ -383,6 +386,9 @@ importers:
 
   apps/job-worker:
     dependencies:
+      '@rhea/assessment':
+        specifier: workspace:*
+        version: link:../../modules/assessment
       '@rhea/generated-learning':
         specifier: workspace:*
         version: link:../../modules/generated-learning
@@ -392,6 +398,9 @@ importers:
       '@rhea/model-gateway-adapter':
         specifier: workspace:*
         version: link:../../adapters/model-gateway
+      '@rhea/postgres-assessment':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-assessment
       '@rhea/postgres-generated-learning':
         specifier: workspace:*
         version: link:../../adapters/postgres-generated-learning
