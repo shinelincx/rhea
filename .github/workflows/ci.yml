@@ -62,7 +62,7 @@ jobs:
           --publish 9000:9000
           --env MINIO_ROOT_USER=rhea
           --env MINIO_ROOT_PASSWORD=rhea_dev_password
-          minio/minio:RELEASE.2025-07-23T15-54-02Z
+          quay.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
           server /data
       - name: Wait for object storage
         run: |
@@ -77,7 +77,7 @@ jobs:
       - name: Create private object bucket
         run: |
           docker run --rm --network host --entrypoint /bin/sh \
-            minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1 \
+            quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1 \
             -c 'mc alias set local http://127.0.0.1:9000 rhea rhea_dev_password && mc mb --ignore-existing local/rhea-private'
       - run: pnpm install --frozen-lockfile
       - name: Verify repeatable migrations
