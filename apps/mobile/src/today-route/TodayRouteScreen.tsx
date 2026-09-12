@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../design-system/tokens';
-import type { LoadTodayRoute, TodayRoute } from './types';
+import type { LoadTodayRoute, TodayRoute, TodayRouteItem } from './types';
 
 interface TodayRouteScreenProps {
   learningProfileName?: string;
@@ -38,6 +38,42 @@ export function TodayRouteScreen({
   useEffect(() => {
     void load();
   }, [load]);
+
+  function start(item: TodayRouteItem) {
+    if (
+      item.action === 'confirm_content' ||
+      item.action === 'resume_learning' ||
+      item.action === 'review_result'
+    ) {
+      onStartCapture?.();
+      return;
+    }
+    if (
+      item.action === 'correct_wrong_item' ||
+      item.action === 'start_review' ||
+      item.action === 'start_variation'
+    ) {
+      onStartReview?.();
+    }
+  }
+
+  function canStart(item: TodayRouteItem): boolean {
+    if (
+      item.action === 'confirm_content' ||
+      item.action === 'resume_learning' ||
+      item.action === 'review_result'
+    ) {
+      return Boolean(onStartCapture);
+    }
+    if (
+      item.action === 'correct_wrong_item' ||
+      item.action === 'start_review' ||
+      item.action === 'start_variation'
+    ) {
+      return Boolean(onStartReview);
+    }
+    return false;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -109,23 +145,57 @@ export function TodayRouteScreen({
             </View>
           ) : null}
 
-          {state.status === 'loaded' && state.route.items.length > 0 && onStartReview ? (
-            <View style={styles.quickActionCard}>
-              <Text accessibilityRole="header" style={styles.emptyTitle}>
-                今日学习路线已准备好
-              </Text>
-              <Text style={styles.emptyBody}>先完成一组最多 5 张的到期复习卡。</Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={onStartReview}
-                style={({ pressed }) => [
-                  styles.captureButton,
-                  pressed ? styles.retryButtonPressed : null,
-                ]}
-              >
-                <Text style={styles.retryButtonText}>开始今日短复习</Text>
-              </Pressable>
-            </View>
+          {state.status === 'loaded' && state.route.items.length > 0 ? (
+            <ScrollView
+              contentContainerStyle={styles.routeContent}
+              showsVerticalScrollIndicator={false}
+              style={styles.routeScroll}
+            >
+              <View style={styles.routeHeader}>
+                <Text accessibilityRole="header" style={styles.routeTitle}>
+                  今天有 {state.route.items.length} 个小步骤
+                </Text>
+                <Text style={styles.routeIntro}>从第一项开始就好，每次只处理一个明确行动。</Text>
+                <Text style={styles.noPenalty}>{state.route.noPenaltyMessage}</Text>
+              </View>
+              {state.route.items.map((item, index) => {
+                const enabled = canStart(item);
+                return (
+                  <View key={item.id} style={styles.routeCard}>
+                    <View style={styles.routeCardHeader}>
+                      <Text style={styles.stepBadge}>第 {index + 1} 步</Text>
+                      <Text style={item.isOptional ? styles.optional : styles.required}>
+                        {item.isOptional ? '可稍后' : '先完成'}
+                      </Text>
+                    </View>
+                    <Text accessibilityRole="header" style={styles.routeCardTitle}>
+                      {item.title}
+                    </Text>
+                    <Text style={styles.routeDetail}>{item.detail}</Text>
+                    <Text style={styles.routeExplanation}>为什么现在做：{item.explanation}</Text>
+                    <Text style={styles.routeMeta}>
+                      约 {item.estimatedMinutes} 分钟 · 本次 {item.count} 项
+                      {item.remainingCount > 0 ? ` · 另有 ${item.remainingCount} 项稍后安排` : ''}
+                    </Text>
+                    <Pressable
+                      accessibilityLabel={`开始：${item.title}`}
+                      accessibilityRole="button"
+                      disabled={!enabled}
+                      onPress={() => start(item)}
+                      style={({ pressed }) => [
+                        styles.routeButton,
+                        !enabled ? styles.disabled : null,
+                        pressed ? styles.retryButtonPressed : null,
+                      ]}
+                    >
+                      <Text style={styles.retryButtonText}>
+                        {enabled ? '开始这一步' : '即将开放'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </ScrollView>
           ) : null}
 
           {state.status === 'error' ? (
@@ -205,6 +275,7 @@ const styles = StyleSheet.create({
     lineHeight: 32,
     textAlign: 'center',
   },
+  disabled: { opacity: 0.45 },
   header: {
     gap: spacing.xs,
   },
@@ -252,17 +323,52 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  quickActionCard: {
+  noPenalty: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    color: colors.foreground,
+    fontSize: 14,
+    lineHeight: 22,
+    padding: spacing.md,
+  },
+  optional: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700' },
+  required: { color: colors.primary, fontSize: 13, fontWeight: '800' },
+  routeButton: {
     alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+  },
+  routeCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: radii.lg,
     borderWidth: 1,
     gap: spacing.sm,
-    maxWidth: 420,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xxl,
+    padding: spacing.lg,
     width: '100%',
+  },
+  routeCardHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  routeCardTitle: { color: colors.foreground, fontSize: 21, fontWeight: '800', lineHeight: 28 },
+  routeContent: { gap: spacing.md, paddingBottom: spacing.xxl, paddingTop: spacing.lg },
+  routeDetail: { color: colors.foreground, fontSize: 16, lineHeight: 24 },
+  routeExplanation: { color: colors.mutedForeground, fontSize: 14, lineHeight: 22 },
+  routeHeader: { gap: spacing.sm },
+  routeIntro: { color: colors.mutedForeground, fontSize: 16, lineHeight: 24 },
+  routeMeta: { color: colors.mutedForeground, fontSize: 13, fontWeight: '700', lineHeight: 20 },
+  routeScroll: { alignSelf: 'stretch', flex: 1 },
+  routeTitle: { color: colors.foreground, fontSize: 24, fontWeight: '800', lineHeight: 32 },
+  stepBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radii.md,
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
   },
   retryButtonPressed: {
     opacity: 0.82,

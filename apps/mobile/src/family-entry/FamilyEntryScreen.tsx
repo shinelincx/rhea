@@ -29,7 +29,10 @@ interface FamilyEntryScreenProps {
   credentialStore: DeviceCredentialStore;
   gateway: FamilyEntryGateway;
   initialNotice?: string | null;
-  onOpenGuardianSettings?(familySpaceId: string): void;
+  onOpenGuardianSettings?(input: {
+    familySpaceId: string;
+    learningProfiles: MobileLearningProfile[];
+  }): void;
   onSessionReady(input: {
     accessToken: string;
     expiresAt: string;
@@ -235,7 +238,12 @@ export function FamilyEntryScreen({
             {onOpenGuardianSettings && state.profiles[0] ? (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => onOpenGuardianSettings(state.profiles[0]!.familySpaceId)}
+                onPress={() =>
+                  onOpenGuardianSettings({
+                    familySpaceId: state.profiles[0]!.familySpaceId,
+                    learningProfiles: state.profiles,
+                  })
+                }
                 style={({ pressed }) => [styles.guardianButton, pressed ? styles.pressed : null]}
               >
                 <Text style={styles.guardianButtonText}>监护人设置</Text>

@@ -6,6 +6,7 @@ import type { JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
+import type { ReportingService } from '@rhea/reporting';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
@@ -51,7 +52,9 @@ import {
   type SubmissionScheduler,
   type SubmissionService,
 } from './submission/submission.provider.js';
-import { TodayRouteController } from './today-route.controller.js';
+import { ReportingController } from './reporting/reporting.controller.js';
+import { ReportingExceptionFilter } from './reporting/reporting-exception.filter.js';
+import { REPORTING_SERVICE } from './reporting/reporting.provider.js';
 import { GeneratedLearningController } from './generated-learning/generated-learning.controller.js';
 import { GeneratedLearningExceptionFilter } from './generated-learning/generated-learning-exception.filter.js';
 import {
@@ -79,6 +82,7 @@ export class AppModule {
     submissionScheduler: SubmissionScheduler,
     generatedLearningService: GeneratedLearningService,
     generatedLearningScheduler: GeneratedLearningScheduler,
+    reportingService: ReportingService,
     shutdownResources: Array<{ close(): Promise<void> }>,
   ): DynamicModule {
     return {
@@ -93,8 +97,8 @@ export class AppModule {
         ReviewCardController,
         ProbeJobsController,
         ProfessionalReviewController,
+        ReportingController,
         SubmissionController,
-        TodayRouteController,
       ],
       providers: [
         {
@@ -120,6 +124,10 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: GeneratedLearningExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: ReportingExceptionFilter,
         },
         {
           provide: ASSESSMENT_SERVICE,
@@ -184,6 +192,10 @@ export class AppModule {
         {
           provide: GENERATED_LEARNING_SCHEDULER,
           useValue: generatedLearningScheduler,
+        },
+        {
+          provide: REPORTING_SERVICE,
+          useValue: reportingService,
         },
         ...shutdownResources.map((resource, index) => ({
           provide: `SHUTDOWN_RESOURCE_${index}`,

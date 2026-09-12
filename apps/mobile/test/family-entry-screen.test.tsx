@@ -147,4 +147,34 @@ describe('shared-device family entry interface', () => {
       expect(view.getByText('本次学习会话已到期，请重新输入 PIN。')).toBeTruthy(),
     );
   });
+
+  it('opens guardian mode with every profile in the family', async () => {
+    const gateway: FamilyEntryGateway = {
+      ...unusedGuardianMethods,
+      enterProfile: async () => {
+        throw new Error('not used');
+      },
+      listProfiles: async () => profiles,
+      logout: async () => undefined,
+      setupFamily: async () => {
+        throw new Error('not used');
+      },
+    };
+    const openGuardian = jest.fn();
+    const view = await render(
+      <FamilyEntryScreen
+        credentialStore={createCredentialStore('device-token')}
+        gateway={gateway}
+        onOpenGuardianSettings={openGuardian}
+        onSessionReady={jest.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(view.getByText('选择你的学习档案')).toBeTruthy());
+    await fireEvent.press(view.getByRole('button', { name: '监护人设置' }));
+    expect(openGuardian).toHaveBeenCalledWith({
+      familySpaceId: 'family-1',
+      learningProfiles: profiles,
+    });
+  });
 });

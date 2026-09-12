@@ -12,6 +12,7 @@ import { createQueuedGeneratedLearningScheduler } from './generated-learning/cre
 import { createConfiguredGeneratedLearning } from './generated-learning/create-configured-generated-learning.js';
 import { createConfiguredLearningProgress } from './learning-progress/create-configured-learning-progress.js';
 import { createQueuedReviewCardScheduler } from './learning-progress/create-queued-review-card-scheduler.js';
+import { createConfiguredReporting } from './reporting/create-configured-reporting.js';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -37,6 +38,7 @@ const configuredLearningProgress = createConfiguredLearningProgress(
   configuredFamilyAccess.familyAccess,
 );
 const aiJobClient = createConfiguredAiJobClient(process.env);
+const configuredReporting = createConfiguredReporting(process.env);
 const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<void> };
 const app = await createApp({
   assessmentService: configuredAssessment.service,
@@ -51,6 +53,7 @@ const app = await createApp({
   learningProgressService: configuredLearningProgress.service,
   reviewCardScheduler: createQueuedReviewCardScheduler(aiJobClient),
   reviewCardService: configuredLearningProgress.reviewCardService,
+  reportingService: configuredReporting.service,
   shutdownResources: [
     ...configuredFamilyAccess.shutdownResources,
     ...configuredSubmission.shutdownResources,
@@ -58,6 +61,7 @@ const app = await createApp({
     ...configuredAssessment.shutdownResources,
     ...configuredGeneratedLearning.shutdownResources,
     ...configuredLearningProgress.shutdownResources,
+    ...configuredReporting.shutdownResources,
     ...(typeof closeableAiJobClient.close === 'function'
       ? [{ close: () => closeableAiJobClient.close!() }]
       : []),

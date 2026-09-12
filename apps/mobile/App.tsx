@@ -20,6 +20,7 @@ import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
 import { createGeneratedLearningGateway } from './src/generated-learning/generated-learning-gateway';
 import { GuardianConsentScreen } from './src/guardian-consent/GuardianConsentScreen';
+import { createReportingGateway } from './src/reporting/reporting-gateway';
 import { createReviewCardGateway } from './src/review-cards/review-card-gateway';
 import { ShortReviewScreen } from './src/review-cards/ShortReviewScreen';
 import { TodayRouteScreen } from './src/today-route/TodayRouteScreen';
@@ -35,6 +36,7 @@ const familyEntryGateway = createFamilyEntryGateway(
 const submissionGateway = createSubmissionGateway(apiBaseUrl);
 const generatedLearningGateway = createGeneratedLearningGateway(apiBaseUrl);
 const reviewCardGateway = createReviewCardGateway(apiBaseUrl);
+const reportingGateway = createReportingGateway(apiBaseUrl);
 const captureDraftRepository = new EncryptedCaptureDraftRepository(
   Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
   Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
@@ -46,10 +48,15 @@ interface LearnerSession {
   profile: MobileLearningProfile;
 }
 
+interface GuardianContext {
+  familySpaceId: string;
+  learningProfiles: MobileLearningProfile[];
+}
+
 export default function App() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
-  const [guardianFamilySpaceId, setGuardianFamilySpaceId] = useState<string | null>(null);
+  const [guardianContext, setGuardianContext] = useState<GuardianContext | null>(null);
   const [learnerRoute, setLearnerRoute] = useState<'today' | 'capture' | 'review'>('today');
 
   useEffect(() => {
@@ -92,11 +99,13 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      {guardianFamilySpaceId ? (
+      {guardianContext ? (
         <GuardianConsentScreen
-          familySpaceId={guardianFamilySpaceId}
+          familySpaceId={guardianContext.familySpaceId}
           gateway={familyEntryGateway}
-          onClose={() => setGuardianFamilySpaceId(null)}
+          learningProfiles={guardianContext.learningProfiles}
+          onClose={() => setGuardianContext(null)}
+          reportingGateway={reportingGateway}
         />
       ) : learnerSession ? (
         learnerRoute === 'capture' ? (
@@ -121,7 +130,13 @@ export default function App() {
         ) : (
           <TodayRouteScreen
             learningProfileName={learnerSession.profile.displayName}
-            loadRoute={loadTodayRoute}
+            loadRoute={() =>
+              loadTodayRoute({
+                accessToken: learnerSession.accessToken,
+                familySpaceId: learnerSession.profile.familySpaceId,
+                learningProfileId: learnerSession.profile.id,
+              })
+            }
             onStartCapture={() => setLearnerRoute('capture')}
             onStartReview={() => setLearnerRoute('review')}
             onSwitchProfile={() => void switchProfile()}
@@ -132,7 +147,7 @@ export default function App() {
           credentialStore={deviceCredentialStore}
           gateway={familyEntryGateway}
           initialNotice={sessionNotice}
-          onOpenGuardianSettings={setGuardianFamilySpaceId}
+          onOpenGuardianSettings={setGuardianContext}
           onSessionReady={startLearnerSession}
         />
       )}

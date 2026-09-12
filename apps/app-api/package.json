@@ -30,8 +30,10 @@
     "@rhea/postgres-learning-content": "workspace:*",
     "@rhea/postgres-learning-progress": "workspace:*",
     "@rhea/postgres-quality-control": "workspace:*",
+    "@rhea/postgres-reporting": "workspace:*",
     "@rhea/queue-adapter": "workspace:*",
     "@rhea/quality-control": "workspace:*",
+    "@rhea/reporting": "workspace:*",
     "@rhea/submission": "workspace:*",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2"

@@ -3,7 +3,14 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../design-system/tokens';
-import type { FamilyEntryGateway, MobileConsent, MobileConsentKind } from '../family-entry/gateway';
+import type {
+  FamilyEntryGateway,
+  MobileConsent,
+  MobileConsentKind,
+  MobileLearningProfile,
+} from '../family-entry/gateway';
+import { GuardianReportPanel } from '../reporting/GuardianReportPanel';
+import type { MobileGuardianReport, ReportingGateway } from '../reporting/reporting-gateway';
 
 const LABELS: Record<MobileConsentKind, string> = {
   ai_processing: 'AI 处理',
@@ -22,7 +29,9 @@ const STATUS_LABELS: Record<MobileConsent['status'], string> = {
 interface GuardianConsentScreenProps {
   familySpaceId: string;
   gateway: FamilyEntryGateway;
+  learningProfiles: MobileLearningProfile[];
   onClose(): void;
+  reportingGateway: ReportingGateway;
 }
 
 type ScreenState =
@@ -37,11 +46,21 @@ function readableError(error: unknown): string {
 export function GuardianConsentScreen({
   familySpaceId,
   gateway,
+  learningProfiles,
   onClose,
+  reportingGateway,
 }: GuardianConsentScreenProps) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
   const [changing, setChanging] = useState<MobileConsentKind | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    learningProfiles[0]?.id ?? null,
+  );
+  const [reportState, setReportState] = useState<{
+    loading: boolean;
+    message: string | null;
+    report: MobileGuardianReport | null;
+  }>({ loading: false, message: null, report: null });
 
   useEffect(() => {
     let active = true;
@@ -61,6 +80,36 @@ export function GuardianConsentScreen({
       active = false;
     };
   }, [familySpaceId, gateway]);
+
+  const guardianAccessToken = state.status === 'ready' ? state.accessToken : null;
+  useEffect(() => {
+    if (!guardianAccessToken || !selectedProfileId) {
+      return;
+    }
+    let active = true;
+    setReportState({ loading: true, message: null, report: null });
+    void reportingGateway
+      .getGuardianReport({
+        accessToken: guardianAccessToken,
+        familySpaceId,
+        learningProfileId: selectedProfileId,
+      })
+      .then((report) => {
+        if (active) setReportState({ loading: false, message: null, report });
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setReportState({
+            loading: false,
+            message: readableError(error),
+            report: null,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [familySpaceId, guardianAccessToken, reportingGateway, selectedProfileId]);
 
   async function decide(consent: MobileConsent, granted: boolean) {
     if (state.status !== 'ready') {
@@ -112,9 +161,9 @@ export function GuardianConsentScreen({
         </Pressable>
         <Text style={styles.brand}>Rhea · 监护人</Text>
         <Text accessibilityRole="header" style={styles.title}>
-          分项授权
+          监护人中心
         </Text>
-        <Text style={styles.body}>每项用途独立选择；改变任何授权前都会重新验证监护人身份。</Text>
+        <Text style={styles.body}>处理必要待办，查看有证据的学习变化，并独立管理各项授权。</Text>
 
         {state.status === 'loading' ? (
           <View accessibilityLiveRegion="polite" style={styles.loading}>
@@ -135,6 +184,28 @@ export function GuardianConsentScreen({
           <Text accessibilityLiveRegion="polite" style={styles.notice}>
             {message}
           </Text>
+        ) : null}
+
+        {state.status === 'ready' ? (
+          <GuardianReportPanel
+            learningProfiles={learningProfiles}
+            loading={reportState.loading}
+            message={reportState.message}
+            onSelectProfile={setSelectedProfileId}
+            report={reportState.report}
+            selectedProfileId={selectedProfileId}
+          />
+        ) : null}
+
+        {state.status === 'ready' ? (
+          <View style={styles.sectionHeading}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
+              分项授权
+            </Text>
+            <Text style={styles.body}>
+              每项用途独立选择；改变任何授权前都会重新验证监护人身份。
+            </Text>
+          </View>
         ) : null}
 
         {state.status === 'ready'
@@ -292,6 +363,14 @@ const styles = StyleSheet.create({
   },
   safeArea: { backgroundColor: colors.background, flex: 1 },
   scopeLabel: { color: colors.foreground, fontSize: 14, fontWeight: '800' },
+  sectionHeading: {
+    borderTopColor: colors.borderStrong,
+    borderTopWidth: 1,
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.lg,
+  },
+  sectionTitle: { color: colors.foreground, fontSize: 26, fontWeight: '800', lineHeight: 34 },
   secondaryText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
   status: { color: colors.mutedForeground, fontSize: 14, fontWeight: '700' },
   title: { color: colors.foreground, fontSize: 30, fontWeight: '800', lineHeight: 38 },

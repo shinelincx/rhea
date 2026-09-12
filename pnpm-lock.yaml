@@ -282,6 +282,37 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/postgres-reporting:
+    dependencies:
+      '@rhea/reporting':
+        specifier: workspace:*
+        version: link:../../modules/reporting
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@rhea/family-access':
+        specifier: workspace:*
+        version: link:../../modules/family-access
+      '@rhea/postgres-family-access':
+        specifier: workspace:*
+        version: link:../postgres-family-access
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/postgres-source-lineage:
     dependencies:
       '@rhea/source-lineage':
@@ -410,6 +441,9 @@ importers:
       '@rhea/postgres-quality-control':
         specifier: workspace:*
         version: link:../../adapters/postgres-quality-control
+      '@rhea/postgres-reporting':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-reporting
       '@rhea/postgres-submission':
         specifier: workspace:*
         version: link:../../adapters/postgres-submission
@@ -419,6 +453,9 @@ importers:
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
+      '@rhea/reporting':
+        specifier: workspace:*
+        version: link:../../modules/reporting
       '@rhea/submission':
         specifier: workspace:*
         version: link:../../modules/submission
@@ -643,6 +680,18 @@ importers:
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
   modules/quality-control:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/reporting:
     devDependencies:
       '@types/node':
         specifier: 24.10.13

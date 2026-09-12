@@ -13,6 +13,7 @@ import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
 import type { SubmissionService } from '@rhea/submission';
+import { MemoryReportingStore, ReportingService } from '@rhea/reporting';
 
 import { AppModule } from './app.module.js';
 import type { DependencyProbe } from './health/dependency-probe.js';
@@ -47,6 +48,7 @@ export interface CreateAppOptions {
   learningProgressService?: LearningProgressService;
   reviewCardScheduler?: ReviewCardScheduler;
   reviewCardService?: ReviewCardService;
+  reportingService?: ReportingService;
   professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
@@ -118,6 +120,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       },
     };
   const generatedLearning = createLocalGeneratedLearning(learningContent, consentReader);
+  const reporting =
+    options.reportingService ?? new ReportingService({ store: new MemoryReportingStore() });
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
     .getInstance()
@@ -145,6 +149,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       options.submissionScheduler ?? localSubmission.scheduler,
       options.generatedLearningService ?? generatedLearning.service,
       options.generatedLearningScheduler ?? generatedLearning.scheduler,
+      reporting,
       options.shutdownResources ?? [],
     ),
     adapter,
