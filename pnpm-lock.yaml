@@ -51,6 +51,9 @@ importers:
       '@rhea/generated-learning':
         specifier: workspace:*
         version: link:../../modules/generated-learning
+      '@rhea/learning-progress':
+        specifier: workspace:*
+        version: link:../../modules/learning-progress
     devDependencies:
       '@types/node':
         specifier: 24.10.13
@@ -235,6 +238,12 @@ importers:
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../postgres-learning-content
+      '@rhea/postgres-quality-control':
+        specifier: workspace:*
+        version: link:../postgres-quality-control
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../../modules/quality-control
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
@@ -444,6 +453,9 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../../modules/learning-content
+      '@rhea/learning-progress':
+        specifier: workspace:*
+        version: link:../../modules/learning-progress
       '@rhea/model-gateway-adapter':
         specifier: workspace:*
         version: link:../../adapters/model-gateway
@@ -456,6 +468,9 @@ importers:
       '@rhea/postgres-learning-content':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-content
+      '@rhea/postgres-learning-progress':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-learning-progress
       '@rhea/postgres-quality-control':
         specifier: workspace:*
         version: link:../../adapters/postgres-quality-control
@@ -613,6 +628,9 @@ importers:
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../learning-content
+      '@rhea/quality-control':
+        specifier: workspace:*
+        version: link:../quality-control
     devDependencies:
       '@types/node':
         specifier: 24.10.13

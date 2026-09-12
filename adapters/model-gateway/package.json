@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@rhea/assessment": "workspace:*",
-    "@rhea/generated-learning": "workspace:*"
+    "@rhea/generated-learning": "workspace:*",
+    "@rhea/learning-progress": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.10.13",

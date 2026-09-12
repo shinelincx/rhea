@@ -56,7 +56,7 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
   const kind = requireJobKind(kindValue);
   if (!isRecord(payload)) throw new Error('INVALID_JOB_PAYLOAD');
   if (
-    kind === 'generated-learning.generate' &&
+    (kind === 'generated-learning.generate' || kind === 'review-card.generate') &&
     (typeof payload.requestId !== 'string' ||
       !payload.requestId.trim() ||
       typeof payload.learningProfileId !== 'string' ||
@@ -73,7 +73,7 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
   ) {
     throw new Error('INVALID_JOB_PAYLOAD');
   }
-  return kind === 'generated-learning.generate'
+  return kind === 'generated-learning.generate' || kind === 'review-card.generate'
     ? {
         kind,
         payload: {

@@ -13,6 +13,10 @@ import {
 import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-lineage';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
+import { PostgresReviewCardStore } from './review-card.js';
+
+export { PostgresReviewCardStore } from './review-card.js';
+
 interface WrongItemRow extends QueryResultRow {
   assessment_snapshot: unknown;
   classification: unknown;
@@ -389,5 +393,11 @@ export class PostgresLearningProgressStore implements LearningProgressStore {
 
 export function createPostgresLearningProgressStore(databaseUrl: string) {
   const pool = new Pool({ connectionString: databaseUrl });
-  return { pool, store: new PostgresLearningProgressStore(pool) };
+  const reviewCardStore = new PostgresReviewCardStore(pool);
+  return {
+    pool,
+    publicationGate: reviewCardStore,
+    reviewCardStore,
+    store: new PostgresLearningProgressStore(pool),
+  };
 }

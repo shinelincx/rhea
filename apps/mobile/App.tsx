@@ -20,6 +20,8 @@ import { FamilyEntryScreen } from './src/family-entry/FamilyEntryScreen';
 import { createFamilyEntryGateway, type MobileLearningProfile } from './src/family-entry/gateway';
 import { createGeneratedLearningGateway } from './src/generated-learning/generated-learning-gateway';
 import { GuardianConsentScreen } from './src/guardian-consent/GuardianConsentScreen';
+import { createReviewCardGateway } from './src/review-cards/review-card-gateway';
+import { ShortReviewScreen } from './src/review-cards/ShortReviewScreen';
 import { TodayRouteScreen } from './src/today-route/TodayRouteScreen';
 import { createTodayRouteLoader } from './src/today-route/load-today-route';
 
@@ -32,6 +34,7 @@ const familyEntryGateway = createFamilyEntryGateway(
 );
 const submissionGateway = createSubmissionGateway(apiBaseUrl);
 const generatedLearningGateway = createGeneratedLearningGateway(apiBaseUrl);
+const reviewCardGateway = createReviewCardGateway(apiBaseUrl);
 const captureDraftRepository = new EncryptedCaptureDraftRepository(
   Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
   Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
@@ -47,7 +50,7 @@ export default function App() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [guardianFamilySpaceId, setGuardianFamilySpaceId] = useState<string | null>(null);
-  const [learnerRoute, setLearnerRoute] = useState<'today' | 'capture'>('today');
+  const [learnerRoute, setLearnerRoute] = useState<'today' | 'capture' | 'review'>('today');
 
   useEffect(() => {
     if (!learnerSession) {
@@ -107,11 +110,20 @@ export default function App() {
             repository={captureDraftRepository}
             submissionGateway={submissionGateway}
           />
+        ) : learnerRoute === 'review' ? (
+          <ShortReviewScreen
+            accessToken={learnerSession.accessToken}
+            familySpaceId={learnerSession.profile.familySpaceId}
+            gateway={reviewCardGateway}
+            learningProfileId={learnerSession.profile.id}
+            onBack={() => setLearnerRoute('today')}
+          />
         ) : (
           <TodayRouteScreen
             learningProfileName={learnerSession.profile.displayName}
             loadRoute={loadTodayRoute}
             onStartCapture={() => setLearnerRoute('capture')}
+            onStartReview={() => setLearnerRoute('review')}
             onSwitchProfile={() => void switchProfile()}
           />
         )

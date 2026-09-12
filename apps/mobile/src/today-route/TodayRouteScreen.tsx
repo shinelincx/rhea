@@ -9,6 +9,7 @@ interface TodayRouteScreenProps {
   learningProfileName?: string;
   loadRoute: LoadTodayRoute;
   onStartCapture?: () => void;
+  onStartReview?: () => void;
   onSwitchProfile?: () => void;
 }
 
@@ -19,6 +20,7 @@ export function TodayRouteScreen({
   learningProfileName,
   loadRoute,
   onStartCapture,
+  onStartReview,
   onSwitchProfile,
 }: TodayRouteScreenProps) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
@@ -92,6 +94,37 @@ export function TodayRouteScreen({
                   <Text style={styles.retryButtonText}>拍照或导入作业</Text>
                 </Pressable>
               ) : null}
+              {onStartReview ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onStartReview}
+                  style={({ pressed }) => [
+                    styles.reviewButton,
+                    pressed ? styles.retryButtonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.reviewButtonText}>开始今日短复习</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+
+          {state.status === 'loaded' && state.route.items.length > 0 && onStartReview ? (
+            <View style={styles.quickActionCard}>
+              <Text accessibilityRole="header" style={styles.emptyTitle}>
+                今日学习路线已准备好
+              </Text>
+              <Text style={styles.emptyBody}>先完成一组最多 5 张的到期复习卡。</Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={onStartReview}
+                style={({ pressed }) => [
+                  styles.captureButton,
+                  pressed ? styles.retryButtonPressed : null,
+                ]}
+              >
+                <Text style={styles.retryButtonText}>开始今日短复习</Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -204,6 +237,32 @@ const styles = StyleSheet.create({
     minHeight: 48,
     minWidth: 144,
     paddingHorizontal: spacing.lg,
+  },
+  reviewButton: {
+    alignItems: 'center',
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.lg,
+  },
+  reviewButtonText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  quickActionCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.sm,
+    maxWidth: 420,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxl,
+    width: '100%',
   },
   retryButtonPressed: {
     opacity: 0.82,

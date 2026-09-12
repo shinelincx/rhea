@@ -6,14 +6,150 @@ import { LearningContentService } from '@rhea/learning-content';
 import { LearningProgressService } from '@rhea/learning-progress';
 import { PostgresAssessmentStore } from '@rhea/postgres-assessment';
 import { PostgresLearningContentStore } from '@rhea/postgres-learning-content';
+import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
+import {
+  QualityControlService,
+  type CapabilityUseSlice,
+  type CapabilityVersion,
+  type EvaluationSlice,
+  type RequiredSlicePolicy,
+} from '@rhea/quality-control';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { PostgresLearningProgressStore } from '../src/index.js';
+import { PostgresLearningProgressStore, PostgresReviewCardStore } from '../src/index.js';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = databaseUrl ? describe : describe.skip;
 const pool = databaseUrl ? new Pool({ connectionString: databaseUrl }) : undefined;
+const reviewUseSlice = {
+  basisState: 'current',
+  gradeBand: 'middle_primary',
+  imageQuality: 'not_applicable',
+  questionType: 'objective',
+  riskLevel: 'medium',
+  subject: 'mathematics',
+} satisfies CapabilityUseSlice;
+const requiredEvaluationSlices = [
+  {
+    basisState: 'current',
+    gradeBand: 'lower_primary',
+    imageQuality: 'clear',
+    questionType: 'objective',
+    riskLevel: 'low',
+    subject: 'chinese',
+  },
+  {
+    basisState: 'conflicted',
+    gradeBand: 'middle_primary',
+    imageQuality: 'degraded',
+    questionType: 'open_response',
+    riskLevel: 'medium',
+    subject: 'mathematics',
+  },
+  {
+    basisState: 'insufficient',
+    gradeBand: 'upper_primary',
+    imageQuality: 'unusable',
+    questionType: 'process',
+    riskLevel: 'high',
+    subject: 'english',
+  },
+  {
+    basisState: 'current',
+    gradeBand: 'lower_primary',
+    imageQuality: 'clear',
+    questionType: 'oral',
+    riskLevel: 'medium',
+    subject: 'science',
+  },
+  {
+    basisState: 'conflicted',
+    gradeBand: 'middle_primary',
+    imageQuality: 'degraded',
+    questionType: 'science_observation',
+    riskLevel: 'high',
+    subject: 'chinese',
+  },
+] satisfies EvaluationSlice[];
+let qualityControl: QualityControlService | undefined;
+let reviewCapability: CapabilityVersion | undefined;
+
+async function registerReviewCapability(service: QualityControlService) {
+  const suffix = randomUUID();
+  const policy: RequiredSlicePolicy = {
+    minimumSampleSize: 20,
+    registeredAt: '2026-09-11T00:00:00.000Z',
+    requiredSignoffRoles: ['quality_owner', 'domain_reviewer', 'child_safety'],
+    requiredSlices: requiredEvaluationSlices,
+    version: `review-policy-${suffix}`,
+  };
+  const version: CapabilityVersion = {
+    adapter: { id: 'review-card-adapter', version: '1' },
+    artifactHash: 'e'.repeat(64),
+    capabilityKey: 'ai.review-card',
+    id: `review-capability-${suffix}`,
+    implementedBy: 'integration-test',
+    kind: 'ai',
+    modelOrEngine: { id: 'fixed', version: '1' },
+    policyVersion: 'child-learning-policy-v1',
+    promptOrConfig: { kind: 'prompt', version: 'review-v1' },
+    provider: { id: 'fixed', version: '1' },
+    region: 'cn-shanghai',
+    registeredAt: '2026-09-11T00:00:01.000Z',
+    requiredSlicePolicyVersion: policy.version,
+    templateVersion: '1',
+  };
+  await service.registerSlicePolicy({ commandId: `policy-${suffix}`, policy });
+  let record = await service.registerCapability({ commandId: `capability-${suffix}`, version });
+  for (const [index, slice] of requiredEvaluationSlices.entries()) {
+    record = await service.recordEvaluation({
+      commandId: `evaluation-${suffix}-${index}`,
+      expectedRevision: record.revision,
+      run: {
+        capabilityVersionId: version.id,
+        completedAt: `2026-09-11T00:01:0${index}.000Z`,
+        evidenceHash: String(index + 1).repeat(64),
+        id: `evaluation-${suffix}-${index}`,
+        metrics: { criticalErrorCount: 0, passRate: 1 },
+        outcome: 'passed',
+        policyVersion: policy.version,
+        sampleSize: 100,
+        slice,
+      },
+    });
+  }
+  const card = await service.getQualityCard(version.id);
+  for (const [index, role] of (
+    ['quality_owner', 'domain_reviewer', 'child_safety'] as const
+  ).entries()) {
+    const qualification = await service.signOffCapability({
+      capabilityVersionId: version.id,
+      commandId: `signoff-${suffix}-${role}`,
+      evidenceHash: card.evidenceHash,
+      expectedRevision: record.revision,
+      policyVersion: policy.version,
+      signedAt: `2026-09-11T00:02:0${index}.000Z`,
+      signer: { id: `${role}-${suffix}`, role },
+    });
+    record = await service.getCapability(qualification.capabilityVersionId);
+  }
+  for (const rollout of [
+    { changedAt: '2026-09-11T00:03:00.000Z', percentage: 0, stage: 'shadow' as const },
+    { changedAt: '2026-09-11T00:04:00.000Z', percentage: 10, stage: 'small' as const },
+    { changedAt: '2026-09-11T00:05:00.000Z', percentage: 50, stage: 'expanded' as const },
+    { changedAt: '2026-09-11T00:06:00.000Z', percentage: 100, stage: 'general' as const },
+  ]) {
+    record = await service.advanceRollout({
+      allowedUseSlices: [reviewUseSlice],
+      capabilityVersionId: version.id,
+      commandId: `rollout-${suffix}-${rollout.stage}`,
+      expectedRevision: record.revision,
+      ...rollout,
+    });
+  }
+  return version;
+}
 
 const recognitionCapability = {
   adapter: { id: 'learning-progress-fixture', version: 'test-v1' },
@@ -33,7 +169,11 @@ const recognitionCapability = {
 } as const;
 
 beforeAll(async () => {
-  if (pool) await applyMigrations(pool, await loadDefaultMigrations());
+  if (pool) {
+    await applyMigrations(pool, await loadDefaultMigrations());
+    qualityControl = new QualityControlService(new PostgresQualityControlStore(pool));
+    reviewCapability = await registerReviewCapability(qualityControl);
+  }
 });
 
 afterAll(async () => pool?.end());
@@ -102,6 +242,13 @@ async function createFixture() {
         (id, family_space_id, display_name, grade, pin_hash)
        VALUES ($1, $2, '小禾', 3, 'test-hash')`,
       [learningProfileId, familySpaceId],
+    );
+    await setup.query(
+      `INSERT INTO learning.family_consents
+        (family_space_id, kind, status, statement_version, revision,
+         updated_by_guardian_id, updated_at)
+       VALUES ($1, 'ai_processing', 'granted', 'ai-v1', 1, $2, now())`,
+      [familySpaceId, guardianId],
     );
     await setup.query(
       `INSERT INTO learning.upload_sessions
@@ -311,6 +458,239 @@ async function createFixture() {
 }
 
 describeWithDatabase('PostgreSQL learning progress adapter', () => {
+  it('persists a governed review card, bounded session, attempt, outbox, and lineage', async () => {
+    if (!pool || !qualityControl || !reviewCapability) return;
+    const fixture = await createFixture();
+    const captured = (await fixture.progress.captureAcceptedError({
+      actor: fixture.actor,
+      assessmentId: fixture.graded.id,
+      learningProfileId: fixture.learningProfileId,
+    }))!;
+    const reviewStore = new PostgresReviewCardStore(pool);
+    const authorizationDecision = await qualityControl.authorizeCapability({
+      capabilityKey: 'ai.review-card',
+      familySpaceId: fixture.familySpaceId,
+      kind: 'ai',
+      slice: reviewUseSlice,
+    });
+    if (authorizationDecision.status !== 'authorized' || !authorizationDecision.primary) {
+      throw new Error('Review-card test capability was not authorized');
+    }
+    const capabilityVersionId = reviewCapability.id;
+    const requestId = randomUUID();
+    const createdAt = '2026-09-12T01:00:00.000Z';
+    const source = {
+      ageBand: 'middle_primary' as const,
+      assessmentId: captured.assessment.assessmentId,
+      assessmentVersionId: captured.assessment.assessmentVersionId,
+      basis: captured.assessment.basis,
+      classificationRevision: captured.classification.revision,
+      consentRevision: 1,
+      gradingRuleVersionId: captured.assessment.correctBasis.gradingRuleVersionId,
+      knowledgePointName: captured.classification.primaryKnowledgePointName!,
+      originalExpectedAnswer: '42',
+      originalQuestion: captured.assessment.question.text,
+      originalQuestionContentHash: captured.assessment.question.contentHash,
+      originalQuestionVersionId: captured.assessment.question.versionId,
+      originalResponse: captured.assessment.response.text,
+      originalResponseContentHash: captured.assessment.response.contentHash,
+      originalResponseVersionId: captured.assessment.response.versionId,
+      subject: 'mathematics' as const,
+      themeId: captured.themeId,
+      unitName: captured.classification.unitName,
+      wrongItemId: captured.id,
+      wrongItemStateRevision: captured.stateRevision,
+      wrongItemStatus: captured.status,
+    };
+    const request = {
+      actor: fixture.actor,
+      authorization: {
+        containmentEpoch: authorizationDecision.containmentEpoch,
+        decisionId: authorizationDecision.decisionId,
+        degradedReason: authorizationDecision.degradedReason,
+        issuedAt: authorizationDecision.issuedAt,
+      },
+      capability: reviewCapability,
+      createdAt,
+      currentCardId: null,
+      familySpaceId: fixture.familySpaceId,
+      id: requestId,
+      idempotencyKey: 'review-request-1',
+      latestChecks: [],
+      learningProfileId: fixture.learningProfileId,
+      modelRuns: [],
+      processingLeaseExpiresAt: null,
+      rebuildPending: false,
+      requestFingerprint: 'f'.repeat(64),
+      source,
+      stateRevision: 1,
+      status: 'queued' as const,
+      unavailableReason: null,
+      updatedAt: createdAt,
+    };
+    await expect(
+      reviewStore.authorize({
+        ageBand: 'middle_primary',
+        consentRevision: 1,
+        familySpaceId: fixture.familySpaceId,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(true);
+    await expect(reviewStore.createReviewCardRequest(request)).resolves.toBe(true);
+    await expect(reviewStore.createReviewCardRequest(request)).resolves.toBe(false);
+    await expect(
+      reviewStore.markReviewCardGenerating({
+        expectedStateRevision: 1,
+        leaseExpiresAt: '2026-09-12T01:01:00.000Z',
+        learningProfileId: fixture.learningProfileId,
+        requestId,
+        updatedAt: createdAt,
+      }),
+    ).resolves.toBe(true);
+    const card = {
+      candidate: {
+        explanationSteps: ['先算 8 × 5 = 40，再加 2 得到 42。'],
+        expectedAnswer: '42',
+        gradingRule: { expected: '42', kind: 'numeric' as const },
+        keyChanges: ['改成两步乘加运算'],
+        methodHint: '先乘后加。',
+        orientationHint: '注意运算顺序。',
+        question: '8 × 5 + 2 = ?',
+      },
+      capabilityVersionId,
+      checks: [{ detail: '通过', kind: 'schema' as const, passed: true }],
+      createdAt,
+      familySpaceId: fixture.familySpaceId,
+      id: randomUUID(),
+      learningProfileId: fixture.learningProfileId,
+      requestId,
+      schedule: {
+        dueAt: '2026-09-12T02:00:00.000Z',
+        intervalDays: 1 as const,
+        pendingCorrection: true,
+        stepIndex: 0 as const,
+      },
+      source,
+      status: 'active' as const,
+      version: 1,
+    };
+    const modelRuns = [
+      {
+        attempt: 1,
+        authorizationDecisionId: authorizationDecision.decisionId,
+        capabilityVersionId,
+        externalTraceId: 'trace-1',
+        finishedAt: createdAt,
+        inputTokens: 100,
+        observedProvider: reviewCapability.provider.id,
+        outputTokens: 100,
+        succeeded: true,
+      },
+    ];
+    await expect(
+      reviewStore.completeReviewCardRequest({
+        card,
+        expectedStateRevision: 2,
+        modelRuns,
+        requestId,
+      }),
+    ).resolves.toBe('completed');
+    const session = {
+      cardIds: [card.id],
+      createdAt: '2026-09-12T02:01:00.000Z',
+      id: randomUUID(),
+      learningProfileId: fixture.learningProfileId,
+    };
+    await expect(reviewStore.createShortReviewSession(session)).resolves.toBe(true);
+    const attempt = {
+      cardId: card.id,
+      createdAt: '2026-09-12T02:02:00.000Z',
+      hintLevel: 0 as const,
+      id: randomUUID(),
+      idempotencyKey: 'review-attempt-1',
+      outcome: 'correct' as const,
+      perceivedDifficulty: 'hard' as const,
+      responseText: '42',
+      scheduleAfter: {
+        dueAt: '2026-09-15T02:02:00.000Z',
+        intervalDays: 3 as const,
+        pendingCorrection: false,
+        stepIndex: 1 as const,
+      },
+      scheduleBefore: card.schedule,
+      sessionId: session.id,
+    };
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt,
+        expectedSchedule: card.schedule,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt,
+        expectedSchedule: card.schedule,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(true);
+
+    await fixture.progress.reviseReason({
+      action: 'confirm',
+      actor: { id: fixture.guardianId, type: 'guardian' },
+      category: captured.reasonCandidate.category,
+      expectedStateRevision: captured.stateRevision,
+      explanation: captured.reasonCandidate.explanation,
+      learningProfileId: fixture.learningProfileId,
+      reason: '监护人确认原归因。',
+      wrongItemId: captured.id,
+    });
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt,
+        expectedSchedule: card.schedule,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt: {
+          ...attempt,
+          createdAt: '2026-09-15T02:03:00.000Z',
+          id: randomUUID(),
+          idempotencyKey: 'review-attempt-after-source-change',
+          scheduleAfter: {
+            dueAt: '2026-09-22T02:03:00.000Z',
+            intervalDays: 7,
+            pendingCorrection: false,
+            stepIndex: 2,
+          },
+          scheduleBefore: attempt.scheduleAfter,
+        },
+        expectedSchedule: attempt.scheduleAfter,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(false);
+
+    const evidence = await pool.query(
+      `SELECT
+         (SELECT count(*)::integer FROM learning.review_cards WHERE id = $1) AS card_count,
+         (SELECT count(*)::integer FROM learning.review_card_attempts WHERE card_id = $1) AS attempt_count,
+         (SELECT count(*)::integer FROM learning.domain_outbox
+            WHERE aggregate_id = $1 AND event_type = 'review_card.published') AS publication_events,
+         (SELECT count(*)::integer FROM learning.derived_artifacts
+            WHERE artifact_kind = 'review_card' AND artifact_id = $1::text) AS lineage_count`,
+      [card.id],
+    );
+    expect(evidence.rows[0]).toEqual({
+      attempt_count: 1,
+      card_count: 1,
+      lineage_count: 1,
+      publication_events: 1,
+    });
+    await expect(reviewStore.findReviewCardById(card.id, randomUUID())).resolves.toBeNull();
+  });
+
   it('persists one traceable wrong item, revisions, correction, audit, and lineage', async () => {
     if (!pool) return;
     const fixture = await createFixture();

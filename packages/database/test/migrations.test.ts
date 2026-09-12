@@ -95,6 +95,7 @@ describe('database migration interface', () => {
       '0016',
       '0017',
       '0018',
+      '0019',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -238,9 +239,10 @@ describe('database migration interface', () => {
         '0016',
         '0017',
         '0018',
+        '0019',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(13);
+    expect(database.executedMigrationSql).toHaveLength(14);
   });
 });

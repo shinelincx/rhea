@@ -11,7 +11,7 @@ import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
-import type { LearningProgressService } from '@rhea/learning-progress';
+import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
 import type { SubmissionService } from '@rhea/submission';
 
 import { AppModule } from './app.module.js';
@@ -29,7 +29,8 @@ import type { SubmissionScheduler } from './submission/submission.provider.js';
 import { createLocalGeneratedLearning } from './generated-learning/create-local-generated-learning.js';
 import type { GeneratedLearningScheduler } from './generated-learning/generated-learning.provider.js';
 import type { SuggestedAssessmentScheduler } from './assessment/assessment.provider.js';
-import { createLocalLearningProgress } from './learning-progress/create-local-learning-progress.js';
+import { createLocalLearningProgressBundle } from './learning-progress/create-local-learning-progress.js';
+import type { ReviewCardScheduler } from './learning-progress/learning-progress.provider.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
@@ -44,6 +45,8 @@ export interface CreateAppOptions {
   jobClient?: JobClient;
   learningContentService?: LearningContentService;
   learningProgressService?: LearningProgressService;
+  reviewCardScheduler?: ReviewCardScheduler;
+  reviewCardService?: ReviewCardService;
   professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
@@ -79,13 +82,27 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const learningContent = options.learningContentService ?? createLocalLearningContent();
   const assessment =
     options.assessmentService ?? createLocalAssessment(learningContent, submissions);
-  const learningProgress =
-    options.learningProgressService ?? createLocalLearningProgress(assessment, learningContent);
   const consentReader =
     options.generatedLearningConsentReader ??
     (isConsentPublicationReader(familyAccess)
       ? familyAccess
       : { getAiProcessingConsentSnapshotForPublication: async () => null });
+  const localLearningProgress = createLocalLearningProgressBundle(
+    assessment,
+    learningContent,
+    consentReader,
+  );
+  const learningProgress = options.learningProgressService ?? localLearningProgress.service;
+  const reviewCards = options.reviewCardService ?? localLearningProgress.reviewCardService;
+  const reviewCardScheduler: ReviewCardScheduler = options.reviewCardScheduler ?? {
+    async schedule(request) {
+      setTimeout(() => {
+        void reviewCards
+          .processRequest({ learningProfileId: request.learningProfileId, requestId: request.id })
+          .catch(() => undefined);
+      }, 0);
+    },
+  };
   const suggestedAssessment =
     options.suggestedAssessmentService ??
     createLocalSuggestedAssessment(learningContent, submissions, consentReader);
@@ -121,6 +138,9 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
       learningProgress,
+      reviewCards,
+      reviewCardScheduler,
+      consentReader,
       submissions,
       options.submissionScheduler ?? localSubmission.scheduler,
       options.generatedLearningService ?? generatedLearning.service,

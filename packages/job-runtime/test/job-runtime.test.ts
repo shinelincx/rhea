@@ -7,6 +7,7 @@ describe('Background job runtime interface', () => {
     expect(isJobKind('system.probe')).toBe(true);
     expect(isJobKind('generated-learning.generate')).toBe(true);
     expect(isJobKind('open-assessment.generate')).toBe(true);
+    expect(isJobKind('review-card.generate')).toBe(true);
     expect(isJobKind('generated-learning.unknown')).toBe(false);
   });
 
@@ -16,6 +17,10 @@ describe('Background job runtime interface', () => {
       backoff: { delayMs: 65_000, strategy: 'fixed' },
     });
     expect(getJobRetryPolicy('open-assessment.generate')).toEqual({
+      attempts: 4,
+      backoff: { delayMs: 65_000, strategy: 'fixed' },
+    });
+    expect(getJobRetryPolicy('review-card.generate')).toEqual({
       attempts: 4,
       backoff: { delayMs: 65_000, strategy: 'fixed' },
     });

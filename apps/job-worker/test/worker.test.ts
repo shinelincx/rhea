@@ -45,6 +45,20 @@ describe('role worker interface', () => {
     );
   });
 
+  it('routes review-card generation only through the AI worker handler', async () => {
+    const reviewCardHandler = vi.fn(async () => ({ requestId: 'review-1' }));
+    const handler = createRoleJobHandler('ai', { reviewCardHandler });
+    const input = {
+      kind: 'review-card.generate' as const,
+      payload: { learningProfileId: 'profile-1', requestId: 'review-1' },
+    };
+    await expect(handler(input)).resolves.toEqual({ requestId: 'review-1' });
+    expect(reviewCardHandler).toHaveBeenCalledWith(input);
+    await expect(createRoleJobHandler('domain', { reviewCardHandler })(input)).rejects.toThrow(
+      'JOB_KIND_NOT_ALLOWED_FOR_ROLE',
+    );
+  });
+
   it.each(['domain', 'safety'] as const)(
     'rejects generated-learning jobs in the %s worker without invoking a handler',
     async (role) => {

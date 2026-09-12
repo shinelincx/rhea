@@ -11,6 +11,7 @@ import { createConfiguredSubmission } from './submission/create-configured-submi
 import { createQueuedGeneratedLearningScheduler } from './generated-learning/create-queued-generated-learning-scheduler.js';
 import { createConfiguredGeneratedLearning } from './generated-learning/create-configured-generated-learning.js';
 import { createConfiguredLearningProgress } from './learning-progress/create-configured-learning-progress.js';
+import { createQueuedReviewCardScheduler } from './learning-progress/create-queued-review-card-scheduler.js';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -33,6 +34,7 @@ const configuredLearningProgress = createConfiguredLearningProgress(
   process.env,
   configuredAssessment.service,
   configuredLearningContent.service,
+  configuredFamilyAccess.familyAccess,
 );
 const aiJobClient = createConfiguredAiJobClient(process.env);
 const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<void> };
@@ -47,6 +49,8 @@ const app = await createApp({
   jobClient: createConfiguredJobClient(process.env),
   learningContentService: configuredLearningContent.service,
   learningProgressService: configuredLearningProgress.service,
+  reviewCardScheduler: createQueuedReviewCardScheduler(aiJobClient),
+  reviewCardService: configuredLearningProgress.reviewCardService,
   shutdownResources: [
     ...configuredFamilyAccess.shutdownResources,
     ...configuredSubmission.shutdownResources,

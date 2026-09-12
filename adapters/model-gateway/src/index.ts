@@ -9,6 +9,11 @@ import type {
   OpenAssessmentModelResult,
   OpenAssessmentModelTask,
 } from '@rhea/assessment';
+import type {
+  ReviewCardModelGatewayPort,
+  ReviewCardModelResult,
+  ReviewCardModelTask,
+} from '@rhea/learning-progress';
 
 export interface HttpModelGatewayOptions {
   authorizationToken?: string;
@@ -25,7 +30,7 @@ function record(value: unknown): Record<string, unknown> {
 
 async function postStructuredTask(
   options: HttpModelGatewayOptions,
-  task: ModelTask | OpenAssessmentModelTask,
+  task: ModelTask | OpenAssessmentModelTask | ReviewCardModelTask,
 ): Promise<Record<string, unknown>> {
   const response = await fetch(options.url, {
     body: JSON.stringify({ task }),
@@ -70,6 +75,50 @@ export class HttpOpenAssessmentModelGateway implements OpenAssessmentModelGatewa
       candidate: record(value.candidate) as unknown as OpenAssessmentModelResult['candidate'],
     };
   }
+}
+
+export class HttpReviewCardModelGateway implements ReviewCardModelGatewayPort {
+  constructor(private readonly options: HttpModelGatewayOptions) {}
+
+  async runStructured(task: ReviewCardModelTask): Promise<ReviewCardModelResult> {
+    const value = await postStructuredTask(this.options, task);
+    return {
+      ...commonResult(value),
+      candidate: record(value.candidate) as unknown as ReviewCardModelResult['candidate'],
+    };
+  }
+}
+
+export function createConfiguredReviewCardModelGateway(
+  environment: Record<string, string | undefined>,
+): ReviewCardModelGatewayPort {
+  const url = environment.MODEL_GATEWAY_URL?.trim();
+  const token = environment.MODEL_GATEWAY_TOKEN?.trim();
+  const configuredTimeout = environment.MODEL_GATEWAY_TIMEOUT_MS?.trim();
+  const timeoutMs = configuredTimeout ? Number.parseInt(configuredTimeout, 10) : undefined;
+  if (!url) {
+    if (environment.NODE_ENV === 'production') {
+      throw new Error('MODEL_GATEWAY_URL is required for the production AI worker');
+    }
+    return unavailableReviewCardModelGateway;
+  }
+  if (!token && environment.NODE_ENV === 'production') {
+    throw new Error('MODEL_GATEWAY_TOKEN is required for the production AI worker');
+  }
+  if (
+    configuredTimeout &&
+    (!Number.isInteger(timeoutMs) ||
+      timeoutMs === undefined ||
+      timeoutMs < 1 ||
+      timeoutMs > 120_000)
+  ) {
+    throw new Error('MODEL_GATEWAY_TIMEOUT_MS must be an integer between 1 and 120000');
+  }
+  return new HttpReviewCardModelGateway({
+    ...(token ? { authorizationToken: token } : {}),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
+    url,
+  });
 }
 
 export function createConfiguredOpenAssessmentModelGateway(
@@ -137,6 +186,12 @@ export const unavailableModelGateway: ModelGatewayPort = {
 };
 
 export const unavailableOpenAssessmentModelGateway: OpenAssessmentModelGatewayPort = {
+  async runStructured() {
+    throw new Error('MODEL_CAPABILITY_UNAVAILABLE');
+  },
+};
+
+export const unavailableReviewCardModelGateway: ReviewCardModelGatewayPort = {
   async runStructured() {
     throw new Error('MODEL_CAPABILITY_UNAVAILABLE');
   },

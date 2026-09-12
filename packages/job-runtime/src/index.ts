@@ -4,6 +4,7 @@ export const JOB_KINDS = [
   'system.probe',
   'generated-learning.generate',
   'open-assessment.generate',
+  'review-card.generate',
 ] as const;
 
 export type JobKind = (typeof JOB_KINDS)[number];
@@ -26,6 +27,10 @@ const JOB_RETRY_POLICIES: Record<JobKind, JobRetryPolicy> = {
     attempts: 4,
     backoff: { delayMs: 65_000, strategy: 'fixed' },
   },
+  'review-card.generate': {
+    attempts: 4,
+    backoff: { delayMs: 65_000, strategy: 'fixed' },
+  },
   'system.probe': {
     attempts: 3,
     backoff: { delayMs: 250, strategy: 'exponential' },
@@ -42,6 +47,11 @@ export function getJobRetryPolicy(kind: JobKind): JobRetryPolicy {
 }
 
 export type SubmitJobInput =
+  | {
+      deduplicationKey?: string;
+      kind: 'review-card.generate';
+      payload: { learningProfileId: string; requestId: string };
+    }
   | {
       deduplicationKey?: string;
       kind: 'generated-learning.generate';
@@ -84,6 +94,10 @@ export interface JobRuntime extends JobClient {
 }
 
 type StoredJob =
+  | (Omit<ObservableJob, 'kind'> & {
+      kind: 'review-card.generate';
+      payload: { learningProfileId: string; requestId: string };
+    })
   | (Omit<ObservableJob, 'kind'> & {
       kind: 'generated-learning.generate';
       payload: { learningProfileId: string; requestId: string };
@@ -136,7 +150,7 @@ class MemoryJobRuntime implements JobRuntime {
     } as const;
     this.#jobs.set(
       id,
-      input.kind === 'generated-learning.generate'
+      input.kind === 'generated-learning.generate' || input.kind === 'review-card.generate'
         ? { ...job, kind: input.kind, payload: { ...input.payload } }
         : input.kind === 'open-assessment.generate'
           ? { ...job, kind: input.kind, payload: { ...input.payload } }
@@ -164,7 +178,7 @@ class MemoryJobRuntime implements JobRuntime {
     job.status = 'running';
     try {
       job.result = await handler(
-        job.kind === 'generated-learning.generate'
+        job.kind === 'generated-learning.generate' || job.kind === 'review-card.generate'
           ? { kind: job.kind, payload: { ...job.payload } }
           : job.kind === 'open-assessment.generate'
             ? { kind: job.kind, payload: { ...job.payload } }

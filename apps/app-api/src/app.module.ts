@@ -1,11 +1,11 @@
 import type { DynamicModule } from '@nestjs/common';
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
-import type { FamilyAccess } from '@rhea/family-access';
+import type { AiProcessingConsentPublicationReader, FamilyAccess } from '@rhea/family-access';
 import type { JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
-import type { LearningProgressService } from '@rhea/learning-progress';
+import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
@@ -33,8 +33,15 @@ import {
   type LearningContentService,
 } from './learning-content/learning-content.provider.js';
 import { LearningProgressController } from './learning-progress/learning-progress.controller.js';
+import { ReviewCardController } from './learning-progress/review-card.controller.js';
 import { LearningProgressExceptionFilter } from './learning-progress/learning-progress-exception.filter.js';
-import { LEARNING_PROGRESS_SERVICE } from './learning-progress/learning-progress.provider.js';
+import {
+  LEARNING_PROGRESS_SERVICE,
+  REVIEW_CARD_CONSENT_READER,
+  REVIEW_CARD_SCHEDULER,
+  REVIEW_CARD_SERVICE,
+  type ReviewCardScheduler,
+} from './learning-progress/learning-progress.provider.js';
 import { ProbeJobsController } from './jobs/probe-jobs.controller.js';
 import { SubmissionController } from './submission/submission.controller.js';
 import { SubmissionExceptionFilter } from './submission/submission-exception.filter.js';
@@ -65,6 +72,9 @@ export class AppModule {
     professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
     learningProgressService: LearningProgressService,
+    reviewCardService: ReviewCardService,
+    reviewCardScheduler: ReviewCardScheduler,
+    reviewCardConsentReader: AiProcessingConsentPublicationReader,
     submissionService: SubmissionService,
     submissionScheduler: SubmissionScheduler,
     generatedLearningService: GeneratedLearningService,
@@ -80,6 +90,7 @@ export class AppModule {
         HealthController,
         LearningContentController,
         LearningProgressController,
+        ReviewCardController,
         ProbeJobsController,
         ProfessionalReviewController,
         SubmissionController,
@@ -145,6 +156,18 @@ export class AppModule {
         {
           provide: LEARNING_PROGRESS_SERVICE,
           useValue: learningProgressService,
+        },
+        {
+          provide: REVIEW_CARD_SERVICE,
+          useValue: reviewCardService,
+        },
+        {
+          provide: REVIEW_CARD_SCHEDULER,
+          useValue: reviewCardScheduler,
+        },
+        {
+          provide: REVIEW_CARD_CONSENT_READER,
+          useValue: reviewCardConsentReader,
         },
         {
           provide: SUBMISSION_SERVICE,
