@@ -183,14 +183,14 @@ BEGIN
     INSERT INTO learning.domain_outbox (
       id, family_space_id, learning_profile_id, aggregate_type,
       aggregate_id, event_type, payload, occurred_at
-    ) VALUES (
+    )
+    SELECT
       v_transition_id, v_item.family_space_id, v_item.learning_profile_id,
       'wrong_item_theme', v_transition_id,
       CASE recorded_transition.kind WHEN 'reopened' THEN 'wrong_item_theme.reopened'
            ELSE 'wrong_item_theme.cycle_started' END,
       jsonb_build_object('themeId', v_item.theme_id, 'reason', recorded_transition.reason),
       v_occurred_at
-    )
     FROM learning.theme_mastery_transitions recorded_transition
     WHERE recorded_transition.id = v_transition_id;
   END IF;
