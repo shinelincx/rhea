@@ -59,6 +59,14 @@ export interface AiProcessingConsentSnapshot {
   updatedAt: string | null;
 }
 
+export interface ChallengeAuthorizationSnapshot {
+  consentRevision: number;
+  familySpaceId: string;
+  grade: Grade | null;
+  learningProfileId: string;
+  status: ConsentStatus;
+}
+
 export interface Clock {
   readonly now: Date;
 }
@@ -161,4 +169,12 @@ export interface AiProcessingConsentPublicationReader {
     familySpaceId: string;
     learningProfileId: string;
   }): Promise<AiProcessingConsentSnapshot | null>;
+}
+
+/** Internal challenge port: callers must be trusted by the composition root. */
+export interface ChallengeAuthorizationPublicationReader {
+  getChallengeAuthorizationSnapshot(input: {
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<ChallengeAuthorizationSnapshot | null>;
 }

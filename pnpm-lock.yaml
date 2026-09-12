@@ -124,6 +124,31 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/postgres-challenge:
+    dependencies:
+      '@rhea/challenge':
+        specifier: workspace:*
+        version: link:../../modules/challenge
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/postgres-family-access:
     dependencies:
       '@rhea/database':
@@ -399,6 +424,9 @@ importers:
       '@rhea/assessment':
         specifier: workspace:*
         version: link:../../modules/assessment
+      '@rhea/challenge':
+        specifier: workspace:*
+        version: link:../../modules/challenge
       '@rhea/family-access':
         specifier: workspace:*
         version: link:../../modules/family-access
@@ -426,6 +454,9 @@ importers:
       '@rhea/postgres-assessment':
         specifier: workspace:*
         version: link:../../adapters/postgres-assessment
+      '@rhea/postgres-challenge':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-challenge
       '@rhea/postgres-family-access':
         specifier: workspace:*
         version: link:../../adapters/postgres-family-access
@@ -603,6 +634,18 @@ importers:
       '@rhea/quality-control':
         specifier: workspace:*
         version: link:../quality-control
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/challenge:
     devDependencies:
       '@types/node':
         specifier: 24.10.13

@@ -358,6 +358,36 @@ describe('FamilyAccess public interface', () => {
     ).resolves.toMatchObject({ revision: 2, status: 'withdrawn' });
   });
 
+  it('provides a profile-bound challenge authorization snapshot with guardian grade', async () => {
+    const clock = new MutableClock();
+    const familyAccess = createInMemoryFamilyAccess({ clock });
+    const fixture = await createFamilyFixture('guardian-challenge-gate', clock, familyAccess);
+
+    await expect(
+      familyAccess.getChallengeAuthorizationSnapshot({
+        familySpaceId: fixture.family.id,
+        learningProfileId: fixture.profile.id,
+      }),
+    ).resolves.toMatchObject({ consentRevision: 0, grade: 3, status: 'not_decided' });
+    await familyAccess.reverifyGuardian({
+      accessToken: fixture.guardian.accessToken,
+      identityAssertion: 'guardian-challenge-gate',
+    });
+    await familyAccess.changeConsent({
+      accessToken: fixture.guardian.accessToken,
+      familySpaceId: fixture.family.id,
+      granted: true,
+      kind: 'peer_challenge',
+    });
+
+    await expect(
+      familyAccess.getChallengeAuthorizationSnapshot({
+        familySpaceId: fixture.family.id,
+        learningProfileId: fixture.profile.id,
+      }),
+    ).resolves.toMatchObject({ consentRevision: 1, grade: 3, status: 'granted' });
+  });
+
   it('does not reveal profiles from a different family space to a registered device', async () => {
     const clock = new MutableClock();
     const familyAccess = createInMemoryFamilyAccess({ clock });

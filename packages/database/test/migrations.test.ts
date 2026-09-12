@@ -98,6 +98,7 @@ describe('database migration interface', () => {
       '0019',
       '0020',
       '0021',
+      '0022',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -227,6 +228,10 @@ describe('database migration interface', () => {
       /GRANT EXECUTE ON FUNCTION learning\.lock_current_wrong_item/i,
     );
     expect(migrations[20]?.sql).not.toMatch(/GRANT (?:INSERT|UPDATE|DELETE)/i);
+    expect(migrations[21]?.sql).toMatch(/CREATE TABLE learning\.partner_invites/i);
+    expect(migrations[21]?.sql).toMatch(/CREATE TABLE learning\.challenge_attempts/i);
+    expect(migrations[21]?.sql).toMatch(/SECURITY DEFINER/i);
+    expect(migrations[21]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -255,9 +260,10 @@ describe('database migration interface', () => {
         '0019',
         '0020',
         '0021',
+        '0022',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(16);
+    expect(database.executedMigrationSql).toHaveLength(17);
   });
 });

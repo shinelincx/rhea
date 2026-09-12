@@ -7,9 +7,13 @@ import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assess
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
 import type { ReportingService } from '@rhea/reporting';
+import type { ChallengeService } from '@rhea/challenge';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
+import { ChallengeController } from './challenge/challenge.controller.js';
+import { ChallengeExceptionFilter } from './challenge/challenge-exception.filter.js';
+import { CHALLENGE_SERVICE } from './challenge/challenge.provider.js';
 import {
   ASSESSMENT_SERVICE,
   SUGGESTED_ASSESSMENT_SCHEDULER,
@@ -69,6 +73,7 @@ export class AppModule {
     dependencyProbes: DependencyProbe[],
     jobClient: JobClient,
     familyAccess: FamilyAccess,
+    challengeService: ChallengeService,
     assessmentService: AssessmentService,
     suggestedAssessmentService: SuggestedAssessmentService,
     suggestedAssessmentScheduler: SuggestedAssessmentScheduler,
@@ -89,6 +94,7 @@ export class AppModule {
       module: AppModule,
       controllers: [
         AssessmentController,
+        ChallengeController,
         FamilyAccessController,
         GeneratedLearningController,
         HealthController,
@@ -104,6 +110,10 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: AssessmentExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: ChallengeExceptionFilter,
         },
         {
           provide: APP_FILTER,
@@ -148,6 +158,10 @@ export class AppModule {
         {
           provide: FAMILY_ACCESS,
           useValue: familyAccess,
+        },
+        {
+          provide: CHALLENGE_SERVICE,
+          useValue: challengeService,
         },
         {
           provide: DEPENDENCY_PROBES,

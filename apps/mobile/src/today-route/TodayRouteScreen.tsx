@@ -9,6 +9,7 @@ interface TodayRouteScreenProps {
   learningProfileName?: string;
   loadRoute: LoadTodayRoute;
   onStartCapture?: () => void;
+  onStartChallenge?: () => void;
   onStartReview?: () => void;
   onSwitchProfile?: () => void;
 }
@@ -20,6 +21,7 @@ export function TodayRouteScreen({
   learningProfileName,
   loadRoute,
   onStartCapture,
+  onStartChallenge,
   onStartReview,
   onSwitchProfile,
 }: TodayRouteScreenProps) {
@@ -54,7 +56,9 @@ export function TodayRouteScreen({
       item.action === 'start_variation'
     ) {
       onStartReview?.();
+      return;
     }
+    if (item.action === 'start_challenge') onStartChallenge?.();
   }
 
   function canStart(item: TodayRouteItem): boolean {
@@ -72,6 +76,7 @@ export function TodayRouteScreen({
     ) {
       return Boolean(onStartReview);
     }
+    if (item.action === 'start_challenge') return Boolean(onStartChallenge);
     return false;
   }
 
@@ -140,6 +145,18 @@ export function TodayRouteScreen({
                   ]}
                 >
                   <Text style={styles.reviewButtonText}>开始今日短复习</Text>
+                </Pressable>
+              ) : null}
+              {onStartChallenge ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onStartChallenge}
+                  style={({ pressed }) => [
+                    styles.reviewButton,
+                    pressed ? styles.retryButtonPressed : null,
+                  ]}
+                >
+                  <Text style={styles.reviewButtonText}>进入同伴挑战</Text>
                 </Pressable>
               ) : null}
             </View>

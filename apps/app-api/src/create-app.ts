@@ -5,10 +5,12 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import {
   createInMemoryFamilyAccess,
   type AiProcessingConsentPublicationReader,
+  type ChallengeAuthorizationPublicationReader,
   type FamilyAccess,
 } from '@rhea/family-access';
 import { createMemoryJobRuntime, type JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
+import type { ChallengeAuthorizationPort, ChallengeService } from '@rhea/challenge';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
 import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
@@ -32,10 +34,12 @@ import type { GeneratedLearningScheduler } from './generated-learning/generated-
 import type { SuggestedAssessmentScheduler } from './assessment/assessment.provider.js';
 import { createLocalLearningProgressBundle } from './learning-progress/create-local-learning-progress.js';
 import type { ReviewCardScheduler } from './learning-progress/learning-progress.provider.js';
+import { createLocalChallenge } from './challenge/create-local-challenge.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
   assessmentService?: AssessmentService;
+  challengeService?: ChallengeService;
   suggestedAssessmentService?: SuggestedAssessmentService;
   suggestedAssessmentScheduler?: SuggestedAssessmentScheduler;
   dependencyProbes?: DependencyProbe[];
@@ -59,6 +63,16 @@ function isConsentPublicationReader(
   value: FamilyAccess,
 ): value is FamilyAccess & AiProcessingConsentPublicationReader {
   return 'getAiProcessingConsentSnapshotForPublication' in value;
+}
+
+function challengeAuthorization(value: FamilyAccess): ChallengeAuthorizationPort {
+  const reader = value as FamilyAccess & Partial<ChallengeAuthorizationPublicationReader>;
+  return {
+    async getChallengeAuthorization(actor) {
+      if (!reader.getChallengeAuthorizationSnapshot) return null;
+      return reader.getChallengeAuthorizationSnapshot(actor);
+    },
+  };
 }
 
 const LOCAL_WEB_ORIGINS = ['http://127.0.0.1:8081', 'http://localhost:8081'];
@@ -122,6 +136,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const generatedLearning = createLocalGeneratedLearning(learningContent, consentReader);
   const reporting =
     options.reportingService ?? new ReportingService({ store: new MemoryReportingStore() });
+  const challenge =
+    options.challengeService ?? createLocalChallenge(challengeAuthorization(familyAccess));
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
   adapter
     .getInstance()
@@ -136,6 +152,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       dependencyProbes,
       jobClient,
       familyAccess,
+      challenge,
       assessment,
       suggestedAssessment,
       suggestedAssessmentScheduler,

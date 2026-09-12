@@ -8,6 +8,8 @@ import type {
   Actor,
   AiProcessingConsentPublicationReader,
   AiProcessingConsentSnapshot,
+  ChallengeAuthorizationPublicationReader,
+  ChallengeAuthorizationSnapshot,
   Capability,
   Clock,
   ConsentHistoryEntry,
@@ -80,7 +82,12 @@ function checkedPin(pin: string): string {
   return pin;
 }
 
-export class FamilyAccessService implements FamilyAccess, AiProcessingConsentPublicationReader {
+export class FamilyAccessService
+  implements
+    FamilyAccess,
+    AiProcessingConsentPublicationReader,
+    ChallengeAuthorizationPublicationReader
+{
   readonly #clock: Clock;
   readonly #identityProvider: IdentityProviderPort;
   readonly #pinHasher: PinHasher;
@@ -188,6 +195,25 @@ export class FamilyAccessService implements FamilyAccess, AiProcessingConsentPub
       statementVersion: consent?.statementVersion ?? statement.statementVersion,
       status: consent?.status ?? 'not_decided',
       updatedAt: consent?.updatedAt.toISOString() ?? null,
+    };
+  }
+
+  async getChallengeAuthorizationSnapshot(input: {
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<ChallengeAuthorizationSnapshot | null> {
+    const profile = await this.#store.findLearningProfile(
+      input.learningProfileId,
+      input.familySpaceId,
+    );
+    if (!profile) return null;
+    const consent = await this.#store.findConsent(input.familySpaceId, 'peer_challenge');
+    return {
+      consentRevision: consent?.revision ?? 0,
+      familySpaceId: input.familySpaceId,
+      grade: profile.grade,
+      learningProfileId: profile.id,
+      status: consent?.status ?? 'not_decided',
     };
   }
 

@@ -20,6 +20,8 @@ export type {
   Actor,
   AiProcessingConsentPublicationReader,
   AiProcessingConsentSnapshot,
+  ChallengeAuthorizationPublicationReader,
+  ChallengeAuthorizationSnapshot,
   Capability,
   ConsentHistoryEntry,
   ConsentKind,

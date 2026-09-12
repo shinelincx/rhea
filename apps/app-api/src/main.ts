@@ -13,6 +13,8 @@ import { createConfiguredGeneratedLearning } from './generated-learning/create-c
 import { createConfiguredLearningProgress } from './learning-progress/create-configured-learning-progress.js';
 import { createQueuedReviewCardScheduler } from './learning-progress/create-queued-review-card-scheduler.js';
 import { createConfiguredReporting } from './reporting/create-configured-reporting.js';
+import type { ChallengeAuthorizationPort } from '@rhea/challenge';
+import { createConfiguredChallenge } from './challenge/create-configured-challenge.js';
 
 const port = Number.parseInt(process.env.PORT ?? '3000', 10);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -39,9 +41,15 @@ const configuredLearningProgress = createConfiguredLearningProgress(
 );
 const aiJobClient = createConfiguredAiJobClient(process.env);
 const configuredReporting = createConfiguredReporting(process.env);
+const challengeAuthorization: ChallengeAuthorizationPort = {
+  getChallengeAuthorization: (actor) =>
+    configuredFamilyAccess.familyAccess.getChallengeAuthorizationSnapshot(actor),
+};
+const configuredChallenge = createConfiguredChallenge(process.env, challengeAuthorization);
 const closeableAiJobClient = aiJobClient as unknown as { close?: () => Promise<void> };
 const app = await createApp({
   assessmentService: configuredAssessment.service,
+  challengeService: configuredChallenge.service,
   suggestedAssessmentService: configuredAssessment.suggestedService,
   suggestedAssessmentScheduler: createQueuedSuggestedAssessmentScheduler(aiJobClient),
   familyAccess: configuredFamilyAccess.familyAccess,
@@ -62,6 +70,7 @@ const app = await createApp({
     ...configuredGeneratedLearning.shutdownResources,
     ...configuredLearningProgress.shutdownResources,
     ...configuredReporting.shutdownResources,
+    ...configuredChallenge.shutdownResources,
     ...(typeof closeableAiJobClient.close === 'function'
       ? [{ close: () => closeableAiJobClient.close!() }]
       : []),
