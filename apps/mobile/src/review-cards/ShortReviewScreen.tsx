@@ -287,8 +287,15 @@ export function ShortReviewScreen({
                 </>
               ) : (
                 <View accessibilityLiveRegion="polite" style={styles.feedbackBox}>
+                  {feedback.feedback.currentState === 'theme_mastered' ? (
+                    <Text style={styles.masteryBadge}>已掌握 · 已归档</Text>
+                  ) : null}
                   <Text accessibilityRole="header" style={styles.feedbackTitle}>
-                    {feedback.feedback.outcome === 'correct' ? '本次回答正确' : '这次还需要订正'}
+                    {feedback.feedback.currentState === 'theme_mastered'
+                      ? '这个主题已掌握'
+                      : feedback.feedback.outcome === 'correct'
+                        ? '本次回答正确'
+                        : '这次还需要订正'}
                   </Text>
                   <Text style={styles.feedbackLine}>参考答案：{feedback.feedback.answer}</Text>
                   {feedback.feedback.explanationSteps.map((step, stepIndex) => (
@@ -434,6 +441,18 @@ const styles = StyleSheet.create({
   knowledgePoint: { color: colors.mutedForeground, fontSize: 15, fontWeight: '600' },
   label: { color: colors.foreground, fontSize: 16, fontWeight: '700', lineHeight: 24 },
   metaRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  masteryBadge: {
+    alignSelf: 'flex-start',
+    borderColor: colors.primary,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+    overflow: 'hidden',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
   mutedText: { color: colors.mutedForeground, fontSize: 16, lineHeight: 24 },
   originalBox: {
     backgroundColor: colors.background,

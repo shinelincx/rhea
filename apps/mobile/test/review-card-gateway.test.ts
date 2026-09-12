@@ -79,7 +79,7 @@ describe('review-card gateway', () => {
               },
               feedback: {
                 answer: '42',
-                currentState: 'scheduled',
+                currentState: 'theme_mastered',
                 evidenceQualification: 'assisted',
                 explanationSteps: ['30 + 12 = 42。'],
                 hintImpact: '记录为辅助复习证据。',
@@ -112,7 +112,9 @@ describe('review-card gateway', () => {
         responseText: '42',
         sessionId: 'session-1',
       }),
-    ).resolves.toMatchObject({ feedback: { evidenceQualification: 'assisted' } });
+    ).resolves.toMatchObject({
+      feedback: { currentState: 'theme_mastered', evidenceQualification: 'assisted' },
+    });
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       body: JSON.stringify({ hintLevel: 1, perceivedDifficulty: 'hard', responseText: '42' }),
       method: 'POST',

@@ -7,6 +7,7 @@ import type {
   StoredReviewCard,
   StoredReviewCardRequest,
 } from './review-card-types.js';
+import type { NewLearningEvidence, WrongItemThemeMasteryView } from './theme-mastery.js';
 
 export type ReviewCardCompletionResult =
   | 'capability_contained'
@@ -48,6 +49,10 @@ export interface ReviewCardStore {
     idempotencyKey: string,
     learningProfileId: string,
   ): Promise<ReviewCardAttempt | null>;
+  findWrongItemThemeMastery(
+    themeId: string,
+    learningProfileId: string,
+  ): Promise<WrongItemThemeMasteryView | null>;
   findShortReviewSession(id: string, learningProfileId: string): Promise<ShortReviewSession | null>;
   invalidateReviewCard(input: {
     expectedStateRevision: number;
@@ -67,6 +72,7 @@ export interface ReviewCardStore {
   }): Promise<boolean>;
   recordReviewAttempt(input: {
     attempt: ReviewCardAttempt;
+    evidence: NewLearningEvidence;
     expectedSchedule: ReviewCardSchedule;
     learningProfileId: string;
   }): Promise<boolean>;

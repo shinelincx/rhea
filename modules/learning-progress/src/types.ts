@@ -3,6 +3,7 @@ import type {
   AssessmentActorReference,
 } from '@rhea/assessment';
 import type { CurrentLearningBasisReference, Subject } from '@rhea/learning-content';
+import type { WrongItemThemeMasteryStatus } from './theme-mastery.js';
 
 export type WrongItemStatus = 'pending_correction' | 'pending_consolidation';
 export type WrongItemClassificationStatus = 'classified' | 'pending';
@@ -87,6 +88,9 @@ export interface WrongItemThemeView {
   id: string;
   itemCount: number;
   knowledgePointName: string | null;
+  masteredAt: string | null;
+  masteryCycle: number;
+  masteryStatus: WrongItemThemeMasteryStatus;
   status: WrongItemClassificationStatus;
   subject: Subject;
   unitName: string | null;
@@ -100,6 +104,7 @@ export interface WrongItemLibraryView {
 export interface WrongItemFilter {
   classificationStatus?: WrongItemClassificationStatus;
   knowledgePointName?: string;
+  masteryStatus?: WrongItemThemeMasteryStatus | 'all';
   subject?: Subject;
   unitName?: string;
 }

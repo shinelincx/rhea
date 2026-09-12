@@ -1,4 +1,6 @@
 import type { LearningProgressStore } from './store.js';
+import { MemoryThemeMasteryRepository } from './theme-mastery-memory.js';
+import { qualifyLearningEvidence } from './theme-mastery.js';
 import type { StoredWrongItem } from './types.js';
 
 function clone<Value>(value: Value): Value {
@@ -7,9 +9,27 @@ function clone<Value>(value: Value): Value {
 
 export class MemoryLearningProgressStore implements LearningProgressStore {
   readonly #items = new Map<string, StoredWrongItem>();
+  readonly mastery: MemoryThemeMasteryRepository;
 
-  async createWrongItem(item: StoredWrongItem): Promise<boolean> {
+  constructor(mastery = new MemoryThemeMasteryRepository()) {
+    this.mastery = mastery;
+  }
+
+  async createWrongItem(
+    item: StoredWrongItem,
+    evidence: Parameters<LearningProgressStore['createWrongItem']>[1],
+  ): Promise<boolean> {
+    const existingTheme = this.mastery.find(item.themeId, item.learningProfileId);
     if (
+      evidence.familySpaceId !== item.familySpaceId ||
+      evidence.learningProfileId !== item.learningProfileId ||
+      evidence.themeId !== item.themeId ||
+      evidence.wrongItemId !== item.id ||
+      evidence.sourceKind !== 'wrong_item_capture' ||
+      evidence.sourceReferenceId !== item.id ||
+      evidence.outcome !== 'incorrect' ||
+      evidence.qualification !== qualifyLearningEvidence(evidence) ||
+      (existingTheme && existingTheme.familySpaceId !== item.familySpaceId) ||
       [...this.#items.values()].some(
         (candidate) =>
           candidate.learningProfileId === item.learningProfileId &&
@@ -19,6 +39,18 @@ export class MemoryLearningProgressStore implements LearningProgressStore {
       return false;
     }
     this.#items.set(item.id, clone(item));
+    this.mastery.registerTheme({
+      familySpaceId: item.familySpaceId,
+      learningProfileId: item.learningProfileId,
+      occurredAt: item.firstIncorrectAt,
+      reason: 'new_error',
+      themeId: item.themeId,
+      triggerKey: `wrong-item:${item.id}`,
+    });
+    if (!this.mastery.recordEvidence(evidence)) {
+      this.#items.delete(item.id);
+      return false;
+    }
     return true;
   }
 
@@ -45,6 +77,16 @@ export class MemoryLearningProgressStore implements LearningProgressStore {
       .map(clone);
   }
 
+  async findWrongItemThemeMastery(themeId: string, learningProfileId: string) {
+    return this.mastery.find(themeId, learningProfileId);
+  }
+
+  async reopenWrongItemThemeForInvalidSource(
+    input: Parameters<LearningProgressStore['reopenWrongItemThemeForInvalidSource']>[0],
+  ): Promise<boolean> {
+    return this.mastery.reopenForInvalidSource(input) !== null;
+  }
+
   async recordAccess(): Promise<void> {}
 
   async recordCorrection(
@@ -65,6 +107,7 @@ export class MemoryLearningProgressStore implements LearningProgressStore {
     ) {
       return true;
     }
+    if (!this.mastery.recordEvidence(input.evidence)) return false;
     item.correctionAttempts.push(clone(input.attempt));
     item.stateRevision += 1;
     item.status = input.status;
@@ -87,6 +130,14 @@ export class MemoryLearningProgressStore implements LearningProgressStore {
     item.stateRevision += 1;
     item.themeId = input.themeId;
     item.updatedAt = input.updatedAt;
+    this.mastery.registerTheme({
+      familySpaceId: item.familySpaceId,
+      learningProfileId: item.learningProfileId,
+      occurredAt: input.updatedAt,
+      reason: 'classification_changed',
+      themeId: input.themeId,
+      triggerKey: `classification:${item.id}:${input.classification.revision}`,
+    });
     return true;
   }
 

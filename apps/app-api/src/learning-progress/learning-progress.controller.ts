@@ -10,6 +10,7 @@ import {
 } from './learning-progress.provider.js';
 import {
   classificationStatus,
+  masteryStatus,
   nullableString,
   optionalString,
   optionalSubject,
@@ -52,6 +53,7 @@ export class LearningProgressController {
     const actor = await this.authorize(authorization, familySpaceId, learningProfileId, 'read');
     const parsedClassificationStatus = classificationStatus(query.classificationStatus);
     const parsedKnowledgePointName = optionalString(query.knowledgePointName, '知识点');
+    const parsedMasteryStatus = masteryStatus(query.masteryStatus);
     const parsedSubject = optionalSubject(query.subject);
     const parsedUnitName = optionalString(query.unitName, '学习单元');
     const filter = {
@@ -61,6 +63,7 @@ export class LearningProgressController {
       ...(parsedKnowledgePointName === undefined
         ? {}
         : { knowledgePointName: parsedKnowledgePointName }),
+      ...(parsedMasteryStatus === undefined ? {} : { masteryStatus: parsedMasteryStatus }),
       ...(parsedSubject === undefined ? {} : { subject: parsedSubject }),
       ...(parsedUnitName === undefined ? {} : { unitName: parsedUnitName }),
     };
@@ -69,6 +72,23 @@ export class LearningProgressController {
         actor: actorReference(actor),
         filter,
         learningProfileId,
+      }),
+    };
+  }
+
+  @Get('themes/:themeId/mastery')
+  async getThemeMastery(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Param('themeId') themeId: string,
+  ) {
+    const actor = await this.authorize(authorization, familySpaceId, learningProfileId, 'read');
+    return {
+      data: await this.learningProgress.getWrongItemThemeMastery({
+        actor: actorReference(actor),
+        learningProfileId,
+        themeId,
       }),
     };
   }

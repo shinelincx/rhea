@@ -13,6 +13,11 @@ import type {
   ReviewCardQualityControlPort,
 } from './review-card-ports.js';
 import type { ReviewCardStore } from './review-card-store.js';
+import {
+  learningDateInShanghai,
+  qualifyLearningEvidence,
+  type NewLearningEvidence,
+} from './theme-mastery.js';
 import type {
   ReviewAttemptFeedback,
   ReviewCardAgeBand,
@@ -847,9 +852,59 @@ export class ReviewCardService {
       scheduleBefore: structuredClone(current.schedule),
       sessionId: session.id,
     };
+    const hintUsage =
+      attempt.hintLevel === 0 ? 'none' : attempt.hintLevel === 1 ? 'orientation' : 'method';
+    const evidenceInput: NewLearningEvidence = {
+      answerExposure: 'not_exposed',
+      familySpaceId: current.familySpaceId,
+      hintUsage,
+      id: randomUUID(),
+      learningDate: learningDateInShanghai(attempt.createdAt),
+      learningProfileId: current.learningProfileId,
+      occurredAt: attempt.createdAt,
+      outcome: attempt.outcome,
+      qualification: 'incorrect',
+      recordedAt: attempt.createdAt,
+      sourceKind: 'review_card_attempt',
+      sourceReferenceId: attempt.id,
+      sourceVersions: {
+        assessmentVersionId: current.source.assessmentVersionId,
+        basis: {
+          contentHash: current.source.basis.contentHash,
+          selectionVersion: current.source.basis.selectionVersion,
+          sourceVersionId: current.source.basis.sourceVersionId,
+          validityEpoch: current.source.basis.validityEpoch,
+        },
+        capabilityVersionId: current.capabilityVersionId,
+        classificationRevision: current.source.classificationRevision,
+        gradingRuleVersionId: current.source.gradingRuleVersionId,
+        questionContentHash: current.source.originalQuestionContentHash,
+        questionVersionId: current.source.originalQuestionVersionId,
+        responseContentHash: current.source.originalResponseContentHash,
+        responseVersionId: current.source.originalResponseVersionId,
+        reviewCardId: current.id,
+        reviewCardVersion: current.version,
+        wrongItemStateRevision: current.source.wrongItemStateRevision,
+      },
+      themeId: current.source.themeId,
+      variation: {
+        differsFromOriginal:
+          current.candidate.question.trim() !== current.source.originalQuestion.trim(),
+        generationCheckPassed: current.checks.every(({ passed }) => passed),
+        kind: 'ai_checked_rewrite',
+        questionContentHash: hash(current.candidate.question),
+        sourceQuestionContentHash: current.source.originalQuestionContentHash,
+      },
+      wrongItemId: current.source.wrongItemId,
+    };
+    const evidence = {
+      ...evidenceInput,
+      qualification: qualifyLearningEvidence(evidenceInput),
+    };
     if (
       !(await this.#reviewCardStore.recordReviewAttempt({
         attempt,
+        evidence,
         expectedSchedule: current.schedule,
         learningProfileId: input.learningProfileId,
       }))
@@ -865,9 +920,19 @@ export class ReviewCardService {
   ): Promise<ReviewAttemptFeedback> {
     const card = await this.#reviewCardStore.findReviewCardById(attempt.cardId, learningProfileId);
     if (!card) throw new LearningProgressError('REVIEW_CARD_NOT_FOUND', '没有找到这张复习卡');
+    const mastery = await this.#reviewCardStore.findWrongItemThemeMastery(
+      card.source.themeId,
+      learningProfileId,
+    );
+    const themeMastered = attempt.outcome === 'correct' && mastery?.status === 'mastered';
     return {
       answer: card.candidate.expectedAnswer,
-      currentState: attempt.outcome === 'incorrect' ? 'pending_correction' : 'scheduled',
+      currentState:
+        attempt.outcome === 'incorrect'
+          ? 'pending_correction'
+          : themeMastered
+            ? 'theme_mastered'
+            : 'scheduled',
       evidenceQualification:
         attempt.outcome === 'incorrect'
           ? 'correction_required'
@@ -881,8 +946,9 @@ export class ReviewCardService {
           : attempt.hintLevel === 1
             ? '本次使用了定位提示，记录为辅助复习证据。'
             : '本次使用了方法提示，次日重新安排无提示变式。',
-      nextAction:
-        attempt.outcome === 'incorrect'
+      nextAction: themeMastered
+        ? '这个错题主题已掌握并从活跃错题队列归档；后续同主题出错时会自动重开。'
+        : attempt.outcome === 'incorrect'
           ? '先完成订正，再从次日无提示复习重新开始。'
           : attempt.scheduleAfter.intervalDays === 1
             ? '下一次复习安排在明天。'

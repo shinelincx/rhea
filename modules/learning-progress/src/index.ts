@@ -1,6 +1,7 @@
 export { LearningProgressError, type LearningProgressErrorCode } from './error.js';
 export { MemoryLearningProgressStore } from './memory.js';
 export { MemoryReviewCardStore } from './review-card-memory.js';
+export { MemoryThemeMasteryRepository } from './theme-mastery-memory.js';
 export { ReviewCardService, type ReviewCardServiceDependencies } from './review-card-service.js';
 export type {
   ReviewCardModelGatewayPort,
@@ -36,6 +37,25 @@ export type {
 export { conservativeMistakeReasonSuggestionProvider } from './reason-suggestion.js';
 export { LearningProgressService, type LearningProgressServiceDependencies } from './service.js';
 export type { LearningProgressStore } from './store.js';
+export {
+  evaluateWrongItemThemeMastery,
+  learningDateInShanghai,
+  qualifyLearningEvidence,
+  WRONG_ITEM_THEME_MASTERY_POLICY_VERSION,
+} from './theme-mastery.js';
+export type {
+  LearningEvidence,
+  LearningEvidenceHintUsage,
+  LearningEvidenceQualification,
+  LearningEvidenceSourceKind,
+  LearningEvidenceSourceVersions,
+  LearningEvidenceVariation,
+  NewLearningEvidence,
+  WrongItemThemeMasteryDecision,
+  WrongItemThemeMasteryStatus,
+  WrongItemThemeMasteryTransition,
+  WrongItemThemeMasteryView,
+} from './theme-mastery.js';
 export type {
   ImmediateCorrectionAttempt,
   MistakeReasonCandidate,

@@ -14,6 +14,12 @@ import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-li
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 import { PostgresReviewCardStore } from './review-card.js';
+import {
+  findThemeMasteryInTransaction,
+  recordEvidenceInTransaction,
+  registerThemeInTransaction,
+  reopenThemeForInvalidSourceInTransaction,
+} from './theme-mastery.js';
 
 export { PostgresReviewCardStore } from './review-card.js';
 
@@ -73,7 +79,10 @@ function basisLineageVersion(item: StoredWrongItem): string {
 export class PostgresLearningProgressStore implements LearningProgressStore {
   constructor(readonly pool: Pool) {}
 
-  async createWrongItem(item: StoredWrongItem): Promise<boolean> {
+  async createWrongItem(
+    item: StoredWrongItem,
+    evidence: Parameters<LearningProgressStore['createWrongItem']>[1],
+  ): Promise<boolean> {
     return this.#withProfile(item.learningProfileId, async (client) => {
       await this.#setFamily(client, item.familySpaceId);
       const result = await client.query<{ created: boolean }>(
@@ -81,6 +90,19 @@ export class PostgresLearningProgressStore implements LearningProgressStore {
         [JSON.stringify({ ...item, eventId: randomUUID() })],
       );
       if (result.rows[0]?.created !== true) return false;
+      if (
+        !(await registerThemeInTransaction(client, {
+          learningProfileId: item.learningProfileId,
+          occurredAt: item.firstIncorrectAt,
+          reason: 'new_error',
+          themeId: item.themeId,
+          triggerKey: `wrong-item:${item.id}`,
+          wrongItemId: item.id,
+        })) ||
+        !(await recordEvidenceInTransaction(client, evidence))
+      ) {
+        throw new Error('Wrong item learning evidence was rejected');
+      }
       await this.#publishLineage(client, item, null, item.createdAt);
       return true;
     });
@@ -107,6 +129,20 @@ export class PostgresLearningProgressStore implements LearningProgressStore {
       for (const row of result.rows) items.push(await this.#hydrate(client, row));
       return items;
     });
+  }
+
+  async findWrongItemThemeMastery(themeId: string, learningProfileId: string) {
+    return this.#withProfile(learningProfileId, (client) =>
+      findThemeMasteryInTransaction(client, themeId, learningProfileId),
+    );
+  }
+
+  async reopenWrongItemThemeForInvalidSource(
+    input: Parameters<LearningProgressStore['reopenWrongItemThemeForInvalidSource']>[0],
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, (client) =>
+      reopenThemeForInvalidSourceInTransaction(client, input),
+    );
   }
 
   async recordAccess(input: Parameters<LearningProgressStore['recordAccess']>[0]): Promise<void> {
@@ -137,6 +173,9 @@ export class PostgresLearningProgressStore implements LearningProgressStore {
         [JSON.stringify(input)],
       );
       if (result.rows[0]?.recorded !== true) return false;
+      if (!(await recordEvidenceInTransaction(client, input.evidence))) {
+        throw new Error('Immediate-correction learning evidence was rejected');
+      }
       await this.#publishLineage(
         client,
         { ...item, stateRevision: input.expectedStateRevision + 1 },
@@ -156,6 +195,18 @@ export class PostgresLearningProgressStore implements LearningProgressStore {
         [JSON.stringify({ ...input, eventId: randomUUID() })],
       );
       if (result.rows[0]?.revised !== true) return false;
+      if (
+        !(await registerThemeInTransaction(client, {
+          learningProfileId: item.learningProfileId,
+          occurredAt: input.updatedAt,
+          reason: 'classification_changed',
+          themeId: input.themeId,
+          triggerKey: `classification:${item.id}:${input.classification.revision}`,
+          wrongItemId: item.id,
+        }))
+      ) {
+        throw new Error('Reclassified wrong-item theme was rejected');
+      }
       await this.#publishLineage(
         client,
         { ...item, stateRevision: input.expectedStateRevision + 1 },

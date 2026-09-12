@@ -22,7 +22,7 @@ export function createLocalLearningProgressBundle(
   consentReader: AiProcessingConsentPublicationReader,
 ) {
   const wrongItemStore = new MemoryLearningProgressStore();
-  const reviewCardStore = new MemoryReviewCardStore();
+  const reviewCardStore = new MemoryReviewCardStore(wrongItemStore.mastery);
   const service = new LearningProgressService({
     assessmentReader: assessment,
     learningContextReader: learningContent,

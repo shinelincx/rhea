@@ -11,6 +11,13 @@ import type {
 } from './ports.js';
 import { conservativeMistakeReasonSuggestionProvider } from './reason-suggestion.js';
 import type { LearningProgressStore } from './store.js';
+import {
+  learningDateInShanghai,
+  qualifyLearningEvidence,
+  type LearningEvidenceSourceVersions,
+  type NewLearningEvidence,
+  type WrongItemThemeMasteryView,
+} from './theme-mastery.js';
 import type {
   MistakeReasonCandidate,
   MistakeReasonCategory,
@@ -60,6 +67,35 @@ function optionalText(value: string | null | undefined, label: string, maximum =
 
 function digest(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function evidenceSourceVersions(
+  item: StoredWrongItem,
+  wrongItemStateRevision: number,
+): LearningEvidenceSourceVersions {
+  return {
+    assessmentVersionId: item.assessment.assessmentVersionId,
+    basis: {
+      contentHash: item.assessment.basis.contentHash,
+      selectionVersion: item.assessment.basis.selectionVersion,
+      sourceVersionId: item.assessment.basis.sourceVersionId,
+      validityEpoch: item.assessment.basis.validityEpoch,
+    },
+    capabilityVersionId: null,
+    classificationRevision: item.classification.revision,
+    gradingRuleVersionId: item.assessment.correctBasis.gradingRuleVersionId,
+    questionContentHash: item.assessment.question.contentHash,
+    questionVersionId: item.assessment.question.versionId,
+    responseContentHash: item.assessment.response.contentHash,
+    responseVersionId: item.assessment.response.versionId,
+    reviewCardId: null,
+    reviewCardVersion: null,
+    wrongItemStateRevision,
+  };
+}
+
+function checkedEvidence(evidence: NewLearningEvidence): NewLearningEvidence {
+  return { ...evidence, qualification: qualifyLearningEvidence(evidence) };
 }
 
 function themeId(classification: WrongItemClassification, fallbackId: string): string {
@@ -236,7 +272,31 @@ export class LearningProgressService {
       themeId: themeId(classification, id),
       updatedAt: now,
     };
-    if (!(await this.#store.createWrongItem(item))) {
+    const captureEvidence = checkedEvidence({
+      answerExposure: 'not_exposed',
+      familySpaceId: item.familySpaceId,
+      hintUsage: 'none',
+      id: randomUUID(),
+      learningDate: learningDateInShanghai(item.firstIncorrectAt),
+      learningProfileId: item.learningProfileId,
+      occurredAt: item.firstIncorrectAt,
+      outcome: 'incorrect',
+      qualification: 'incorrect',
+      recordedAt: now,
+      sourceKind: 'wrong_item_capture',
+      sourceReferenceId: item.id,
+      sourceVersions: evidenceSourceVersions(item, item.stateRevision),
+      themeId: item.themeId,
+      variation: {
+        differsFromOriginal: false,
+        generationCheckPassed: false,
+        kind: 'original',
+        questionContentHash: item.assessment.question.contentHash,
+        sourceQuestionContentHash: item.assessment.question.contentHash,
+      },
+      wrongItemId: item.id,
+    });
+    if (!(await this.#store.createWrongItem(item, captureEvidence))) {
       const concurrent = await this.#store.findByDeduplicationKey(
         deduplicationKey,
         assessment.learningProfileId,
@@ -287,15 +347,29 @@ export class LearningProgressService {
       }
     }
     const filter = input.filter;
-    const items = eligible.filter(
-      (item) =>
+    const masteryByTheme = new Map<string, WrongItemThemeMasteryView>();
+    for (const item of eligible) {
+      if (masteryByTheme.has(item.themeId)) continue;
+      const mastery = await this.#store.findWrongItemThemeMastery(
+        item.themeId,
+        item.learningProfileId,
+      );
+      if (mastery) masteryByTheme.set(item.themeId, mastery);
+    }
+    const requestedMasteryStatus = filter?.masteryStatus ?? 'active';
+    const items = eligible.filter((item) => {
+      const mastery = masteryByTheme.get(item.themeId);
+      return (
+        (requestedMasteryStatus === 'all' ||
+          (mastery?.status ?? 'active') === requestedMasteryStatus) &&
         (!filter?.classificationStatus ||
           item.classification.status === filter.classificationStatus) &&
         (!filter?.subject || item.classification.subject === filter.subject) &&
         (!filter?.unitName || item.classification.unitName === filter.unitName) &&
         (!filter?.knowledgePointName ||
-          item.classification.knowledgePointNames.includes(filter.knowledgePointName)),
-    );
+          item.classification.knowledgePointNames.includes(filter.knowledgePointName))
+      );
+    });
     await Promise.all(
       items.map((item) =>
         this.#store.recordAccess({
@@ -310,6 +384,7 @@ export class LearningProgressService {
     const themes = new Map<string, WrongItemThemeView>();
     for (const item of items) {
       const current = themes.get(item.themeId);
+      const mastery = masteryByTheme.get(item.themeId);
       const candidate: WrongItemThemeView = {
         firstIncorrectAt:
           current && current.firstIncorrectAt < item.firstIncorrectAt
@@ -318,6 +393,9 @@ export class LearningProgressService {
         id: item.themeId,
         itemCount: (current?.itemCount ?? 0) + 1,
         knowledgePointName: item.classification.primaryKnowledgePointName,
+        masteredAt: mastery?.masteredAt ?? null,
+        masteryCycle: mastery?.cycle ?? 1,
+        masteryStatus: mastery?.status ?? 'active',
         status: item.classification.status,
         subject: item.classification.subject,
         unitName: item.classification.unitName,
@@ -330,6 +408,18 @@ export class LearningProgressService {
         a.firstIncorrectAt.localeCompare(b.firstIncorrectAt),
       ),
     };
+  }
+
+  async getWrongItemThemeMastery(input: {
+    actor: AssessmentActorReference;
+    learningProfileId: string;
+    themeId: string;
+  }): Promise<WrongItemThemeMasteryView> {
+    const learningProfileId = requiredText(input.learningProfileId, '学习档案', 200);
+    const themeId = requiredText(input.themeId, '错题主题', 200);
+    const mastery = await this.#store.findWrongItemThemeMastery(themeId, learningProfileId);
+    if (!mastery) throw new LearningProgressError('WRONG_ITEM_NOT_FOUND', '没有找到这个错题主题');
+    return mastery;
   }
 
   async reviseReason(input: {
@@ -470,9 +560,34 @@ export class LearningProgressService {
     };
     const status =
       evaluation.outcome === 'correct' ? 'pending_consolidation' : 'pending_correction';
+    const evidence = checkedEvidence({
+      answerExposure: 'complete_answer_exposed_before_attempt',
+      familySpaceId: item.familySpaceId,
+      hintUsage: 'full_answer',
+      id: randomUUID(),
+      learningDate: learningDateInShanghai(createdAt),
+      learningProfileId: item.learningProfileId,
+      occurredAt: createdAt,
+      outcome: evaluation.outcome,
+      qualification: evaluation.outcome === 'correct' ? 'assisted_success' : 'incorrect',
+      recordedAt: createdAt,
+      sourceKind: 'immediate_correction',
+      sourceReferenceId: attempt.id,
+      sourceVersions: evidenceSourceVersions(item, item.stateRevision),
+      themeId: item.themeId,
+      variation: {
+        differsFromOriginal: false,
+        generationCheckPassed: false,
+        kind: 'original',
+        questionContentHash: item.assessment.question.contentHash,
+        sourceQuestionContentHash: item.assessment.question.contentHash,
+      },
+      wrongItemId: item.id,
+    });
     if (
       !(await this.#store.recordCorrection({
         attempt,
+        evidence,
         expectedStateRevision: input.expectedStateRevision,
         learningProfileId: item.learningProfileId,
         status,

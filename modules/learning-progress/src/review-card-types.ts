@@ -195,7 +195,7 @@ export interface ReviewCardView {
 
 export interface ReviewAttemptFeedback {
   answer: string;
-  currentState: 'pending_correction' | 'scheduled';
+  currentState: 'pending_correction' | 'scheduled' | 'theme_mastered';
   evidenceQualification: 'assisted' | 'correction_required' | 'independent';
   explanationSteps: string[];
   hintImpact: string;

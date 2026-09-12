@@ -15,6 +15,12 @@ import {
 import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-lineage';
 import type { Pool, PoolClient, QueryResultRow } from 'pg';
 
+import {
+  findThemeMasteryInTransaction,
+  recordEvidenceInTransaction,
+  reopenThemeForInvalidSourceInTransaction,
+} from './theme-mastery.js';
+
 interface RequestRow extends QueryResultRow {
   actor: unknown;
   authorization_snapshot: unknown;
@@ -169,9 +175,38 @@ export class PostgresReviewCardStore implements ReviewCardStore, ReviewCardPubli
   async invalidateReviewCard(
     input: Parameters<ReviewCardStore['invalidateReviewCard']>[0],
   ): Promise<boolean> {
-    return this.#booleanMutation(input.learningProfileId, 'invalidate_review_card', 'invalidated', {
-      ...input,
-      eventId: randomUUID(),
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      const request = await client.query<{
+        family_space_id: string;
+        source_snapshot: unknown;
+      }>(
+        `SELECT family_space_id, source_snapshot
+         FROM learning.review_card_requests
+         WHERE learning_profile_id = $1 AND id = $2`,
+        [input.learningProfileId, input.requestId],
+      );
+      const row = request.rows[0];
+      if (!row) return false;
+      await this.#setFamily(client, row.family_space_id);
+      const result = await client.query<{ invalidated: boolean }>(
+        `SELECT learning.invalidate_review_card($1::jsonb) AS invalidated`,
+        [JSON.stringify({ ...input, eventId: randomUUID() })],
+      );
+      if (result.rows[0]?.invalidated !== true) return false;
+      if (input.reason === 'SOURCE_CHANGED') {
+        const source = json<StoredReviewCard['source']>(row.source_snapshot);
+        if (
+          !(await reopenThemeForInvalidSourceInTransaction(client, {
+            learningProfileId: input.learningProfileId,
+            occurredAt: input.updatedAt,
+            themeId: source.themeId,
+            triggerKey: `review-card-request:${input.requestId}:source-invalidated`,
+          }))
+        ) {
+          throw new Error('Invalid review-card source did not reopen its theme');
+        }
+      }
+      return true;
     });
   }
 
@@ -248,6 +283,12 @@ export class PostgresReviewCardStore implements ReviewCardStore, ReviewCardPubli
     });
   }
 
+  async findWrongItemThemeMastery(themeId: string, learningProfileId: string) {
+    return this.#withProfile(learningProfileId, (client) =>
+      findThemeMasteryInTransaction(client, themeId, learningProfileId),
+    );
+  }
+
   async recordReviewAttempt(
     input: Parameters<ReviewCardStore['recordReviewAttempt']>[0],
   ): Promise<boolean> {
@@ -263,7 +304,11 @@ export class PostgresReviewCardStore implements ReviewCardStore, ReviewCardPubli
         `SELECT learning.record_review_card_attempt($1::jsonb) AS recorded`,
         [JSON.stringify({ ...input, eventId: randomUUID() })],
       );
-      return result.rows[0]?.recorded === true;
+      if (result.rows[0]?.recorded !== true) return false;
+      if (!(await recordEvidenceInTransaction(client, input.evidence))) {
+        throw new Error('Review-attempt learning evidence was rejected');
+      }
+      return true;
     });
   }
 

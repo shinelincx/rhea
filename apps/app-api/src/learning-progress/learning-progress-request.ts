@@ -4,10 +4,16 @@ import {
   type MistakeReasonCategory,
   type MistakeReasonRevision,
   type WrongItemClassificationStatus,
+  type WrongItemThemeMasteryStatus,
 } from '@rhea/learning-progress';
 
 const SUBJECTS = new Set<Subject>(['chinese', 'mathematics', 'english', 'science']);
 const CLASSIFICATION_STATUSES = new Set<WrongItemClassificationStatus>(['classified', 'pending']);
+const MASTERY_STATUSES = new Set<WrongItemThemeMasteryStatus | 'all'>([
+  'active',
+  'mastered',
+  'all',
+]);
 const REASON_ACTIONS = new Set<MistakeReasonRevision['action']>([
   'confirm',
   'mark_uncertain',
@@ -71,6 +77,15 @@ export function classificationStatus(value: unknown): WrongItemClassificationSta
   const parsed = stringValue(value, '归类状态') as WrongItemClassificationStatus;
   if (!CLASSIFICATION_STATUSES.has(parsed)) {
     throw new LearningProgressError('CLASSIFICATION_INVALID', '归类状态无效');
+  }
+  return parsed;
+}
+
+export function masteryStatus(value: unknown): WrongItemThemeMasteryStatus | 'all' | undefined {
+  if (value === undefined) return undefined;
+  const parsed = stringValue(value, '掌握状态') as WrongItemThemeMasteryStatus | 'all';
+  if (!MASTERY_STATUSES.has(parsed)) {
+    throw new LearningProgressError('INPUT_INVALID', '掌握状态无效');
   }
   return parsed;
 }

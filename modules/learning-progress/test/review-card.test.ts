@@ -136,7 +136,7 @@ async function fixture(
   let now = new Date('2026-09-11T09:00:00.000Z');
   let publicationGateCalls = 0;
   const wrongItemStore = new MemoryLearningProgressStore();
-  const reviewCardStore = new MemoryReviewCardStore();
+  const reviewCardStore = new MemoryReviewCardStore(wrongItemStore.mastery);
   const contained = { value: false };
   const reader: AcceptedObjectiveAssessmentReader = {
     async evaluateImmediateCorrection(input) {
@@ -216,6 +216,7 @@ async function fixture(
   return {
     contained,
     item: item!,
+    progress,
     service,
     setCurrent(value: AcceptedObjectiveAssessmentSnapshot) {
       current = value;
@@ -478,6 +479,222 @@ describe('ReviewCardService', () => {
       sessionId: thirdSession.id,
     });
     expect(wrong.feedback).toMatchObject({ nextIntervalDays: 1, outcome: 'incorrect' });
+  });
+
+  it('archives a theme only after cross-day independent variation evidence and reopens it on a new error', async () => {
+    const { item, progress, service, setCurrent, setNow } = await fixture();
+    const request = await service.requestReviewCard({
+      actor: learner,
+      ageBand: 'middle_primary',
+      consentRevision: 1,
+      familySpaceId: 'family-1',
+      idempotencyKey: 'mastery-card',
+      learningProfileId: 'profile-1',
+      wrongItemId: item.id,
+    });
+    const ready = await service.processRequest({
+      learningProfileId: 'profile-1',
+      requestId: request.id,
+    });
+    setNow('2026-09-12T10:00:00.000Z');
+    const session = await service.createShortReviewSession({
+      actor: learner,
+      learningProfileId: 'profile-1',
+    });
+    const cardId = ready.card!.id;
+
+    await service.submitAttempt({
+      actor: learner,
+      cardId,
+      hintLevel: 0,
+      idempotencyKey: 'mastery-day-1-a',
+      learningProfileId: 'profile-1',
+      responseText: '42',
+      sessionId: session.id,
+    });
+    await service.submitAttempt({
+      actor: learner,
+      cardId,
+      hintLevel: 0,
+      idempotencyKey: 'mastery-day-1-b',
+      learningProfileId: 'profile-1',
+      responseText: '42',
+      sessionId: session.id,
+    });
+    await expect(
+      progress.getWrongItemThemeMastery({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        themeId: item.themeId,
+      }),
+    ).resolves.toMatchObject({ cycle: 1, status: 'active' });
+
+    setNow('2026-09-13T10:00:00.000Z');
+    const mastered = await service.submitAttempt({
+      actor: learner,
+      cardId,
+      hintLevel: 0,
+      idempotencyKey: 'mastery-day-2',
+      learningProfileId: 'profile-1',
+      perceivedDifficulty: 'hard',
+      responseText: '42',
+      sessionId: session.id,
+    });
+    expect(mastered.feedback).toMatchObject({
+      currentState: 'theme_mastered',
+      evidenceQualification: 'independent',
+    });
+    await expect(
+      progress.listWrongItems({ actor: learner, learningProfileId: 'profile-1' }),
+    ).resolves.toEqual({ items: [], themes: [] });
+    await expect(
+      progress.listWrongItems({
+        actor: learner,
+        filter: { masteryStatus: 'all' },
+        learningProfileId: 'profile-1',
+      }),
+    ).resolves.toMatchObject({
+      items: [{ id: item.id }],
+      themes: [{ masteryStatus: 'mastered' }],
+    });
+    const masteredTheme = await progress.getWrongItemThemeMastery({
+      actor: learner,
+      learningProfileId: 'profile-1',
+      themeId: item.themeId,
+    });
+    expect(masteredTheme).toMatchObject({
+      cycle: 1,
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ sourceKind: 'wrong_item_capture' }),
+        expect.objectContaining({ sourceKind: 'review_card_attempt' }),
+      ]),
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'mastered', reason: 'rule_satisfied' }),
+      ]),
+      status: 'mastered',
+    });
+
+    setNow('2026-09-14T10:00:00.000Z');
+    setCurrent(
+      snapshot({
+        assessmentId: 'assessment-2',
+        assessmentVersionId: 'assessment-version-2',
+        firstIncorrectAt: '2026-09-14T09:00:00.000Z',
+        question: {
+          contentHash: 'e'.repeat(64),
+          subject: 'mathematics',
+          text: '21 + 21 等于多少？',
+          versionId: 'question-version-2',
+        },
+        response: {
+          contentHash: 'f'.repeat(64),
+          text: '41',
+          versionId: 'response-version-2',
+        },
+      }),
+    );
+    const reopenedItem = await progress.captureAcceptedError({
+      actor: learner,
+      assessmentId: 'assessment-2',
+      learningProfileId: 'profile-1',
+    });
+    expect(reopenedItem?.themeId).toBe(item.themeId);
+    const reopened = await progress.getWrongItemThemeMastery({
+      actor: learner,
+      learningProfileId: 'profile-1',
+      themeId: item.themeId,
+    });
+    expect(reopened).toMatchObject({
+      cycle: 2,
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ cycle: 1, id: masteredTheme.evidence[0]!.id }),
+        expect.objectContaining({ cycle: 2, sourceKind: 'wrong_item_capture' }),
+      ]),
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'reopened', reason: 'new_error' }),
+      ]),
+      status: 'active',
+    });
+  });
+
+  it('reopens a mastered theme when the versioned review-card source becomes invalid', async () => {
+    const { item, progress, service, setCurrent, setNow } = await fixture();
+    const request = await service.requestReviewCard({
+      actor: learner,
+      ageBand: 'middle_primary',
+      consentRevision: 1,
+      familySpaceId: 'family-1',
+      idempotencyKey: 'source-invalidation-card',
+      learningProfileId: 'profile-1',
+      wrongItemId: item.id,
+    });
+    const ready = await service.processRequest({
+      learningProfileId: 'profile-1',
+      requestId: request.id,
+    });
+    setNow('2026-09-12T10:00:00.000Z');
+    const session = await service.createShortReviewSession({
+      actor: learner,
+      learningProfileId: 'profile-1',
+    });
+    await service.submitAttempt({
+      actor: learner,
+      cardId: ready.card!.id,
+      hintLevel: 0,
+      idempotencyKey: 'source-day-1',
+      learningProfileId: 'profile-1',
+      responseText: '42',
+      sessionId: session.id,
+    });
+    setNow('2026-09-13T10:00:00.000Z');
+    await service.submitAttempt({
+      actor: learner,
+      cardId: ready.card!.id,
+      hintLevel: 0,
+      idempotencyKey: 'source-day-2',
+      learningProfileId: 'profile-1',
+      responseText: '42',
+      sessionId: session.id,
+    });
+    await expect(
+      progress.getWrongItemThemeMastery({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        themeId: item.themeId,
+      }),
+    ).resolves.toMatchObject({ status: 'mastered' });
+
+    setCurrent(
+      snapshot({
+        question: {
+          contentHash: 'e'.repeat(64),
+          subject: 'mathematics',
+          text: '当前来源已修订',
+          versionId: 'question-version-2',
+        },
+      }),
+    );
+    await expect(
+      service.getRequest({ learningProfileId: 'profile-1', requestId: request.id }),
+    ).resolves.toMatchObject({
+      card: null,
+      rebuildPending: true,
+      status: 'unavailable',
+      unavailableReason: 'SOURCE_CHANGED',
+    });
+    await expect(
+      progress.getWrongItemThemeMastery({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        themeId: item.themeId,
+      }),
+    ).resolves.toMatchObject({
+      cycle: 2,
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'reopened', reason: 'source_invalidated' }),
+      ]),
+      status: 'active',
+    });
   });
 
   it('caps each short review at five due cards without mutating overflow cards', async () => {

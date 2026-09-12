@@ -62,7 +62,7 @@ export interface MobileReviewAttemptResult {
   };
   feedback: {
     answer: string;
-    currentState: 'pending_correction' | 'scheduled';
+    currentState: 'pending_correction' | 'scheduled' | 'theme_mastered';
     evidenceQualification: 'assisted' | 'correction_required' | 'independent';
     explanationSteps: string[];
     hintImpact: string;
@@ -269,7 +269,11 @@ function attemptResult(
     },
     feedback: {
       answer: text(feedback.answer, 500),
-      currentState: oneOf(feedback.currentState, ['pending_correction', 'scheduled'] as const),
+      currentState: oneOf(feedback.currentState, [
+        'pending_correction',
+        'scheduled',
+        'theme_mastered',
+      ] as const),
       evidenceQualification: oneOf(feedback.evidenceQualification, [
         'assisted',
         'correction_required',

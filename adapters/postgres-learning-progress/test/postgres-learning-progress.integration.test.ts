@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { AssessmentService } from '@rhea/assessment';
 import { applyMigrations, loadDefaultMigrations } from '@rhea/database';
 import { LearningContentService } from '@rhea/learning-content';
-import { LearningProgressService } from '@rhea/learning-progress';
+import { LearningProgressService, type NewLearningEvidence } from '@rhea/learning-progress';
 import { PostgresAssessmentStore } from '@rhea/postgres-assessment';
 import { PostgresLearningContentStore } from '@rhea/postgres-learning-content';
 import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
@@ -558,7 +558,10 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
         question: '8 × 5 + 2 = ?',
       },
       capabilityVersionId,
-      checks: [{ detail: '通过', kind: 'schema' as const, passed: true }],
+      checks: [
+        { detail: '结构通过', kind: 'schema' as const, passed: true },
+        { detail: '变式通过', kind: 'rewrite' as const, passed: true },
+      ],
       createdAt,
       familySpaceId: fixture.familySpaceId,
       id: randomUUID(),
@@ -620,9 +623,54 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
       scheduleBefore: card.schedule,
       sessionId: session.id,
     };
+    const learningEvidence: NewLearningEvidence = {
+      answerExposure: 'not_exposed',
+      familySpaceId: fixture.familySpaceId,
+      hintUsage: 'none',
+      id: randomUUID(),
+      learningDate: '2026-09-12',
+      learningProfileId: fixture.learningProfileId,
+      occurredAt: attempt.createdAt,
+      outcome: 'correct',
+      qualification: 'independent_success',
+      recordedAt: attempt.createdAt,
+      sourceKind: 'review_card_attempt',
+      sourceReferenceId: attempt.id,
+      sourceVersions: {
+        assessmentVersionId: source.assessmentVersionId,
+        basis: {
+          contentHash: source.basis.contentHash,
+          selectionVersion: source.basis.selectionVersion,
+          sourceVersionId: source.basis.sourceVersionId,
+          validityEpoch: source.basis.validityEpoch,
+        },
+        capabilityVersionId,
+        classificationRevision: source.classificationRevision,
+        gradingRuleVersionId: source.gradingRuleVersionId,
+        questionContentHash: source.originalQuestionContentHash,
+        questionVersionId: source.originalQuestionVersionId,
+        responseContentHash: source.originalResponseContentHash,
+        responseVersionId: source.originalResponseVersionId,
+        reviewCardId: card.id,
+        reviewCardVersion: card.version,
+        wrongItemStateRevision: source.wrongItemStateRevision,
+      },
+      themeId: source.themeId,
+      variation: {
+        differsFromOriginal: true,
+        generationCheckPassed: true,
+        kind: 'ai_checked_rewrite',
+        questionContentHash: createHash('sha256')
+          .update(JSON.stringify(card.candidate.question))
+          .digest('hex'),
+        sourceQuestionContentHash: source.originalQuestionContentHash,
+      },
+      wrongItemId: captured.id,
+    };
     await expect(
       reviewStore.recordReviewAttempt({
         attempt,
+        evidence: learningEvidence,
         expectedSchedule: card.schedule,
         learningProfileId: fixture.learningProfileId,
       }),
@@ -630,10 +678,97 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
     await expect(
       reviewStore.recordReviewAttempt({
         attempt,
+        evidence: learningEvidence,
         expectedSchedule: card.schedule,
         learningProfileId: fixture.learningProfileId,
       }),
     ).resolves.toBe(true);
+
+    const secondAttempt = {
+      ...attempt,
+      createdAt: '2026-09-15T02:03:00.000Z',
+      id: randomUUID(),
+      idempotencyKey: 'review-attempt-2',
+      scheduleAfter: {
+        dueAt: '2026-09-22T02:03:00.000Z',
+        intervalDays: 7 as const,
+        pendingCorrection: false,
+        stepIndex: 2 as const,
+      },
+      scheduleBefore: attempt.scheduleAfter,
+    };
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt: secondAttempt,
+        evidence: {
+          ...learningEvidence,
+          id: randomUUID(),
+          learningDate: '2026-09-15',
+          occurredAt: secondAttempt.createdAt,
+          recordedAt: secondAttempt.createdAt,
+          sourceReferenceId: secondAttempt.id,
+        },
+        expectedSchedule: attempt.scheduleAfter,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      reviewStore.findWrongItemThemeMastery(source.themeId, fixture.learningProfileId),
+    ).resolves.toMatchObject({
+      cycle: 1,
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ learningDate: '2026-09-12' }),
+        expect.objectContaining({ learningDate: '2026-09-15' }),
+      ]),
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'mastered', reason: 'rule_satisfied' }),
+      ]),
+      status: 'mastered',
+    });
+    const laterIncorrectAttempt = {
+      ...secondAttempt,
+      createdAt: '2026-09-16T02:03:00.000Z',
+      id: randomUUID(),
+      idempotencyKey: 'review-attempt-later-error',
+      outcome: 'incorrect' as const,
+      responseText: '41',
+      scheduleAfter: {
+        dueAt: '2026-09-17T02:03:00.000Z',
+        intervalDays: 1 as const,
+        pendingCorrection: true,
+        stepIndex: 0 as const,
+      },
+      scheduleBefore: secondAttempt.scheduleAfter,
+    };
+    await expect(
+      reviewStore.recordReviewAttempt({
+        attempt: laterIncorrectAttempt,
+        evidence: {
+          ...learningEvidence,
+          id: randomUUID(),
+          learningDate: '2026-09-16',
+          occurredAt: laterIncorrectAttempt.createdAt,
+          outcome: 'incorrect',
+          qualification: 'incorrect',
+          recordedAt: laterIncorrectAttempt.createdAt,
+          sourceReferenceId: laterIncorrectAttempt.id,
+        },
+        expectedSchedule: secondAttempt.scheduleAfter,
+        learningProfileId: fixture.learningProfileId,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      reviewStore.findWrongItemThemeMastery(source.themeId, fixture.learningProfileId),
+    ).resolves.toMatchObject({
+      cycle: 2,
+      evidence: expect.arrayContaining([
+        expect.objectContaining({ cycle: 2, outcome: 'incorrect' }),
+      ]),
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'reopened', reason: 'new_error' }),
+      ]),
+      status: 'active',
+    });
 
     await fixture.progress.reviseReason({
       action: 'confirm',
@@ -648,10 +783,29 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
     await expect(
       reviewStore.recordReviewAttempt({
         attempt,
+        evidence: learningEvidence,
         expectedSchedule: card.schedule,
         learningProfileId: fixture.learningProfileId,
       }),
     ).resolves.toBe(false);
+    await expect(
+      reviewStore.invalidateReviewCard({
+        expectedStateRevision: 3,
+        learningProfileId: fixture.learningProfileId,
+        reason: 'SOURCE_CHANGED',
+        requestId,
+        updatedAt: '2026-09-15T02:04:00.000Z',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      reviewStore.findWrongItemThemeMastery(source.themeId, fixture.learningProfileId),
+    ).resolves.toMatchObject({
+      cycle: 3,
+      history: expect.arrayContaining([
+        expect.objectContaining({ kind: 'reopened', reason: 'source_invalidated' }),
+      ]),
+      status: 'active',
+    });
     await expect(
       reviewStore.recordReviewAttempt({
         attempt: {
@@ -667,6 +821,14 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
           },
           scheduleBefore: attempt.scheduleAfter,
         },
+        evidence: {
+          ...learningEvidence,
+          id: randomUUID(),
+          learningDate: '2026-09-15',
+          occurredAt: '2026-09-15T02:03:00.000Z',
+          recordedAt: '2026-09-15T02:03:00.000Z',
+          sourceReferenceId: 'review-attempt-after-source-change',
+        },
         expectedSchedule: attempt.scheduleAfter,
         learningProfileId: fixture.learningProfileId,
       }),
@@ -676,16 +838,22 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
       `SELECT
          (SELECT count(*)::integer FROM learning.review_cards WHERE id = $1) AS card_count,
          (SELECT count(*)::integer FROM learning.review_card_attempts WHERE card_id = $1) AS attempt_count,
+         (SELECT count(*)::integer FROM learning.learning_evidence
+            WHERE theme_id = $2) AS learning_evidence_count,
+         (SELECT count(*)::integer FROM learning.theme_mastery_transitions
+            WHERE theme_id = $2) AS mastery_transition_count,
          (SELECT count(*)::integer FROM learning.domain_outbox
             WHERE aggregate_id = $1 AND event_type = 'review_card.published') AS publication_events,
          (SELECT count(*)::integer FROM learning.derived_artifacts
             WHERE artifact_kind = 'review_card' AND artifact_id = $1::text) AS lineage_count`,
-      [card.id],
+      [card.id, source.themeId],
     );
     expect(evidence.rows[0]).toEqual({
-      attempt_count: 1,
+      attempt_count: 3,
       card_count: 1,
+      learning_evidence_count: 4,
       lineage_count: 1,
+      mastery_transition_count: 4,
       publication_events: 1,
     });
     await expect(reviewStore.findReviewCardById(card.id, randomUUID())).resolves.toBeNull();
@@ -748,6 +916,11 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
             WHERE wrong_item_id = $1) AS reason_count,
          (SELECT count(*)::integer FROM learning.immediate_correction_attempts
             WHERE wrong_item_id = $1) AS correction_count,
+         (SELECT count(*)::integer FROM learning.learning_evidence
+            WHERE wrong_item_id = $1) AS learning_evidence_count,
+         (SELECT count(*)::integer FROM learning.learning_evidence
+            WHERE wrong_item_id = $1 AND qualification = 'independent_success')
+            AS independent_evidence_count,
          (SELECT count(*)::integer FROM learning.wrong_item_access_audit
             WHERE wrong_item_id = $1) AS audit_count,
          (SELECT count(*)::integer FROM learning.derived_artifacts
@@ -757,7 +930,9 @@ describeWithDatabase('PostgreSQL learning progress adapter', () => {
     expect(evidence.rows[0]).toEqual({
       audit_count: 1,
       correction_count: 1,
+      independent_evidence_count: 0,
       item_count: 1,
+      learning_evidence_count: 2,
       lineage_versions: 3,
       reason_count: 1,
     });

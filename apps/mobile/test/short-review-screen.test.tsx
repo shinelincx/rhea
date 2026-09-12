@@ -72,11 +72,11 @@ describe('ShortReviewScreen', () => {
           },
           feedback: {
             answer: '42',
-            currentState: 'scheduled',
+            currentState: 'theme_mastered',
             evidenceQualification: 'assisted',
             explanationSteps: ['30 + 12 = 42。'],
             hintImpact: '本次使用了方法提示，次日重新安排无提示变式。',
-            nextAction: '明天继续复习。',
+            nextAction: '这个错题主题已掌握并从活跃错题队列归档。',
             nextDueAt: '2026-09-13T00:01:00.000Z',
             nextIntervalDays: 1,
             outcome: 'correct',
@@ -110,6 +110,8 @@ describe('ShortReviewScreen', () => {
     await fireEvent.press(screen.getByText('有点难'));
     await fireEvent.press(screen.getByText('提交答案'));
     await screen.findByText('参考答案：42');
+    expect(screen.getByText('这个主题已掌握')).toBeTruthy();
+    expect(screen.getByText('已掌握 · 已归档')).toBeTruthy();
     expect(screen.getByText(/次日重新安排/)).toBeTruthy();
     await fireEvent.press(screen.getByText('完成本次复习'));
     await waitFor(() => expect(screen.getByText('本次复习完成')).toBeTruthy());

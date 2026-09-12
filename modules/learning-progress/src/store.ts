@@ -6,15 +6,26 @@ import type {
   StoredWrongItem,
   WrongItemClassification,
 } from './types.js';
+import type { NewLearningEvidence, WrongItemThemeMasteryView } from './theme-mastery.js';
 
 export interface LearningProgressStore {
-  createWrongItem(item: StoredWrongItem): Promise<boolean>;
+  createWrongItem(item: StoredWrongItem, evidence: NewLearningEvidence): Promise<boolean>;
   findByDeduplicationKey(
     deduplicationKey: string,
     learningProfileId: string,
   ): Promise<StoredWrongItem | null>;
   findById(id: string, learningProfileId: string): Promise<StoredWrongItem | null>;
   listWrongItems(learningProfileId: string): Promise<StoredWrongItem[]>;
+  findWrongItemThemeMastery(
+    themeId: string,
+    learningProfileId: string,
+  ): Promise<WrongItemThemeMasteryView | null>;
+  reopenWrongItemThemeForInvalidSource(input: {
+    learningProfileId: string;
+    occurredAt: string;
+    themeId: string;
+    triggerKey: string;
+  }): Promise<boolean>;
   recordAccess(input: {
     action: string;
     actor: AssessmentActorReference;
@@ -24,6 +35,7 @@ export interface LearningProgressStore {
   }): Promise<void>;
   recordCorrection(input: {
     attempt: ImmediateCorrectionAttempt;
+    evidence: NewLearningEvidence;
     expectedStateRevision: number;
     learningProfileId: string;
     status: StoredWrongItem['status'];

@@ -5,6 +5,7 @@ import type {
   StoredReviewCard,
   StoredReviewCardRequest,
 } from './review-card-types.js';
+import { MemoryThemeMasteryRepository } from './theme-mastery-memory.js';
 
 function clone<Value>(value: Value): Value {
   return structuredClone(value);
@@ -15,6 +16,11 @@ export class MemoryReviewCardStore implements ReviewCardStore {
   readonly #cards = new Map<string, StoredReviewCard>();
   readonly #requests = new Map<string, StoredReviewCardRequest>();
   readonly #sessions = new Map<string, ShortReviewSession>();
+  readonly #mastery: MemoryThemeMasteryRepository;
+
+  constructor(mastery = new MemoryThemeMasteryRepository()) {
+    this.#mastery = mastery;
+  }
 
   async createReviewCardRequest(request: StoredReviewCardRequest): Promise<boolean> {
     if (
@@ -145,6 +151,14 @@ export class MemoryReviewCardStore implements ReviewCardStore {
     request.status = 'unavailable';
     request.unavailableReason = input.reason;
     request.updatedAt = input.updatedAt;
+    if (card && input.reason === 'SOURCE_CHANGED') {
+      this.#mastery.reopenForInvalidSource({
+        learningProfileId: card.learningProfileId,
+        occurredAt: input.updatedAt,
+        themeId: card.source.themeId,
+        triggerKey: `review-card-request:${request.id}:source-invalidated`,
+      });
+    }
     return true;
   }
 
@@ -185,6 +199,10 @@ export class MemoryReviewCardStore implements ReviewCardStore {
     return attempt ? clone(attempt) : null;
   }
 
+  async findWrongItemThemeMastery(themeId: string, learningProfileId: string) {
+    return this.#mastery.find(themeId, learningProfileId);
+  }
+
   async recordReviewAttempt(
     input: Parameters<ReviewCardStore['recordReviewAttempt']>[0],
   ): Promise<boolean> {
@@ -201,6 +219,11 @@ export class MemoryReviewCardStore implements ReviewCardStore {
     }
     this.#attempts.set(key, clone(input.attempt));
     card.schedule = clone(input.attempt.scheduleAfter);
+    if (!this.#mastery.recordEvidence(input.evidence)) {
+      this.#attempts.delete(key);
+      card.schedule = clone(input.expectedSchedule);
+      return false;
+    }
     return true;
   }
 }

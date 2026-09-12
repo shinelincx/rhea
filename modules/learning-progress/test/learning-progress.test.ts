@@ -284,6 +284,23 @@ describe('LearningProgressService wrong-item library', () => {
       status: 'pending_consolidation',
     });
     expect(retried.correctionAttempts).toHaveLength(1);
+    await expect(
+      service.getWrongItemThemeMastery({
+        actor: learner,
+        learningProfileId: 'profile-1',
+        themeId: captured.themeId,
+      }),
+    ).resolves.toMatchObject({
+      evidence: expect.arrayContaining([
+        expect.objectContaining({
+          answerExposure: 'complete_answer_exposed_before_attempt',
+          hintUsage: 'full_answer',
+          qualification: 'assisted_success',
+          sourceKind: 'immediate_correction',
+        }),
+      ]),
+      status: 'active',
+    });
   });
 
   it('fails closed while a grading result is disputed or superseded', async () => {

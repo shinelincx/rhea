@@ -199,7 +199,12 @@ describe('Objective assessment HTTP interface', () => {
           stateRevision: number;
           status: string;
         }>;
-        themes: Array<{ itemCount: number; knowledgePointName: string }>;
+        themes: Array<{
+          id: string;
+          itemCount: number;
+          knowledgePointName: string;
+          masteryStatus: string;
+        }>;
       };
     }>().data;
     expect(wrongItemLibrary.items).toHaveLength(1);
@@ -215,6 +220,22 @@ describe('Objective assessment HTTP interface', () => {
     expect(wrongItemLibrary.items[0]?.firstIncorrectAt).toBeTruthy();
     expect(wrongItemLibrary.themes).toMatchObject([{ itemCount: 1, knowledgePointName: '乘法' }]);
     const wrongItemId = wrongItemLibrary.items[0]!.id;
+    const themeId = wrongItemLibrary.themes[0]!.id;
+    const masteryResponse = await app.inject({
+      headers: { authorization: `Bearer ${learnerSession.accessToken}` },
+      method: 'GET',
+      url: `${baseUrl}/wrong-items/themes/${encodeURIComponent(themeId)}/mastery`,
+    });
+    expect(masteryResponse.statusCode).toBe(200);
+    expect(masteryResponse.json()).toMatchObject({
+      data: {
+        cycle: 1,
+        evidence: [{ qualification: 'incorrect', sourceKind: 'wrong_item_capture' }],
+        history: [{ kind: 'cycle_started', reason: 'first_error' }],
+        policyVersion: 'wrong-item-theme-mastery-v1',
+        status: 'active',
+      },
+    });
 
     const confirmedReasonResponse = await app.inject({
       headers: { authorization: `Bearer ${learnerSession.accessToken}` },
