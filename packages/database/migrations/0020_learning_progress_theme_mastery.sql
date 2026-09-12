@@ -210,6 +210,7 @@ AS $$
 DECLARE
   v_attempt jsonb;
   v_card learning.review_cards%ROWTYPE;
+  v_expected_hint_usage text;
   v_expected_qualification text;
   v_expected_sources jsonb;
   v_existing learning.learning_evidence%ROWTYPE;
@@ -289,11 +290,16 @@ BEGIN
     WHERE a.id = v_source_reference_id::uuid
       AND a.learning_profile_id = v_item.learning_profile_id
       AND a.card_id = v_card.id;
-    IF NOT FOUND
-       OR v_attempt ->> 'outcome' IS DISTINCT FROM p_payload ->> 'outcome'
+    IF NOT FOUND THEN RETURN false; END IF;
+    v_expected_hint_usage := CASE (v_attempt ->> 'hintLevel')::integer
+      WHEN 0 THEN 'none'
+      WHEN 1 THEN 'orientation'
+      WHEN 2 THEN 'method'
+      ELSE NULL
+    END;
+    IF v_attempt ->> 'outcome' IS DISTINCT FROM p_payload ->> 'outcome'
        OR (v_attempt ->> 'createdAt')::timestamptz IS DISTINCT FROM v_occurred_at
-       OR p_payload ->> 'hintUsage' IS DISTINCT FROM CASE (v_attempt ->> 'hintLevel')::integer
-         WHEN 0 THEN 'none' WHEN 1 THEN 'orientation' WHEN 2 THEN 'method' ELSE NULL END
+       OR p_payload ->> 'hintUsage' IS DISTINCT FROM v_expected_hint_usage
        OR v_card.source_snapshot ->> 'themeId' IS DISTINCT FROM p_payload ->> 'themeId'
        OR v_variation ->> 'kind' <> 'ai_checked_rewrite'
        OR NOT (v_variation ->> 'differsFromOriginal')::boolean
