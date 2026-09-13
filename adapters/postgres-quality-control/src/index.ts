@@ -111,7 +111,9 @@ export class PostgresQualityControlStore implements QualityControlStore {
         `SELECT metrics.create_quality_capability($1::jsonb, $2, $3) AS status`,
         [record, receipt.commandId, receipt.fingerprint],
       );
-      return query.rows[0]?.status ?? 'conflict';
+      const status = query.rows[0]?.status ?? 'conflict';
+      if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+      return status;
     });
   }
 
@@ -124,7 +126,9 @@ export class PostgresQualityControlStore implements QualityControlStore {
         `SELECT metrics.create_quality_slice_policy($1::jsonb, $2, $3) AS status`,
         [policy, receipt.commandId, receipt.fingerprint],
       );
-      return query.rows[0]?.status ?? 'conflict';
+      const status = query.rows[0]?.status ?? 'conflict';
+      if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+      return status;
     });
   }
 
@@ -222,7 +226,9 @@ export class PostgresQualityControlStore implements QualityControlStore {
         `SELECT metrics.contain_capability($1::jsonb, $2::jsonb, $3, $4) AS status`,
         [order, guard, receipt.commandId, receipt.fingerprint],
       );
-      return query.rows[0]?.status ?? 'conflict';
+      const status = query.rows[0]?.status ?? 'conflict';
+      if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+      return status;
     });
   }
 
@@ -275,7 +281,9 @@ export class PostgresQualityControlStore implements QualityControlStore {
            ) AS status`,
           [run, card, expectedRevision, receipt.commandId, receipt.fingerprint],
         );
-        return query.rows[0]?.status ?? 'conflict';
+        const status = query.rows[0]?.status ?? 'conflict';
+        if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+        return status;
       }
       if (mutation === 'signoff') {
         const signoff = record.signoffs.at(-1);
@@ -294,7 +302,9 @@ export class PostgresQualityControlStore implements QualityControlStore {
             signoff.signer.role,
           ],
         );
-        return query.rows[0]?.status ?? 'conflict';
+        const status = query.rows[0]?.status ?? 'conflict';
+        if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+        return status;
       }
       const query = await client.query<{ status: 'conflict' | 'duplicate' | 'saved' }>(
         `SELECT metrics.advance_quality_rollout($1, $2::jsonb, $3, $4, $5, $6) AS status`,
@@ -304,11 +314,25 @@ export class PostgresQualityControlStore implements QualityControlStore {
           expectedRevision,
           receipt.commandId,
           receipt.fingerprint,
-          'quality-governance',
+          receipt.actorId ?? 'quality-governance',
         ],
       );
-      return query.rows[0]?.status ?? 'conflict';
+      const status = query.rows[0]?.status ?? 'conflict';
+      if (status !== 'conflict') await this.#recordOperationAudit(client, receipt);
+      return status;
     });
+  }
+
+  async #recordOperationAudit(client: PoolClient, receipt: QualityCommandReceipt) {
+    if (receipt.actorId === undefined && receipt.reason === undefined) return;
+    if (receipt.actorId === undefined || receipt.reason === undefined) {
+      throw new Error('Quality operation audit context is incomplete');
+    }
+    await client.query('SELECT metrics.record_quality_operation_audit($1,$2,$3)', [
+      receipt.commandId,
+      receipt.actorId,
+      receipt.reason,
+    ]);
   }
 
   async #readCapability(client: PoolClient, id: string): Promise<CapabilityRecord | null> {

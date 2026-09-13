@@ -90,7 +90,26 @@ describeWithDatabase('PostgreSQL quality-control authority', () => {
       requiredSlices: slices,
       version: `slice-policy-${suffix}`,
     };
-    await service.registerSlicePolicy({ commandId: randomUUID(), policy });
+    const policyCommandId = randomUUID();
+    await service.registerSlicePolicy({
+      actorId: `metrics-operator-${suffix}`,
+      commandId: policyCommandId,
+      policy,
+      reason: 'register reviewed quality policy',
+    });
+    const operationAudit = await pool.query(
+      `SELECT command_type,aggregate_id,operator_id,reason
+       FROM metrics.quality_operations_audit WHERE command_id=$1`,
+      [policyCommandId],
+    );
+    expect(operationAudit.rows).toEqual([
+      {
+        aggregate_id: policy.version,
+        command_type: 'slice_policy',
+        operator_id: `metrics-operator-${suffix}`,
+        reason: 'register reviewed quality policy',
+      },
+    ]);
     const capabilityVersion: CapabilityVersion = {
       adapter: { id: 'ocr-adapter', version: '1' },
       artifactHash: 'a'.repeat(64),
@@ -368,6 +387,7 @@ describeWithDatabase('PostgreSQL quality-control authority', () => {
     let containmentSettled = false;
     const containment = service
       .containCapability({
+        actorId: 'release-manager-1',
         commandId: randomUUID(),
         containedAt: '2026-09-10T00:06:00.000Z',
         expectedContainmentEpoch: decision.containmentEpoch,

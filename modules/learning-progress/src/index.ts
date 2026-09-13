@@ -1,5 +1,21 @@
 export { LearningProgressError, type LearningProgressErrorCode } from './error.js';
 export { MemoryLearningProgressStore } from './memory.js';
+export { MemoryGamificationStore } from './gamification-memory.js';
+export {
+  GamificationService,
+  type GamificationServiceDependencies,
+} from './gamification-service.js';
+export type { GamificationStore } from './gamification-store.js';
+export type {
+  GamificationAuthorityState,
+  GamificationEvent,
+  GamificationEventKind,
+  GamificationScope,
+  GrowthBadgeView,
+  GrowthComponentView,
+  GrowthView,
+  RecordGamificationEventResult,
+} from './gamification-types.js';
 export { MemoryReviewCardStore } from './review-card-memory.js';
 export { MemoryThemeMasteryRepository } from './theme-mastery-memory.js';
 export { ReviewCardService, type ReviewCardServiceDependencies } from './review-card-service.js';

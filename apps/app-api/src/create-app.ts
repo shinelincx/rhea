@@ -13,9 +13,21 @@ import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assess
 import type { ChallengeAuthorizationPort, ChallengeService } from '@rhea/challenge';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
 import type { LearningContentService } from '@rhea/learning-content';
-import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
+import type {
+  GamificationService,
+  LearningProgressService,
+  ReviewCardService,
+} from '@rhea/learning-progress';
 import type { SubmissionService } from '@rhea/submission';
 import { MemoryReportingStore, ReportingService } from '@rhea/reporting';
+import { MemorySafetyEscalationStore, SafetyEscalationService } from '@rhea/safety-escalation';
+import {
+  MemoryPrivacyDataPort,
+  MemoryPrivacyLifecycleStore,
+  PrivacyLifecycleService,
+} from '@rhea/privacy-lifecycle';
+import { MemoryMetricsGovernanceStore, MetricsGovernanceService } from '@rhea/metrics-governance';
+import { MemoryQualityControlStore, QualityControlService } from '@rhea/quality-control';
 
 import { AppModule } from './app.module.js';
 import type { DependencyProbe } from './health/dependency-probe.js';
@@ -35,6 +47,11 @@ import type { SuggestedAssessmentScheduler } from './assessment/assessment.provi
 import { createLocalLearningProgressBundle } from './learning-progress/create-local-learning-progress.js';
 import type { ReviewCardScheduler } from './learning-progress/learning-progress.provider.js';
 import { createLocalChallenge } from './challenge/create-local-challenge.js';
+import type { PrivacyTaskScheduler } from './privacy/privacy.provider.js';
+import {
+  createServiceSupportDataReader,
+  type SupportDataReader,
+} from './safety/support-data.provider.js';
 
 export interface CreateAppOptions {
   allowedOrigins?: string[];
@@ -47,12 +64,20 @@ export interface CreateAppOptions {
   generatedLearningConsentReader?: AiProcessingConsentPublicationReader;
   generatedLearningScheduler?: GeneratedLearningScheduler;
   generatedLearningService?: GeneratedLearningService;
+  gamificationService?: GamificationService;
   jobClient?: JobClient;
   learningContentService?: LearningContentService;
   learningProgressService?: LearningProgressService;
+  metricsGovernanceService?: MetricsGovernanceService;
+  qualityControlOperationsService?: QualityControlService;
   reviewCardScheduler?: ReviewCardScheduler;
   reviewCardService?: ReviewCardService;
   reportingService?: ReportingService;
+  safetyEscalationService?: SafetyEscalationService;
+  safetyOperationsService?: SafetyEscalationService;
+  supportDataReader?: SupportDataReader;
+  privacyLifecycleService?: PrivacyLifecycleService;
+  privacyTaskScheduler?: PrivacyTaskScheduler;
   professionalReviewAccess?: ProfessionalReviewAccess;
   submissionScheduler?: SubmissionScheduler;
   submissionService?: SubmissionService;
@@ -109,6 +134,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
     consentReader,
   );
   const learningProgress = options.learningProgressService ?? localLearningProgress.service;
+  const gamification = options.gamificationService ?? localLearningProgress.gamificationService;
   const reviewCards = options.reviewCardService ?? localLearningProgress.reviewCardService;
   const reviewCardScheduler: ReviewCardScheduler = options.reviewCardScheduler ?? {
     async schedule(request) {
@@ -136,6 +162,21 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
   const generatedLearning = createLocalGeneratedLearning(learningContent, consentReader);
   const reporting =
     options.reportingService ?? new ReportingService({ store: new MemoryReportingStore() });
+  const safety =
+    options.safetyEscalationService ??
+    new SafetyEscalationService(new MemorySafetyEscalationStore());
+  const privacy =
+    options.privacyLifecycleService ??
+    new PrivacyLifecycleService(
+      new MemoryPrivacyLifecycleStore(),
+      new MemoryPrivacyDataPort(),
+      'local-privacy-tombstone-pepper-32-bytes',
+    );
+  const privacyTaskScheduler = options.privacyTaskScheduler ?? {
+    async schedule(taskId: string) {
+      setTimeout(() => void privacy.processTask(taskId), 0);
+    },
+  };
   const challenge =
     options.challengeService ?? createLocalChallenge(challengeAuthorization(familyAccess));
   const adapter = new FastifyAdapter({ bodyLimit: 16 * 1024 * 1024 });
@@ -159,6 +200,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       options.professionalReviewAccess ?? unavailableProfessionalReviewAccess,
       learningContent,
       learningProgress,
+      gamification,
       reviewCards,
       reviewCardScheduler,
       consentReader,
@@ -167,6 +209,15 @@ export async function createApp(options: CreateAppOptions = {}): Promise<NestFas
       options.generatedLearningService ?? generatedLearning.service,
       options.generatedLearningScheduler ?? generatedLearning.scheduler,
       reporting,
+      safety,
+      options.supportDataReader ?? createServiceSupportDataReader(safety),
+      privacy,
+      privacyTaskScheduler,
+      options.metricsGovernanceService ??
+        new MetricsGovernanceService(new MemoryMetricsGovernanceStore()),
+      options.qualityControlOperationsService ??
+        new QualityControlService(new MemoryQualityControlStore()),
+      options.safetyOperationsService ?? safety,
       options.shutdownResources ?? [],
     ),
     adapter,

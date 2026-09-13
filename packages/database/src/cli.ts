@@ -8,6 +8,15 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
   throw new Error('DATABASE_URL is required');
 }
+if (process.env.NODE_ENV === 'production') {
+  const url = new URL(databaseUrl);
+  if (
+    !['postgres:', 'postgresql:'].includes(url.protocol) ||
+    url.searchParams.get('sslmode') !== 'verify-full'
+  ) {
+    throw new Error('DATABASE_URL must use PostgreSQL sslmode=verify-full in production');
+  }
+}
 
 const pool = new Pool({ connectionString: databaseUrl });
 const database: DatabaseClient = {

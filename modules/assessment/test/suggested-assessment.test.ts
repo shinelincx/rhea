@@ -217,6 +217,20 @@ describe('建议评价', () => {
     expect(tasks).toHaveLength(1);
   });
 
+  it('原样保存并返回儿童安全拦截的可执行引导', async () => {
+    const guidance = '请先离开让你不舒服的地方，并马上告诉一位可信任的成年人。';
+    const modelError = Object.assign(new Error('SAFETY_BLOCKED'), {
+      code: 'SAFETY_BLOCKED',
+      guidance,
+    });
+
+    await expect(setup('chinese', { modelError }).suggest(request())).resolves.toMatchObject({
+      status: 'unavailable',
+      unavailable: { explanation: guidance, reason: 'SAFETY_BLOCKED' },
+      unavailableReason: 'SAFETY_BLOCKED',
+    });
+  });
+
   it.each(samples)('为 $subject 开放题生成待复核而非正式成绩的分维度建议', async ({ taskType }) => {
     const subject = samples.find((sample) => sample.taskType === taskType)!.subject;
     const service = setup(subject);

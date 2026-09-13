@@ -3,6 +3,7 @@ import { BullMqJobClient } from '@rhea/queue-adapter';
 
 const DOMAIN_QUEUE = 'rhea-domain';
 const AI_QUEUE = 'rhea-ai';
+const SAFETY_QUEUE = 'rhea-safety';
 
 function createConfiguredQueueClient(
   environment: Record<string, string | undefined>,
@@ -29,4 +30,10 @@ export function createConfiguredAiJobClient(
   environment: Record<string, string | undefined>,
 ): JobClient {
   return createConfiguredQueueClient(environment, AI_QUEUE);
+}
+
+export function createConfiguredSafetyJobClient(
+  environment: Record<string, string | undefined>,
+): JobClient {
+  return createConfiguredQueueClient(environment, SAFETY_QUEUE);
 }

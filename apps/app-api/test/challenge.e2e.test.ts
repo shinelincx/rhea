@@ -1,5 +1,6 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createInMemoryFamilyAccess } from '@rhea/family-access';
+import { MemorySafetyEscalationStore, SafetyEscalationService } from '@rhea/safety-escalation';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createApp } from '../src/create-app.js';
@@ -129,9 +130,14 @@ describe('Challenge HTTP interface', () => {
 
   it('matches strangers by grade with an ephemeral identity and ends immediately on report', async () => {
     const familyAccess = createInMemoryFamilyAccess();
+    const safetyStore = new MemorySafetyEscalationStore();
     const alice = await learner(familyAccess, 'guardian-random-alice', '小禾');
     const bob = await learner(familyAccess, 'guardian-random-bob', '小舟');
-    app = await createApp({ dependencyProbes: [], familyAccess });
+    app = await createApp({
+      dependencyProbes: [],
+      familyAccess,
+      safetyEscalationService: new SafetyEscalationService(safetyStore),
+    });
     await app.init();
     const aliceBase = `/v1/family-spaces/${alice.family.id}/learning-profiles/${alice.profile.id}`;
     const bobBase = `/v1/family-spaces/${bob.family.id}/learning-profiles/${bob.profile.id}`;
@@ -188,6 +194,9 @@ describe('Challenge HTTP interface', () => {
         status: 'cancelled',
       },
     });
+    // Challenge completion owns the durable safety outbox write. The HTTP
+    // controller must not perform a second, unrecoverable safety-store write.
+    expect(safetyStore.classifications).toEqual([]);
 
     await app.inject({
       headers: aliceHeaders,

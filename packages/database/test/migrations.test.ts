@@ -100,6 +100,12 @@ describe('database migration interface', () => {
       '0021',
       '0022',
       '0023',
+      '0024',
+      '0025',
+      '0026',
+      '0027',
+      '0028',
+      '0029',
     ]);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS learning/i);
     expect(migrations[0]?.sql).toMatch(/CREATE SCHEMA IF NOT EXISTS safety/i);
@@ -238,6 +244,39 @@ describe('database migration interface', () => {
     expect(migrations[22]?.sql).toMatch(/FUNCTION learning\.create_random_challenge/i);
     expect(migrations[22]?.sql).toMatch(/FUNCTION learning\.finalize_random_challenge/i);
     expect(migrations[22]?.sql).toMatch(/FORCE ROW LEVEL SECURITY/i);
+    expect(migrations[24]?.sql).toMatch(/ADD COLUMN subject_tokens text\[\]/i);
+    expect(migrations[24]?.sql).toMatch(/FUNCTION safety\.protect_challenge_report_identifiers/i);
+    expect(migrations[24]?.sql).toMatch(/CREATE TABLE safety\.challenge_report_subject_mappings/i);
+    expect(migrations[24]?.sql).toMatch(/FUNCTION safety\.read_challenge_report_subject_mappings/i);
+    expect(migrations[24]?.sql).toMatch(/ADD COLUMN protected_context bytea/i);
+    expect(migrations[24]?.sql).toMatch(
+      /CREATE TABLE safety\.challenge_report_classification_outbox/i,
+    );
+    expect(migrations[24]?.sql).toMatch(/FUNCTION safety\.claim_challenge_report_classifications/i);
+    expect(migrations[24]?.sql).toMatch(
+      /FUNCTION safety\.complete_challenge_report_classification/i,
+    );
+    expect(migrations[24]?.sql).not.toMatch(
+      /CHECK[\s\S]{0,200}ARRAY\(\s*SELECT token FROM unnest/i,
+    );
+    expect(migrations[25]?.sql).toMatch(
+      /INSERT INTO learning\.profile_key_wraps[\s\S]*ON CONFLICT \(learning_profile_id\) DO NOTHING;[\s\S]*RETURN FOUND;/i,
+    );
+    expect(migrations[25]?.sql).toMatch(/'formatVersion', 'rhea-profile-export-v3'/i);
+    expect(migrations[25]?.sql).toMatch(/FUNCTION learning\.list_profile_object_keys/i);
+    expect(migrations[25]?.sql).toMatch(/CREATE ROLE rhea_profile_crypto_reader/i);
+    expect(migrations[28]?.sql).toMatch(
+      /GRANT rhea_privacy_worker, rhea_profile_crypto_reader,[\s\S]*TO rhea_safety/i,
+    );
+    expect(migrations[28]?.sql).toMatch(
+      /UPDATE learning\.generated_learning_requests[\s\S]*status = 'queued'[\s\S]*processing_lease_expires_at = NULL[\s\S]*WHERE status = 'generating'/i,
+    );
+    expect(migrations[28]?.sql).toMatch(
+      /UPDATE learning\.suggested_assessments[\s\S]*status = 'queued'[\s\S]*processing_lease_expires_at = NULL[\s\S]*WHERE status = 'generating'/i,
+    );
+    expect(migrations[28]?.sql).toMatch(
+      /UPDATE learning\.review_card_requests[\s\S]*status = 'queued'[\s\S]*processing_lease_expires_at = NULL[\s\S]*WHERE status = 'generating'/i,
+    );
   });
 
   it('upgrades a database recorded at 0005 without rewriting released migrations', async () => {
@@ -268,9 +307,15 @@ describe('database migration interface', () => {
         '0021',
         '0022',
         '0023',
+        '0024',
+        '0025',
+        '0026',
+        '0027',
+        '0028',
+        '0029',
       ],
       skipped: ['0001', '0002', '0003', '0004', '0005'],
     });
-    expect(database.executedMigrationSql).toHaveLength(18);
+    expect(database.executedMigrationSql).toHaveLength(24);
   });
 });

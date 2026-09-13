@@ -201,7 +201,9 @@ export interface CapabilityRecord {
 }
 
 export interface QualityCommand {
+  actorId?: string;
   commandId: string;
+  reason?: string;
 }
 
 export interface AdvanceRolloutInput extends QualityCommand {
@@ -214,6 +216,7 @@ export interface AdvanceRolloutInput extends QualityCommand {
 }
 
 export interface ContainCapabilityInput extends QualityCommand {
+  actorId: string;
   containedAt: string;
   expectedContainmentEpoch: number;
   reason: string;

@@ -202,6 +202,39 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
     });
   }
 
+  async writeUploadPage(
+    input: {
+      learningProfileId: string;
+      pageId: string;
+      uploadSessionId: string;
+      uploadedAt: string;
+    },
+    writeObject: () => Promise<void>,
+  ): Promise<boolean> {
+    return this.#withProfile(input.learningProfileId, async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
+        input.learningProfileId,
+      ]);
+      const writable = await client.query<{ writable: boolean }>(
+        `SELECT EXISTS(
+           SELECT 1 FROM learning.upload_sessions session
+           JOIN learning.upload_pages page ON page.upload_session_id=session.id
+           WHERE session.id=$1 AND page.id=$2 AND session.learning_profile_id=$3
+             AND session.status='open' AND session.expires_at>now()
+         ) AND learning.profile_accepts_upload($3) AS writable`,
+        [input.uploadSessionId, input.pageId, input.learningProfileId],
+      );
+      if (!writable.rows[0]?.writable) return false;
+      await writeObject();
+      const updated = await client.query(
+        `UPDATE learning.upload_pages SET uploaded_at=$4
+         WHERE id=$1 AND upload_session_id=$2 AND learning_profile_id=$3`,
+        [input.pageId, input.uploadSessionId, input.learningProfileId, input.uploadedAt],
+      );
+      return updated.rowCount === 1;
+    });
+  }
+
   async createJob(job: ProcessingJob): Promise<ProcessingJob> {
     return this.#withProfile(job.learningProfileId, async (client) => {
       const existing = await client.query<{ id: string }>(
@@ -233,6 +266,14 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
       await client.query(
         `UPDATE learning.upload_sessions SET status = 'submitted', job_id = $2 WHERE id = $1`,
         [job.uploadSessionId, job.id],
+      );
+      await client.query(
+        `INSERT INTO learning.domain_outbox
+          (id, family_space_id, learning_profile_id, aggregate_type, aggregate_id,
+           event_type, payload, occurred_at)
+         VALUES ($1,$2,$3,'processing_job',$1,'submission.recognition_requested',$4,$5)
+         ON CONFLICT (id) DO NOTHING`,
+        [job.id, job.familySpaceId, job.learningProfileId, { status: job.status }, job.createdAt],
       );
       return job;
     });
@@ -341,12 +382,14 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
         capability_snapshot: RecognitionCandidate['authorization']['capabilityVersion'];
         finished_at: Date;
         id: string;
+        provider_deletion_handle: string | null;
         regions: RecognitionCandidate['regions'];
         source_hash: string;
       }
     >(
       `SELECT id, adapter_version, authorization_containment_epoch,
-              authorization_decision_id, capability_snapshot, finished_at, source_hash, regions
+              authorization_decision_id, capability_snapshot, finished_at, source_hash,
+              provider_deletion_handle, regions
        FROM learning.recognition_candidates WHERE job_id = $1`,
       [id],
     );
@@ -380,6 +423,7 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
             },
             finishedAt: candidate.finished_at.toISOString(),
             id: candidate.id,
+            providerDeletionHandle: candidate.provider_deletion_handle,
             regions: candidate.regions,
             sourceHash: candidate.source_hash,
           }
@@ -417,10 +461,10 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
     await client.query(
       `INSERT INTO learning.recognition_candidates
         (id, job_id, family_space_id, learning_profile_id, adapter_version, finished_at,
-         source_hash, regions,
+         source_hash, provider_deletion_handle, regions,
          capability_key, capability_kind, capability_version_id, authorization_decision_id,
          authorization_containment_epoch, authorization_family_space_hash, capability_snapshot)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        ON CONFLICT (job_id) DO NOTHING`,
       [
         candidate.id,
@@ -430,6 +474,7 @@ export class PostgresSubmissionStore implements SubmissionStore, RawAssetDeletio
         candidate.adapterVersion,
         candidate.finishedAt,
         candidate.sourceHash,
+        candidate.providerDeletionHandle,
         JSON.stringify(candidate.regions),
         candidate.authorization.capabilityVersion.capabilityKey,
         candidate.authorization.capabilityVersion.kind,

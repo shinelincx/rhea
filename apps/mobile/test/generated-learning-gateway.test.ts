@@ -57,6 +57,7 @@ function validReadyResponse(): MobileGeneratedLearningRequest {
     },
     status: 'ready',
     unavailableReason: null,
+    safetyGuidance: null,
     updatedAt: '2026-09-10T00:00:00.000Z',
   };
 }
@@ -112,6 +113,7 @@ describe('generated learning mobile gateway', () => {
       },
       status: 'queued' as const,
       unavailableReason: null,
+      safetyGuidance: null,
       updatedAt: '2026-09-10T00:00:00.000Z',
     };
     const fetchMock = jest.fn(async () => ({

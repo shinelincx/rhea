@@ -165,13 +165,11 @@ export class ChallengeController {
     @Body() body: { reason?: unknown },
   ) {
     const actor = await this.actor(authorization, familySpaceId, learningProfileId);
-    return {
-      data: await this.challenge.reportRandomChallenge({
-        actor,
-        challengeId,
-        reason: (typeof body.reason === 'string' ? body.reason : '') as RandomChallengeReportReason,
-      }),
-    };
+    const reason = (
+      typeof body.reason === 'string' ? body.reason : ''
+    ) as RandomChallengeReportReason;
+    const data = await this.challenge.reportRandomChallenge({ actor, challengeId, reason });
+    return { data };
   }
 
   private async actor(

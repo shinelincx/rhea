@@ -14,6 +14,7 @@ import { sourceLineageFingerprint, type SourceDependency } from '@rhea/source-li
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
 import { PostgresReviewCardStore } from './review-card.js';
+import { PostgresGamificationStore } from './gamification.js';
 import {
   findThemeMasteryInTransaction,
   recordEvidenceInTransaction,
@@ -22,6 +23,7 @@ import {
 } from './theme-mastery.js';
 
 export { PostgresReviewCardStore } from './review-card.js';
+export { PostgresGamificationStore } from './gamification.js';
 
 interface WrongItemRow extends QueryResultRow {
   assessment_snapshot: unknown;
@@ -446,6 +448,7 @@ export function createPostgresLearningProgressStore(databaseUrl: string) {
   const pool = new Pool({ connectionString: databaseUrl });
   const reviewCardStore = new PostgresReviewCardStore(pool);
   return {
+    gamificationStore: new PostgresGamificationStore(pool),
     pool,
     publicationGate: reviewCardStore,
     reviewCardStore,

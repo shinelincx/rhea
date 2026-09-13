@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
   "types": "src/index.ts",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -17,5 +17,12 @@
     "@types/node": "24.10.13",
     "typescript": "6.0.3",
     "vitest": "5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "production": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
   }
 }

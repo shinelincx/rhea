@@ -66,6 +66,7 @@ function requestAtLevel(level: 0 | 1 | 2 | 3): MobileGeneratedLearningRequest {
     },
     status: 'ready',
     unavailableReason: null,
+    safetyGuidance: null,
     updatedAt: '2026-09-10T00:00:00.000Z',
   };
 }

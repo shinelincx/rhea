@@ -13,6 +13,15 @@ export interface SubmissionStore {
   findUploadSession(id: string, learningProfileId?: string): Promise<UploadSession | null>;
   saveJobIfRevision(job: ProcessingJob, expectedRevision: number): Promise<SaveJobResult>;
   saveUploadSession(session: UploadSession): Promise<void>;
+  writeUploadPage(
+    input: {
+      learningProfileId: string;
+      pageId: string;
+      uploadSessionId: string;
+      uploadedAt: string;
+    },
+    writeObject: () => Promise<void>,
+  ): Promise<boolean>;
 }
 
 export type SaveJobResult = 'authorization_invalid' | 'revision_conflict' | 'saved';
@@ -38,7 +47,10 @@ export interface RecognitionPort {
     authorization: RecognitionCandidate['authorization'];
     pages: Array<{ bytes: Uint8Array; page: UploadPage }>;
     sourceHash: string;
-  }): Promise<Pick<RecognitionCandidate, 'regions'>>;
+  }): Promise<{
+    providerDeletionHandle?: string | null;
+    regions: RecognitionCandidate['regions'];
+  }>;
 }
 
 export interface RecognitionCapabilityAuthorizationPort {

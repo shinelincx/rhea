@@ -1,5 +1,14 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  Share,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, radii, spacing } from '../design-system/tokens';
@@ -61,6 +70,16 @@ export function GuardianConsentScreen({
     message: string | null;
     report: MobileGuardianReport | null;
   }>({ loading: false, message: null, report: null });
+  const [erasurePreview, setErasurePreview] = useState<{
+    confirmationText: string;
+    effects: string[];
+  } | null>(null);
+  const [erasureConfirmation, setErasureConfirmation] = useState('');
+  const [supportPrincipalId, setSupportPrincipalId] = useState('');
+  const [supportReason, setSupportReason] = useState('');
+  const [sensitiveBusy, setSensitiveBusy] = useState(false);
+  const [exportTaskId, setExportTaskId] = useState<string | null>(null);
+  const [erasureTaskId, setErasureTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -147,6 +166,21 @@ export function GuardianConsentScreen({
       await gateway.logout(state.accessToken).catch(() => undefined);
     }
     onClose();
+  }
+
+  async function sensitiveAction(
+    action: (accessToken: string, learningProfileId: string) => Promise<string>,
+  ) {
+    if (state.status !== 'ready' || !selectedProfileId) return;
+    setSensitiveBusy(true);
+    setMessage(null);
+    try {
+      setMessage(await action(state.accessToken, selectedProfileId));
+    } catch (error) {
+      setMessage(readableError(error));
+    } finally {
+      setSensitiveBusy(false);
+    }
   }
 
   return (
@@ -261,6 +295,175 @@ export function GuardianConsentScreen({
             })
           : null}
 
+        {state.status === 'ready' && selectedProfileId ? (
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.cardTitle}>
+              数据与支持
+            </Text>
+            <Text style={styles.body}>导出、删除和支持授权每次都会重新验证监护人身份。</Text>
+            <DecisionButton
+              accessibilityLabel="导出当前学习档案"
+              disabled={sensitiveBusy}
+              label="导出学习档案"
+              onPress={() =>
+                void sensitiveAction(async (accessToken, learningProfileId) => {
+                  const task = await gateway.requestExport!({
+                    accessToken,
+                    familySpaceId,
+                    learningProfileId,
+                  });
+                  setExportTaskId(task.id);
+                  return `导出任务已创建（${task.id.slice(0, 8)}），可稍后查看状态。`;
+                })
+              }
+              primary
+            />
+            {exportTaskId ? (
+              <DecisionButton
+                accessibilityLabel="查看并保存学习档案导出"
+                disabled={sensitiveBusy}
+                label="查看并保存导出"
+                onPress={() =>
+                  void sensitiveAction(async (accessToken, learningProfileId) => {
+                    const task = await gateway.getPrivacyTask!({
+                      accessToken,
+                      familySpaceId,
+                      taskId: exportTaskId,
+                    });
+                    if (task.status !== 'completed') return `导出当前状态：${task.status}`;
+                    const download = await gateway.downloadExport!({
+                      accessToken,
+                      familySpaceId,
+                      learningProfileId,
+                      taskId: exportTaskId,
+                    });
+                    await Share.share({
+                      message: JSON.stringify(download.payload, null, 2),
+                      title: download.fileName,
+                    });
+                    return '导出已打开，可保存到设备或分享给你选择的位置。';
+                  })
+                }
+              />
+            ) : null}
+            <View style={styles.divider} />
+            <Text style={styles.scopeLabel}>限时支持访问</Text>
+            <TextInput
+              accessibilityLabel="支持人员编号"
+              onChangeText={setSupportPrincipalId}
+              placeholder="支持人员编号"
+              style={styles.input}
+              value={supportPrincipalId}
+            />
+            <TextInput
+              accessibilityLabel="支持原因"
+              onChangeText={setSupportReason}
+              placeholder="例如：协助恢复上传任务"
+              style={styles.input}
+              value={supportReason}
+            />
+            <DecisionButton
+              accessibilityLabel="授权一小时最小支持访问"
+              disabled={sensitiveBusy || !supportPrincipalId.trim() || !supportReason.trim()}
+              label="授权 1 小时最小访问"
+              onPress={() =>
+                void sensitiveAction(async (accessToken, learningProfileId) => {
+                  const grant = await gateway.grantSupportAccess!({
+                    accessToken,
+                    familySpaceId,
+                    learningProfileId,
+                    reason: supportReason,
+                    supportPrincipalId,
+                  });
+                  return `支持授权已创建，到期时间 ${grant.expiresAt}；可随时撤销。`;
+                })
+              }
+            />
+            <View style={styles.divider} />
+            <Text style={styles.scopeLabel}>删除学习档案</Text>
+            {!erasurePreview ? (
+              <DecisionButton
+                accessibilityLabel="查看删除影响范围"
+                disabled={sensitiveBusy}
+                label="查看删除影响范围"
+                onPress={() =>
+                  void sensitiveAction(async (accessToken, learningProfileId) => {
+                    const preview = await gateway.previewErasure!({
+                      accessToken,
+                      familySpaceId,
+                      learningProfileId,
+                    });
+                    setErasurePreview(preview);
+                    return '请阅读删除影响，并输入完整确认文字。';
+                  })
+                }
+              />
+            ) : (
+              <>
+                {erasurePreview.effects.map((effect) => (
+                  <Text key={effect} style={styles.body}>
+                    · {effect}
+                  </Text>
+                ))}
+                <Text style={styles.warning}>
+                  此操作会启动不可逆删除。请输入：{erasurePreview.confirmationText}
+                </Text>
+                <TextInput
+                  accessibilityLabel="删除确认文字"
+                  onChangeText={setErasureConfirmation}
+                  style={styles.input}
+                  value={erasureConfirmation}
+                />
+                <DecisionButton
+                  accessibilityLabel="确认启动删除任务"
+                  disabled={
+                    sensitiveBusy || erasureConfirmation !== erasurePreview.confirmationText
+                  }
+                  label="确认启动删除任务"
+                  onPress={() =>
+                    void sensitiveAction(async (accessToken, learningProfileId) => {
+                      const task = await gateway.requestErasure!({
+                        accessToken,
+                        confirmationText: erasureConfirmation,
+                        familySpaceId,
+                        learningProfileId,
+                      });
+                      setErasureTaskId(task.id);
+                      return `删除任务已创建（${task.id.slice(0, 8)}），完成目标不超过 30 天。`;
+                    })
+                  }
+                />
+                {erasureTaskId ? (
+                  <DecisionButton
+                    accessibilityLabel="刷新删除进度并查看完成证明"
+                    disabled={sensitiveBusy}
+                    label="刷新删除进度"
+                    onPress={() =>
+                      void sensitiveAction(async (accessToken, learningProfileId) => {
+                        const task = await gateway.getPrivacyTask!({
+                          accessToken,
+                          familySpaceId,
+                          taskId: erasureTaskId,
+                        });
+                        if (task.status !== 'completed') {
+                          return `删除当前状态：${task.status}；截止 ${task.deadlineAt}`;
+                        }
+                        const certificate = await gateway.getErasureCertificate!({
+                          accessToken,
+                          familySpaceId,
+                          learningProfileId,
+                          taskId: erasureTaskId,
+                        });
+                        return `删除已完成：${certificate.statement}（证明 ${certificate.id.slice(0, 8)}）`;
+                      })
+                    }
+                  />
+                ) : null}
+              </>
+            )}
+          </View>
+        ) : null}
+
         <Text style={styles.retentionNote}>
           撤回只会停止新的处理或会话，不代表历史资料已删除。历史资料仍按保存与删除规则处理，可在数据管理中另行申请删除。
         </Text>
@@ -327,6 +530,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   disabled: { opacity: 0.45 },
+  divider: { backgroundColor: colors.border, height: 1, marginVertical: spacing.xs },
   enabled: {
     backgroundColor: colors.primarySoft,
     borderRadius: radii.md,
@@ -338,6 +542,15 @@ const styles = StyleSheet.create({
   },
   error: { color: colors.error, fontSize: 15, lineHeight: 23 },
   loading: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
+  input: {
+    borderColor: colors.borderStrong,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: colors.foreground,
+    fontSize: 16,
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
+  },
   meta: { color: colors.mutedForeground, fontSize: 12, lineHeight: 18 },
   notice: {
     backgroundColor: colors.primarySoft,
@@ -374,4 +587,12 @@ const styles = StyleSheet.create({
   secondaryText: { color: colors.primary, fontSize: 16, fontWeight: '800' },
   status: { color: colors.mutedForeground, fontSize: 14, fontWeight: '700' },
   title: { color: colors.foreground, fontSize: 30, fontWeight: '800', lineHeight: 38 },
+  warning: {
+    backgroundColor: '#FEE4E2',
+    borderRadius: radii.md,
+    color: colors.error,
+    fontSize: 14,
+    lineHeight: 22,
+    padding: spacing.md,
+  },
 });

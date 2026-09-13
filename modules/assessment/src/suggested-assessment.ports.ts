@@ -31,7 +31,15 @@ export interface OpenAssessmentInputReader {
 }
 
 export interface OpenAssessmentModelGatewayPort {
-  runStructured(task: OpenAssessmentModelTask): Promise<OpenAssessmentModelResult>;
+  runStructured(
+    task: OpenAssessmentModelTask,
+    safetyContext: {
+      ageBand: OpenAssessmentModelTask['ageBand'];
+      familySpaceId: string;
+      learningProfileId: string;
+      sourceReferenceId: string;
+    },
+  ): Promise<OpenAssessmentModelResult>;
 }
 
 export interface OpenAssessmentQualityControlPort {

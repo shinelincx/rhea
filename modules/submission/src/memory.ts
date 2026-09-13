@@ -58,6 +58,24 @@ export class MemorySubmissionStore implements SubmissionStore {
   async saveUploadSession(session: UploadSession): Promise<void> {
     this.#uploads.set(session.id, clone(session));
   }
+
+  async writeUploadPage(
+    input: {
+      learningProfileId: string;
+      pageId: string;
+      uploadSessionId: string;
+      uploadedAt: string;
+    },
+    writeObject: () => Promise<void>,
+  ): Promise<boolean> {
+    const session = this.#uploads.get(input.uploadSessionId);
+    const page = session?.pages.find((candidate) => candidate.id === input.pageId);
+    if (!session || !page || session.learningProfileId !== input.learningProfileId) return false;
+    if (session.status !== 'open') return false;
+    await writeObject();
+    page.uploadedAt = input.uploadedAt;
+    return true;
+  }
 }
 
 export class MemoryObjectStore implements ObjectStorePort {

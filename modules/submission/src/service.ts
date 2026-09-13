@@ -113,7 +113,7 @@ export class SubmissionService {
       uploadTokenHashes[page.id] = hash(token);
       return {
         ...page,
-        objectKey: `ingest-temporary/${input.learningProfileId}/${id}/${page.id}`,
+        objectKey: `ingest-temporary/${input.familySpaceId}/${input.learningProfileId}/${id}/${page.id}`,
         observedMimeType: null,
         uploadedAt: null,
       };
@@ -167,9 +167,17 @@ export class SubmissionService {
     if (input.bytes.byteLength !== page.sizeBytes || hash(input.bytes) !== page.sha256) {
       throw new SubmissionError('INPUT_INVALID', '文件大小或摘要与上传声明不一致');
     }
-    await this.#objectStore.put(page.objectKey, input.bytes);
-    page.uploadedAt = this.#clock.now.toISOString();
-    await this.#store.saveUploadSession(session);
+    const uploadedAt = this.#clock.now.toISOString();
+    const saved = await this.#store.writeUploadPage(
+      {
+        learningProfileId: input.learningProfileId,
+        pageId: input.pageId,
+        uploadSessionId: input.uploadSessionId,
+        uploadedAt,
+      },
+      () => this.#objectStore.put(page.objectKey, input.bytes),
+    );
+    if (!saved) throw new SubmissionError('UPLOAD_EXPIRED', '上传会话已过期，请重新开始');
   }
 
   async submit(input: { learningProfileId: string; uploadSessionId: string }) {
@@ -297,9 +305,13 @@ export class SubmissionService {
         pages,
         sourceHash,
       });
-    } catch {
+    } catch (error) {
       const current = await this.#requireJob(id, learningProfileId);
-      return current.status === 'canceled' ? view(current) : this.#fail(current, 'OCR_FAILED');
+      if (current.status === 'canceled') return view(current);
+      const message = error instanceof Error ? error.message : '';
+      return /^(PROVIDER_|EGRESS_BLOCKED|RECOGNITION_PROVIDER_UNAVAILABLE)/.test(message)
+        ? this.#unavailable(current)
+        : this.#fail(current, 'OCR_FAILED');
     }
     const current = await this.#requireJob(id, learningProfileId);
     if (
@@ -335,6 +347,7 @@ export class SubmissionService {
         authorization: beforePublish,
         finishedAt: this.#clock.now.toISOString(),
         id: randomUUID(),
+        providerDeletionHandle: candidate.providerDeletionHandle ?? null,
         sourceHash,
       },
       revision: current.revision + 1,

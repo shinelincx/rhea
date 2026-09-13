@@ -49,6 +49,8 @@ const unavailableReasonLabels: Record<MobileGenerationUnavailableReason, string>
   GENERATION_CANCELED: '这次生成已取消，可以稍后重新开始。',
   GENERATION_CHECK_FAILED: '生成内容没有通过发布前检查，因此没有展示。',
   MODEL_UNAVAILABLE: 'AI 服务暂时没有完成生成，请稍后再试。',
+  SAFETY_BLOCKED:
+    '先不要继续，马上去找一位你信任、能保护你的大人，把刚才的事情告诉他。AI 不能提供实时救援。',
   SOURCE_CHANGED: '当前学习依据已更新，请重新整理后再生成。',
   SOURCE_UNAVAILABLE: '当前学习依据不足或存在冲突，暂时无法生成。',
 };
@@ -384,7 +386,9 @@ export function GeneratedLearningCard({
                 <Text style={styles.unavailableTitle}>AI 学习内容暂不可用</Text>
                 <Text style={styles.unavailableText}>
                   {generation.unavailableReason
-                    ? unavailableReasonLabels[generation.unavailableReason]
+                    ? generation.unavailableReason === 'SAFETY_BLOCKED' && generation.safetyGuidance
+                      ? generation.safetyGuidance
+                      : unavailableReasonLabels[generation.unavailableReason]
                     : '这次内容没有达到安全展示条件，因此没有展示。'}
                 </Text>
               </View>

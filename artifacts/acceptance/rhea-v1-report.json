@@ -1,0 +1,147 @@
+{
+  "conclusion": "development_incomplete",
+  "developmentComplete": false,
+  "familyPilotReady": false,
+  "generatedAt": "2026-09-13T11:03:04.462Z",
+  "missingForDevelopment": [
+    "mobile_core_flow",
+    "subject_chinese",
+    "subject_mathematics",
+    "subject_english",
+    "subject_science",
+    "failure_network_recovery",
+    "failure_late_result",
+    "failure_dispute",
+    "failure_source_invalidation",
+    "failure_provider_degradation",
+    "erasure",
+    "random_challenge_safety"
+  ],
+  "missingForPilot": [
+    "mobile_core_flow",
+    "subject_chinese",
+    "subject_mathematics",
+    "subject_english",
+    "subject_science",
+    "failure_network_recovery",
+    "failure_late_result",
+    "failure_dispute",
+    "failure_source_invalidation",
+    "failure_provider_degradation",
+    "erasure",
+    "random_challenge_safety",
+    "quality_ai_ocr",
+    "child_safety",
+    "performance_capacity",
+    "disaster_recovery"
+  ],
+  "publicRelease": {
+    "allowed": false,
+    "reason": "上海属地 APP/ICP、儿童信息、AI 标识、算法/模型备案与人工处置责任尚未全部签署，禁止公开发布。"
+  },
+  "remainingRisks": [
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "mobile_core_flow",
+      "owner": "mobile-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "subject_chinese",
+      "owner": "learning-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "subject_mathematics",
+      "owner": "learning-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "subject_english",
+      "owner": "learning-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "subject_science",
+      "owner": "learning-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "failure_network_recovery",
+      "owner": "mobile-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "failure_late_result",
+      "owner": "platform-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "failure_dispute",
+      "owner": "assessment-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "failure_source_invalidation",
+      "owner": "learning-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "failure_provider_degradation",
+      "owner": "platform-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "家庭试用准入评审前",
+      "evidenceKey": "erasure",
+      "owner": "privacy-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "端到端验收执行结束前",
+      "evidenceKey": "random_challenge_safety",
+      "owner": "child-safety",
+      "status": "not_run"
+    },
+    {
+      "deadline": "家庭试用准入评审前",
+      "evidenceKey": "quality_ai_ocr",
+      "owner": "quality-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "家庭试用准入评审前",
+      "evidenceKey": "child_safety",
+      "owner": "child-safety",
+      "status": "not_run"
+    },
+    {
+      "deadline": "家庭试用准入评审前",
+      "evidenceKey": "performance_capacity",
+      "owner": "platform-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "家庭试用准入评审前",
+      "evidenceKey": "disaster_recovery",
+      "owner": "platform-owner",
+      "status": "not_run"
+    },
+    {
+      "deadline": "公开发布前",
+      "evidenceKey": "shanghai_compliance_package",
+      "owner": "compliance-owner",
+      "status": "not_signed"
+    }
+  ],
+  "reportVersion": "rhea-v1-acceptance-report-v1"
+}

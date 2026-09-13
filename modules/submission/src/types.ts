@@ -59,6 +59,7 @@ export interface RecognitionCandidate {
   authorization: Extract<AuthorizationRevalidation, { status: 'authorized' }>;
   finishedAt: string;
   id: string;
+  providerDeletionHandle: string | null;
   regions: RecognitionRegion[];
   sourceHash: string;
 }

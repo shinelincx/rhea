@@ -129,6 +129,7 @@ async function fixture(
   options: {
     candidate?: ReviewCardCandidate;
     classified?: boolean;
+    modelError?: Error;
     publicationGate?: (call: number) => boolean;
   } = {},
 ) {
@@ -193,6 +194,7 @@ async function fixture(
     },
     modelGateway: {
       async runStructured(task) {
+        if (options.modelError) throw options.modelError;
         tasks.push(structuredClone(task));
         return {
           candidate: structuredClone(options.candidate ?? validCandidate),
@@ -229,6 +231,34 @@ async function fixture(
 }
 
 describe('ReviewCardService', () => {
+  it('preserves exact child-safety guidance and never publishes a card', async () => {
+    const guidance = '请停止交流，并告诉一位可信任的成年人。';
+    const safety = await fixture({
+      modelError: Object.assign(new Error('SAFETY_BLOCKED'), {
+        code: 'SAFETY_BLOCKED',
+        guidance,
+      }),
+    });
+    const request = await safety.service.requestReviewCard({
+      actor: learner,
+      ageBand: 'middle_primary',
+      consentRevision: 2,
+      familySpaceId: 'family-1',
+      idempotencyKey: 'safety-guidance',
+      learningProfileId: 'profile-1',
+      wrongItemId: safety.item.id,
+    });
+
+    await expect(
+      safety.service.processRequest({ learningProfileId: 'profile-1', requestId: request.id }),
+    ).resolves.toMatchObject({
+      card: null,
+      safetyGuidance: guidance,
+      status: 'unavailable',
+      unavailableReason: 'SAFETY_BLOCKED',
+    });
+  });
+
   it('publishes a checked AI rewrite with a collapsed but traceable original', async () => {
     const { item, service, tasks } = await fixture();
     const request = await service.requestReviewCard({

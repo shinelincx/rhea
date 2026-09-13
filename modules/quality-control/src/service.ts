@@ -63,6 +63,20 @@ function requiredText(value: string, name: string, maximum = 200): string {
   return normalized;
 }
 
+function requireCommandAudit(input: QualityCommand): { actorId: string; reason: string } | {} {
+  if (input.actorId === undefined && input.reason === undefined) return {};
+  if (input.actorId === undefined || input.reason === undefined) {
+    throw new QualityControlError(
+      'INPUT_INVALID',
+      'actorId and reason must be supplied together for an audited command',
+    );
+  }
+  return {
+    actorId: requiredText(input.actorId, 'actorId'),
+    reason: requiredText(input.reason, 'reason', 500),
+  };
+}
+
 function requireVersion(input: CapabilityVersion): CapabilityVersion {
   if (!/^[a-f0-9]{64}$/.test(input.artifactHash)) {
     throw new QualityControlError('INPUT_INVALID', 'artifactHash must be a SHA-256 hex digest');
@@ -361,8 +375,9 @@ export class QualityControlService {
     input: QualityCommand & { version: CapabilityVersion },
   ): Promise<CapabilityRecord> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const version = requireVersion(input.version);
-    const requestFingerprint = fingerprint({ type: 'register-capability', version });
+    const requestFingerprint = fingerprint({ audit, type: 'register-capability', version });
     const replay = await this.store.findCommand(commandId);
     if (replay) {
       if (replay.fingerprint !== requestFingerprint) {
@@ -390,6 +405,7 @@ export class QualityControlService {
     };
     const created = await this.store.createCapability(record, {
       aggregateId: version.id,
+      ...audit,
       commandId,
       fingerprint: requestFingerprint,
     });
@@ -404,8 +420,9 @@ export class QualityControlService {
     input: QualityCommand & { policy: RequiredSlicePolicy },
   ): Promise<RequiredSlicePolicy> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const policy = requireSlicePolicy(input.policy);
-    const requestFingerprint = fingerprint({ policy, type: 'register-slice-policy' });
+    const requestFingerprint = fingerprint({ audit, policy, type: 'register-slice-policy' });
     const replay = await this.store.findCommand(commandId);
     if (replay) {
       if (replay.fingerprint !== requestFingerprint) {
@@ -422,6 +439,7 @@ export class QualityControlService {
     }
     const created = await this.store.createSlicePolicy(policy, {
       aggregateId: policy.version,
+      ...audit,
       commandId,
       fingerprint: requestFingerprint,
     });
@@ -436,8 +454,9 @@ export class QualityControlService {
     input: QualityCommand & { expectedRevision: number; run: EvaluationRun },
   ): Promise<CapabilityRecord> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const run = requireEvaluationRun(input.run);
-    const requestFingerprint = fingerprint({ run, type: 'record-evaluation' });
+    const requestFingerprint = fingerprint({ audit, run, type: 'record-evaluation' });
     const replay = await this.store.findCommand(commandId);
     if (replay) {
       if (replay.fingerprint !== requestFingerprint) {
@@ -481,6 +500,7 @@ export class QualityControlService {
       input.expectedRevision,
       {
         aggregateId: record.version.id,
+        ...audit,
         commandId,
         fingerprint: requestFingerprint,
       },
@@ -504,6 +524,7 @@ export class QualityControlService {
     },
   ): Promise<CapabilityQualification> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const capabilityVersionId = requiredText(input.capabilityVersionId, 'capabilityVersionId');
     const signoff: ReleaseSignoff = {
       evidenceHash: requireDigest(input.evidenceHash, 'evidenceHash'),
@@ -516,6 +537,7 @@ export class QualityControlService {
     };
     const requestFingerprint = fingerprint({
       capabilityVersionId,
+      audit,
       signoff,
       type: 'sign-off-capability',
     });
@@ -564,6 +586,7 @@ export class QualityControlService {
       input.expectedRevision,
       {
         aggregateId: record.version.id,
+        ...audit,
         commandId,
         fingerprint: requestFingerprint,
       },
@@ -578,11 +601,13 @@ export class QualityControlService {
 
   async advanceRollout(input: AdvanceRolloutInput): Promise<CapabilityRecord> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const capabilityVersionId = requiredText(input.capabilityVersionId, 'capabilityVersionId');
     const allowedUseSlices = input.allowedUseSlices.map(requireUseSlice);
     const changedAt = requireTimestamp(input.changedAt, 'changedAt');
     const requestFingerprint = fingerprint({
       allowedUseSlices,
+      audit,
       capabilityVersionId,
       changedAt,
       percentage: input.percentage,
@@ -637,6 +662,7 @@ export class QualityControlService {
       input.expectedRevision,
       {
         aggregateId: capabilityVersionId,
+        ...audit,
         commandId,
         fingerprint: requestFingerprint,
       },
@@ -823,6 +849,7 @@ export class QualityControlService {
       'failedCapabilityVersionId',
     );
     const containmentInput = {
+      actorId: input.actorId,
       commandId: input.commandId,
       containedAt: input.containedAt,
       expectedContainmentEpoch: input.expectedContainmentEpoch,
@@ -941,7 +968,9 @@ export class QualityControlService {
     input: ContainCapabilityInput,
     operation: 'contain-capability' | 'rollback-capability',
   ): string {
+    const audit = requireCommandAudit(input);
     return fingerprint({
+      audit,
       containedAt: requireTimestamp(input.containedAt, 'containedAt'),
       reason: requiredText(input.reason, 'reason', 500),
       target: requireContainmentTarget(input.target),
@@ -956,6 +985,7 @@ export class QualityControlService {
     rollback?: { decisionId: string; primaryVersionId: string },
   ): Promise<ContainmentState> {
     const commandId = requiredText(input.commandId, 'commandId');
+    const audit = requireCommandAudit(input);
     const target = requireContainmentTarget(input.target);
     const containedAt = requireTimestamp(input.containedAt, 'containedAt');
     const reason = requiredText(input.reason, 'reason', 500);
@@ -989,6 +1019,7 @@ export class QualityControlService {
       },
       {
         aggregateId: order.id,
+        ...audit,
         commandId,
         fingerprint: requestFingerprint,
       },

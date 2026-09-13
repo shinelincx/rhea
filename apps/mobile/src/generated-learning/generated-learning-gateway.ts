@@ -11,6 +11,7 @@ export type MobileGenerationUnavailableReason =
   | 'GENERATION_CANCELED'
   | 'GENERATION_CHECK_FAILED'
   | 'MODEL_UNAVAILABLE'
+  | 'SAFETY_BLOCKED'
   | 'SOURCE_CHANGED'
   | 'SOURCE_UNAVAILABLE';
 
@@ -64,6 +65,7 @@ export interface MobileGeneratedLearningRequest {
   materialId: string;
   purpose: 'learning_pack';
   revealedHintLevel: 0 | 1 | 2 | 3;
+  safetyGuidance: string | null;
   sourceVersion: {
     basisSelectionVersion: number;
     basisSourceVersionId: string;
@@ -130,6 +132,7 @@ const UNAVAILABLE_REASONS = [
   'GENERATION_CANCELED',
   'GENERATION_CHECK_FAILED',
   'MODEL_UNAVAILABLE',
+  'SAFETY_BLOCKED',
   'SOURCE_CHANGED',
   'SOURCE_UNAVAILABLE',
 ] as const;
@@ -357,6 +360,8 @@ function normalizeGeneratedLearningResponse(
     candidate.unavailableReason === null
       ? null
       : oneOf(candidate.unavailableReason, UNAVAILABLE_REASONS);
+  const safetyGuidance =
+    candidate.safetyGuidance === null ? null : text(candidate.safetyGuidance, 1000);
   const normalizedContent =
     candidate.generatedContent === null
       ? null
@@ -375,6 +380,7 @@ function normalizeGeneratedLearningResponse(
     materialId: text(candidate.materialId, 200),
     purpose: candidate.purpose === 'learning_pack' ? 'learning_pack' : invalidResponse(),
     revealedHintLevel,
+    safetyGuidance,
     sourceVersion,
     status,
     unavailableReason,

@@ -1,0 +1,23 @@
+{
+  "name": "@rhea/credential-broker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@alicloud/credentials": "2.4.7",
+    "@alicloud/kms20160120": "3.3.0",
+    "@alicloud/openapi-client": "0.4.15",
+    "@rhea/object-storage-adapter": "workspace:*",
+    "@rhea/workload-credentials-adapter": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.13",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  }
+}

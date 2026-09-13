@@ -12,8 +12,10 @@ import type {
 
 export interface QualityCommandReceipt {
   aggregateId: string;
+  actorId?: string;
   commandId: string;
   fingerprint: string;
+  reason?: string;
 }
 
 export type CapabilityMutation = 'evaluation' | 'rollout' | 'signoff';

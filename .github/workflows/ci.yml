@@ -11,6 +11,20 @@ permissions:
   contents: read
 
 jobs:
+  infrastructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.2
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra/production/terraform fmt -check
+      - name: Validate production Terraform
+        run: |
+          terraform -chdir=infra/production/terraform init -backend=false
+          terraform -chdir=infra/production/terraform validate
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -78,13 +92,15 @@ jobs:
         run: |
           docker run --rm --network host --entrypoint /bin/sh \
             quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1 \
-            -c 'mc alias set local http://127.0.0.1:9000 rhea rhea_dev_password && mc mb --ignore-existing local/rhea-private'
+            -c 'mc alias set local http://127.0.0.1:9000 rhea rhea_dev_password && mc mb --ignore-existing local/rhea-private && mc version enable local/rhea-private'
       - run: pnpm install --frozen-lockfile
       - name: Verify repeatable migrations
         run: |
           pnpm migrate
           pnpm migrate
       - run: pnpm check
+      - name: Verify production entrypoint resolution
+        run: node infra/production/operations/verify-runtime-entrypoints.mjs
       - name: Verify API-to-worker queue path
         run: |
           pnpm dev:worker:domain > /tmp/rhea-worker.log 2>&1 &

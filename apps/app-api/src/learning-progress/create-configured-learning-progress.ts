@@ -1,7 +1,11 @@
 import type { AssessmentService } from '@rhea/assessment';
 import type { AiProcessingConsentPublicationReader } from '@rhea/family-access';
 import type { LearningContentService } from '@rhea/learning-content';
-import { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
+import {
+  GamificationService,
+  LearningProgressService,
+  ReviewCardService,
+} from '@rhea/learning-progress';
 import { unavailableReviewCardModelGateway } from '@rhea/model-gateway-adapter';
 import { createPostgresLearningProgressStore } from '@rhea/postgres-learning-progress';
 import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
@@ -24,10 +28,10 @@ export function createConfiguredLearningProgress(
       shutdownResources: [],
     };
   }
-  const { pool, publicationGate, reviewCardStore, store } = createPostgresLearningProgressStore(
-    environment.DATABASE_URL,
-  );
+  const { gamificationStore, pool, publicationGate, reviewCardStore, store } =
+    createPostgresLearningProgressStore(environment.DATABASE_URL);
   return {
+    gamificationService: new GamificationService({ store: gamificationStore }),
     reviewCardService: new ReviewCardService({
       assessmentReader: assessment,
       modelGateway: unavailableReviewCardModelGateway,

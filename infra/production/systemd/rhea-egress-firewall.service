@@ -1,0 +1,14 @@
+[Unit]
+Description=Rhea default-deny egress firewall
+DefaultDependencies=no
+After=local-fs.target network-pre.target
+Before=network.target docker.service rhea-stack.service
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/rhea/egress-firewall.env
+ExecStart=/opt/rhea/infra/production/operations/apply-egress-firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+RequiredBy=docker.service

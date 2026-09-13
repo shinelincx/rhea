@@ -12,6 +12,7 @@ export type GenerationUnavailableReason =
   | 'GENERATION_CANCELED'
   | 'GENERATION_CHECK_FAILED'
   | 'MODEL_UNAVAILABLE'
+  | 'SAFETY_BLOCKED'
   | 'SOURCE_CHANGED'
   | 'SOURCE_UNAVAILABLE';
 
@@ -225,6 +226,7 @@ export interface GeneratedLearningRequestView {
   materialId: string;
   purpose: 'learning_pack';
   revealedHintLevel: 0 | 1 | 2 | 3;
+  safetyGuidance: string | null;
   sourceVersion: {
     basisSelectionVersion: number;
     basisSourceVersionId: string;

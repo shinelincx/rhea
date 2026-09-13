@@ -1,0 +1,151 @@
+name: rhea-production
+services:
+  credential-broker:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/credential-broker/dist/main.js', 'serve']
+    env_file: /etc/rhea/credential-broker.env
+    environment:
+      CREDENTIAL_BROKER_API_OUTPUT: /run/issued/api/credentials.json
+      CREDENTIAL_BROKER_AI_OUTPUT: /run/issued/ai/credentials.json
+      CREDENTIAL_BROKER_SAFETY_OUTPUT: /run/issued/safety/credentials.json
+    user: '0:0'
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+    volumes:
+      - credentials-api:/run/issued/api
+      - credentials-ai:/run/issued/ai
+      - credentials-safety:/run/issued/safety
+    healthcheck:
+      test: ['CMD', 'node', 'apps/credential-broker/dist/main.js', 'healthcheck']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    cap_add: ['CHOWN']
+    security_opt: ['no-new-privileges:true']
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.2 }
+  gateway:
+    image: nginx:1.28-alpine
+    depends_on: { api: { condition: service_started } }
+    ports: ['443:443']
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/rhea/tls:/etc/rhea/tls:ro
+    read_only: true
+    tmpfs: ['/var/cache/nginx:rw,noexec,nosuid,size=32m', '/var/run:rw,noexec,nosuid,size=4m']
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    cap_add: ['NET_BIND_SERVICE', 'SETGID', 'SETUID']
+    security_opt: ['no-new-privileges:true']
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.3 }
+  migrate:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'packages/database/dist/cli.js']
+    env_file: /etc/rhea/migration.env
+    restart: 'no'
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.4 }
+  api:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/app-api/dist/main.js']
+    env_file: /etc/rhea/api.env
+    environment:
+      WORKLOAD_CREDENTIALS_FILE: /run/rhea-credentials/credentials.json
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      credential-broker: { condition: service_healthy }
+    ports: ['127.0.0.1:3000:3000']
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    volumes:
+      - credentials-api:/run/rhea-credentials:ro
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.10 }
+  worker-ai:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/job-worker/dist/main.js', 'ai']
+    env_file: /etc/rhea/ai-worker.env
+    environment:
+      WORKLOAD_CREDENTIALS_FILE: /run/rhea-credentials/credentials.json
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      credential-broker: { condition: service_healthy }
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    volumes:
+      - credentials-ai:/run/rhea-credentials:ro
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.11 }
+  worker-domain:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/job-worker/dist/main.js', 'domain']
+    env_file: /etc/rhea/domain-worker.env
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.12 }
+  worker-safety:
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/job-worker/dist/main.js', 'safety']
+    env_file: /etc/rhea/safety-worker.env
+    environment:
+      WORKLOAD_CREDENTIALS_FILE: /run/rhea-credentials/credentials.json
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      credential-broker: { condition: service_healthy }
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=64m']
+    restart: 'on-failure:5'
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    volumes:
+      - credentials-safety:/run/rhea-credentials:ro
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.13 }
+  credential-smoke:
+    profiles: ['operations']
+    image: ${RHEA_IMAGE:?RHEA_IMAGE is required}
+    command: ['node', 'apps/credential-broker/dist/main.js', 'smoke']
+    env_file: /etc/rhea/credential-broker.env
+    environment:
+      CREDENTIAL_BROKER_API_OUTPUT: /run/issued/api/credentials.json
+      CREDENTIAL_BROKER_AI_OUTPUT: /run/issued/ai/credentials.json
+      CREDENTIAL_BROKER_SAFETY_OUTPUT: /run/issued/safety/credentials.json
+    depends_on: { credential-broker: { condition: service_healthy } }
+    read_only: true
+    tmpfs: ['/tmp:rw,noexec,nosuid,size=16m']
+    volumes:
+      - credentials-api:/run/issued/api:ro
+      - credentials-ai:/run/issued/ai:ro
+      - credentials-safety:/run/issued/safety:ro
+    cap_drop: ['ALL']
+    security_opt: ['no-new-privileges:true']
+    networks:
+      rhea-production: { ipv4_address: 172.30.0.20 }
+
+volumes:
+  credentials-api:
+  credentials-ai:
+  credentials-safety:
+
+networks:
+  rhea-production:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

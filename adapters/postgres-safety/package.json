@@ -1,0 +1,35 @@
+{
+  "name": "@rhea/postgres-safety",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@alicloud/credentials": "2.4.7",
+    "@alicloud/kms20160120": "3.3.0",
+    "@alicloud/openapi-client": "0.4.15",
+    "@rhea/safety-escalation": "workspace:*",
+    "@rhea/workload-credentials-adapter": "workspace:*",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@rhea/database": "workspace:*",
+    "@types/node": "24.10.13",
+    "@types/pg": "8.16.0",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "production": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  }
+}

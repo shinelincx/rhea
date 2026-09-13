@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { Queue, type JobType } from 'bullmq';
 
-import { BullMqJobClient, createJobWorker, createProbeWorker } from '../src/index.js';
+import {
+  BullMqJobClient,
+  createJobWorker,
+  createProbeWorker,
+  purgeLearningProfileJobs,
+} from '../src/index.js';
 
 const describeWithRedis = process.env.REDIS_URL ? describe : describe.skip;
 
@@ -125,5 +131,69 @@ describeWithRedis('BullMQ job adapter interface', () => {
     expect(observed).toMatchObject({ attempts: 1, kind: 'generated-learning.generate' });
     expect(handled).toBe(1);
     expect((await client.get(submitted.id))?.status).toBe('queued');
+  });
+
+  it('removes retained and waiting jobs for only the erased learning profile', async () => {
+    const queueName = `rhea-test-${randomUUID()}`;
+    const client = new BullMqJobClient({ queueName, redisUrl: process.env.REDIS_URL! });
+    resources.push(client);
+    const erased = await client.submit({
+      kind: 'generated-learning.generate',
+      payload: { learningProfileId: 'profile-erased', requestId: 'generation-erased' },
+    });
+    const retained = await client.submit({
+      kind: 'generated-learning.generate',
+      payload: { learningProfileId: 'profile-retained', requestId: 'generation-retained' },
+    });
+
+    await expect(
+      purgeLearningProfileJobs(
+        { queueNames: [queueName], redisUrl: process.env.REDIS_URL! },
+        'profile-erased',
+      ),
+    ).resolves.toMatchObject({ removed: 1 });
+    await expect(client.get(erased.id)).resolves.toBeNull();
+    await expect(client.get(retained.id)).resolves.toMatchObject({ status: 'queued' });
+  });
+
+  it('removes paused jobs and recurring schedulers for only the erased profile', async () => {
+    const queueName = `rhea-test-${randomUUID()}`;
+    const redisUrl = new URL(process.env.REDIS_URL!);
+    const queue = new Queue(queueName, {
+      connection: { host: redisUrl.hostname, port: Number(redisUrl.port || 6379) },
+    });
+    resources.push(queue);
+    await queue.pause();
+    await queue.add('generated-learning.generate', {
+      learningProfileId: 'profile-erased',
+      requestId: 'paused-erased',
+    });
+    await queue.upsertJobScheduler(
+      'erased-scheduler',
+      { every: 60_000 },
+      {
+        data: { learningProfileId: 'profile-erased', requestId: 'recurring-erased' },
+        name: 'generated-learning.generate',
+      },
+    );
+    await queue.upsertJobScheduler(
+      'retained-scheduler',
+      { every: 60_000 },
+      {
+        data: { learningProfileId: 'profile-retained', requestId: 'recurring-retained' },
+        name: 'generated-learning.generate',
+      },
+    );
+
+    await purgeLearningProfileJobs(
+      { queueNames: [queueName], redisUrl: process.env.REDIS_URL! },
+      'profile-erased',
+    );
+
+    const paused = await queue.getJobs(['paused'] as unknown as JobType[], 0, -1);
+    expect(paused.some(({ data }) => data.learningProfileId === 'profile-erased')).toBe(false);
+    const schedulers = await queue.getJobSchedulers(0, -1, true);
+    expect(schedulers.map(({ key }) => key)).toContain('retained-scheduler');
+    expect(schedulers.map(({ key }) => key)).not.toContain('erased-scheduler');
   });
 });

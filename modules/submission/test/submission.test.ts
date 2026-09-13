@@ -428,4 +428,46 @@ describe('submission recognition workflow', () => {
     });
     expect(recognitionCalls).toBe(1);
   });
+
+  it('keeps the job retryable when the OCR provider is unavailable', async () => {
+    const recognition: RecognitionPort = {
+      async recognize() {
+        throw new Error('RECOGNITION_PROVIDER_UNAVAILABLE');
+      },
+    };
+    const { service } = setup(recognition);
+    const upload = await uploaded(service, jpeg());
+    const job = await service.submit({
+      learningProfileId: 'profile-1',
+      uploadSessionId: upload.id,
+    });
+
+    await expect(service.process(job.id, 'profile-1')).resolves.toMatchObject({
+      errorCode: 'CAPABILITY_UNAVAILABLE',
+      nextAction: 'retry',
+      retryable: true,
+      status: 'unavailable',
+    });
+  });
+
+  it('fails an invalid OCR response instead of retrying it as provider downtime', async () => {
+    const recognition: RecognitionPort = {
+      async recognize() {
+        throw new Error('OCR_RESPONSE_INVALID');
+      },
+    };
+    const { service } = setup(recognition);
+    const upload = await uploaded(service, jpeg());
+    const job = await service.submit({
+      learningProfileId: 'profile-1',
+      uploadSessionId: upload.id,
+    });
+
+    await expect(service.process(job.id, 'profile-1')).resolves.toMatchObject({
+      errorCode: 'OCR_FAILED',
+      nextAction: null,
+      retryable: false,
+      status: 'failed',
+    });
+  });
 });

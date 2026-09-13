@@ -1,3 +1,5 @@
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto';
+
 import type {
   ChallengeRecord,
   ChallengeStore,
@@ -18,8 +20,51 @@ function json<Value>(value: unknown): Value {
   return (typeof value === 'string' ? JSON.parse(value) : value) as Value;
 }
 
+export interface ChallengeReportFieldProtectionPort {
+  protect(plaintext: Uint8Array): Promise<{ ciphertext: Uint8Array; keyId: string }>;
+}
+
+export class LocalChallengeReportFieldProtector implements ChallengeReportFieldProtectionPort {
+  readonly #key: Buffer;
+  constructor(
+    readonly keyId = 'local-safety-key',
+    secret = 'local-safety-field-secret-at-least-32-bytes',
+  ) {
+    if (secret.length < 24)
+      throw new Error('Safety field secret must contain at least 24 characters');
+    this.#key = createHash('sha256').update(secret).digest();
+  }
+  async protect(plaintext: Uint8Array) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.#key, iv);
+    return {
+      ciphertext: Buffer.concat([
+        iv,
+        cipher.update(plaintext),
+        cipher.final(),
+        cipher.getAuthTag(),
+      ]),
+      keyId: this.keyId,
+    };
+  }
+  async unprotect(ciphertext: Uint8Array): Promise<Uint8Array> {
+    const encrypted = Buffer.from(ciphertext);
+    if (encrypted.byteLength < 29) throw new Error('SAFETY_FIELD_CIPHERTEXT_INVALID');
+    const decipher = createDecipheriv('aes-256-gcm', this.#key, encrypted.subarray(0, 12));
+    decipher.setAuthTag(encrypted.subarray(-16));
+    return Buffer.concat([decipher.update(encrypted.subarray(12, -16)), decipher.final()]);
+  }
+}
+
 export class PostgresChallengeStore implements ChallengeStore {
-  constructor(readonly pool: Pool) {}
+  constructor(
+    readonly pool: Pool,
+    readonly safetyTokenPepper = 'local-safety-token-pepper-at-least-32-bytes',
+    readonly safetyFieldProtector: ChallengeReportFieldProtectionPort = new LocalChallengeReportFieldProtector(),
+  ) {
+    if (safetyTokenPepper.length < 24)
+      throw new Error('Safety token pepper must contain at least 24 characters');
+  }
 
   async saveInvite(record: PartnerInviteRecord): Promise<void> {
     await this.#withProfile(
@@ -300,10 +345,67 @@ export class PostgresChallengeStore implements ChallengeStore {
         (snapshot) => snapshot.learningProfileId === input.reportedByProfileId,
       ) ?? input.challenge.authorizationSnapshots[0];
     if (!participant) return false;
+    const protectedMappings = input.reportedByProfileId
+      ? await Promise.all(
+          input.challenge.authorizationSnapshots.map(async (snapshot) => {
+            const protectedContext = await this.safetyFieldProtector.protect(
+              Buffer.from(
+                JSON.stringify({
+                  familySpaceId: snapshot.familySpaceId,
+                  learningProfileId: snapshot.learningProfileId,
+                }),
+                'utf8',
+              ),
+            );
+            return {
+              learningProfileId: snapshot.learningProfileId,
+              mappingRole:
+                snapshot.learningProfileId === input.reportedByProfileId
+                  ? ('reporter' as const)
+                  : ('participant' as const),
+              protectedContext: Buffer.from(protectedContext.ciphertext).toString('base64'),
+              protectionKeyId: protectedContext.keyId,
+              token: createHmac('sha256', this.safetyTokenPepper)
+                .update(`safety-subject\0${snapshot.familySpaceId}\0${snapshot.learningProfileId}`)
+                .digest('hex'),
+            };
+          }),
+        )
+      : [];
     return this.#withProfile(
       participant.learningProfileId,
       participant.familySpaceId,
       async (client) => {
+        if (input.reportedByProfileId) {
+          const reporterToken = protectedMappings.find(
+            ({ learningProfileId }) => learningProfileId === input.reportedByProfileId,
+          )?.token;
+          if (!reporterToken) return false;
+          const sourceReferenceToken = createHmac('sha256', this.safetyTokenPepper)
+            .update(`safety-source\0challenge_event\0${input.challenge.id}:report`)
+            .digest('hex');
+          await client.query(`SELECT set_config('rhea.safety_subject_tokens',$1,true)`, [
+            JSON.stringify(protectedMappings.map(({ token }) => token)),
+          ]);
+          await client.query(`SELECT set_config('rhea.safety_reporter_subject_token',$1,true)`, [
+            reporterToken,
+          ]);
+          await client.query(`SELECT set_config('rhea.safety_source_reference_token',$1,true)`, [
+            sourceReferenceToken,
+          ]);
+          await client.query(`SELECT set_config('rhea.safety_subject_mappings',$1,true)`, [
+            JSON.stringify(
+              protectedMappings.map(
+                ({ mappingRole, protectedContext, protectionKeyId, token }) => ({
+                  mappingRole,
+                  protectedContext,
+                  protectionKeyId,
+                  subjectToken: token,
+                }),
+              ),
+            ),
+          ]);
+        }
         const result = await client.query<{ finalized: boolean }>(
           `SELECT learning.finalize_random_challenge($1::jsonb) AS finalized`,
           [JSON.stringify(input)],
@@ -385,7 +487,14 @@ export class PostgresChallengeStore implements ChallengeStore {
   }
 }
 
-export function createPostgresChallengeStore(databaseUrl: string) {
+export function createPostgresChallengeStore(
+  databaseUrl: string,
+  safetyTokenPepper?: string,
+  safetyFieldProtector?: ChallengeReportFieldProtectionPort,
+) {
   const pool = new Pool({ connectionString: databaseUrl });
-  return { pool, store: new PostgresChallengeStore(pool) };
+  return {
+    pool,
+    store: new PostgresChallengeStore(pool, safetyTokenPepper, safetyFieldProtector),
+  };
 }

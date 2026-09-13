@@ -10,7 +10,15 @@ import type { ModelTask, ModelTaskResult } from './types.js';
 import type { AgeBand } from './types.js';
 
 export interface ModelGatewayPort {
-  runStructured(task: ModelTask): Promise<ModelTaskResult>;
+  runStructured(
+    task: ModelTask,
+    safetyContext: {
+      ageBand: ModelTask['ageBand'];
+      familySpaceId: string;
+      learningProfileId: string;
+      sourceReferenceId: string;
+    },
+  ): Promise<ModelTaskResult>;
 }
 
 export interface CurrentGenerationBasisReader {

@@ -2029,6 +2029,7 @@ describeWithDatabase('PostgreSQL generated learning adapter', () => {
     ).resolves.toBe(true);
     const version = versionFor(fixture.request);
     await qualityControl.containCapability({
+      actorId: 'release-manager-1',
       commandId: `contain-generated-learning-${randomUUID()}`,
       containedAt: '2026-09-10T08:00:30.000Z',
       expectedContainmentEpoch: fixture.request.authorization.containmentEpoch,

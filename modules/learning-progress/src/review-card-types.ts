@@ -10,6 +10,7 @@ export type ReviewCardUnavailableReason =
   | 'CONSENT_WITHDRAWN'
   | 'GENERATION_CHECK_FAILED'
   | 'MODEL_UNAVAILABLE'
+  | 'SAFETY_BLOCKED'
   | 'SOURCE_CHANGED';
 
 export interface ReviewCardSourceSnapshot {
@@ -154,6 +155,7 @@ export interface ReviewCardRequestView {
   id: string;
   learningProfileId: string;
   rebuildPending: boolean;
+  safetyGuidance?: string | null;
   status: ReviewCardRequestStatus;
   unavailableReason: ReviewCardUnavailableReason | null;
   updatedAt: string;

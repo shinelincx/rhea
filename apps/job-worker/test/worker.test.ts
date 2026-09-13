@@ -59,6 +59,33 @@ describe('role worker interface', () => {
     );
   });
 
+  it('routes submission recognition only through the AI worker handler', async () => {
+    const submissionRecognitionHandler = vi.fn(async () => ({ status: 'awaiting_confirmation' }));
+    const handler = createRoleJobHandler('ai', { submissionRecognitionHandler });
+    const input = {
+      kind: 'submission.recognize' as const,
+      payload: { learningProfileId: 'profile-1', processingJobId: 'job-1' },
+    };
+
+    await expect(handler(input)).resolves.toEqual({ status: 'awaiting_confirmation' });
+    expect(submissionRecognitionHandler).toHaveBeenCalledWith(input);
+    await expect(
+      createRoleJobHandler('domain', { submissionRecognitionHandler })(input),
+    ).rejects.toThrow('JOB_KIND_NOT_ALLOWED_FOR_ROLE');
+  });
+
+  it('routes privacy lifecycle work only through the safety worker', async () => {
+    const privacyTaskHandler = vi.fn(async () => ({ status: 'completed', taskId: 'privacy-1' }));
+    const input = { kind: 'privacy.process' as const, payload: { taskId: 'privacy-1' } };
+    await expect(createRoleJobHandler('safety', { privacyTaskHandler })(input)).resolves.toEqual({
+      status: 'completed',
+      taskId: 'privacy-1',
+    });
+    await expect(createRoleJobHandler('ai', { privacyTaskHandler })(input)).rejects.toThrow(
+      'JOB_KIND_NOT_ALLOWED_FOR_ROLE',
+    );
+  });
+
   it.each(['domain', 'safety'] as const)(
     'rejects generated-learning jobs in the %s worker without invoking a handler',
     async (role) => {

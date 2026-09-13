@@ -1,10 +1,40 @@
 import { describe, expect, it } from 'vitest';
 
-import { createMemoryJobRuntime, getJobRetryPolicy, isJobKind } from '../src/index.js';
+import {
+  createMemoryJobRuntime,
+  getJobRetryPolicy,
+  isJobKind,
+  validateProductionTransportSecurity,
+} from '../src/index.js';
 
 describe('Background job runtime interface', () => {
+  it('fails closed on plaintext production database and Redis transports', () => {
+    expect(() =>
+      validateProductionTransportSecurity({
+        DATABASE_URL: 'postgresql://db.internal/rhea?sslmode=require',
+        NODE_ENV: 'production',
+        REDIS_URL: 'rediss://redis.internal:6379',
+      }),
+    ).toThrow('DATABASE_URL must use PostgreSQL sslmode=verify-full');
+    expect(() =>
+      validateProductionTransportSecurity({
+        DATABASE_URL: 'postgresql://db.internal/rhea?sslmode=verify-full',
+        NODE_ENV: 'production',
+        REDIS_URL: 'redis://redis.internal:6379',
+      }),
+    ).toThrow('REDIS_URL must use rediss://');
+    expect(() =>
+      validateProductionTransportSecurity({
+        DATABASE_URL: 'postgresql://db.internal/rhea?sslmode=verify-full',
+        NODE_ENV: 'production',
+        OPERATIONS_DATABASE_URL: 'postgresql://operations.internal/rhea?sslmode=verify-full',
+        REDIS_URL: 'rediss://redis.internal:6379',
+      }),
+    ).not.toThrow();
+  });
   it('recognizes only supported job kinds', () => {
     expect(isJobKind('system.probe')).toBe(true);
+    expect(isJobKind('submission.recognize')).toBe(true);
     expect(isJobKind('generated-learning.generate')).toBe(true);
     expect(isJobKind('open-assessment.generate')).toBe(true);
     expect(isJobKind('review-card.generate')).toBe(true);

@@ -4,6 +4,7 @@ import {
   type ChallengeAuthorizationPort,
 } from '@rhea/challenge';
 import { createPostgresChallengeStore } from '@rhea/postgres-challenge';
+import { createSafetyStoreSecurity } from '@rhea/postgres-safety';
 import { PostgresQualityControlStore } from '@rhea/postgres-quality-control';
 import { QualityControlService } from '@rhea/quality-control';
 import { RedisChallengeMatchPool } from '@rhea/redis-challenge-match';
@@ -35,10 +36,20 @@ export function createConfiguredChallenge(
       'CHALLENGE_PAIR_AVOIDANCE_PEPPER must be configured with at least 24 characters',
     );
   }
+  const safetyTokenPepper =
+    environment.SAFETY_TOKEN_PEPPER ??
+    (environment.NODE_ENV === 'production' ? undefined : 'local-safety-token-pepper-32-bytes');
+  if (!safetyTokenPepper || safetyTokenPepper.length < 24) {
+    throw new Error('SAFETY_TOKEN_PEPPER must be configured with at least 24 characters');
+  }
   if (environment.NODE_ENV === 'production' && !environment.REDIS_URL) {
     throw new Error('REDIS_URL is required for production random challenge matching');
   }
-  const { pool, store } = createPostgresChallengeStore(environment.DATABASE_URL);
+  const { pool, store } = createPostgresChallengeStore(
+    environment.DATABASE_URL,
+    safetyTokenPepper,
+    createSafetyStoreSecurity(environment).fieldProtector,
+  );
   const qualityControl = new QualityControlService(new PostgresQualityControlStore(pool as never));
   const matchPool = environment.REDIS_URL
     ? new RedisChallengeMatchPool({ redisUrl: environment.REDIS_URL })

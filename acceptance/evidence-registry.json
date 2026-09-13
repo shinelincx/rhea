@@ -1,0 +1,159 @@
+{
+  "deadlines": {
+    "child_safety": "家庭试用准入评审前",
+    "disaster_recovery": "家庭试用准入评审前",
+    "erasure": "家庭试用准入评审前",
+    "failure_dispute": "端到端验收执行结束前",
+    "failure_late_result": "端到端验收执行结束前",
+    "failure_network_recovery": "端到端验收执行结束前",
+    "failure_provider_degradation": "端到端验收执行结束前",
+    "failure_source_invalidation": "端到端验收执行结束前",
+    "mobile_core_flow": "端到端验收执行结束前",
+    "performance_capacity": "家庭试用准入评审前",
+    "quality_ai_ocr": "家庭试用准入评审前",
+    "random_challenge_safety": "端到端验收执行结束前",
+    "shanghai_compliance_package": "公开发布前",
+    "subject_chinese": "端到端验收执行结束前",
+    "subject_english": "端到端验收执行结束前",
+    "subject_mathematics": "端到端验收执行结束前",
+    "subject_science": "端到端验收执行结束前"
+  },
+  "evidence": [
+    {
+      "capturedAt": "",
+      "details": "真实移动端完整主流程",
+      "key": "mobile_core_flow",
+      "owner": "mobile-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "语文可复现路径",
+      "key": "subject_chinese",
+      "owner": "learning-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "数学可复现路径",
+      "key": "subject_mathematics",
+      "owner": "learning-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "英语可复现路径",
+      "key": "subject_english",
+      "owner": "learning-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "科学可复现路径",
+      "key": "subject_science",
+      "owner": "learning-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "断网恢复",
+      "key": "failure_network_recovery",
+      "owner": "mobile-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "迟到结果隔离",
+      "key": "failure_late_result",
+      "owner": "platform-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "评价质疑暂停下游",
+      "key": "failure_dispute",
+      "owner": "assessment-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "来源失效关闭旧结果",
+      "key": "failure_source_invalidation",
+      "owner": "learning-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "供应商不可用安全降级",
+      "key": "failure_provider_degradation",
+      "owner": "platform-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "导出、删除、密钥与墓碑",
+      "key": "erasure",
+      "owner": "privacy-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "同年级、临时身份、退出举报",
+      "key": "random_challenge_safety",
+      "owner": "child-safety",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "AI/OCR 分层质量证据",
+      "key": "quality_ai_ocr",
+      "owner": "quality-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "儿童安全与支持处置",
+      "key": "child_safety",
+      "owner": "child-safety",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "容量和响应目标",
+      "key": "performance_capacity",
+      "owner": "platform-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "RPO/RTO、Redis 重建、墓碑重放",
+      "key": "disaster_recovery",
+      "owner": "platform-owner",
+      "reference": "",
+      "status": "not_run"
+    },
+    {
+      "capturedAt": "",
+      "details": "上海属地公开发布签署包",
+      "key": "shanghai_compliance_package",
+      "owner": "compliance-owner",
+      "reference": "compliance/shanghai-release-checklist.md",
+      "status": "not_signed"
+    }
+  ]
+}

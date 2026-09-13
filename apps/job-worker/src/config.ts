@@ -16,6 +16,7 @@ export function parseWorkerConfig(
   environment: Record<string, string | undefined>,
   roleArgument?: string,
 ): WorkerConfig {
+  validateProductionTransportSecurity(environment);
   const redisUrl = environment.REDIS_URL;
   if (!redisUrl) {
     throw new Error('REDIS_URL is required');
@@ -32,3 +33,4 @@ export function parseWorkerConfig(
     role,
   };
 }
+import { validateProductionTransportSecurity } from '@rhea/job-runtime';

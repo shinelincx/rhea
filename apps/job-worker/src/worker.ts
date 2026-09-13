@@ -3,9 +3,11 @@ import { createJobWorker, type BullMqOptions, type JobHandler } from '@rhea/queu
 import type { WorkerRole } from './config.js';
 
 export interface RoleJobHandlers {
+  submissionRecognitionHandler?: JobHandler;
   generatedLearningHandler?: JobHandler;
   openAssessmentHandler?: JobHandler;
   reviewCardHandler?: JobHandler;
+  privacyTaskHandler?: JobHandler;
 }
 
 export interface RoleWorkerOptions extends BullMqOptions {
@@ -22,8 +24,18 @@ export function createRoleJobHandler(role: WorkerRole, handlers: RoleJobHandlers
       return { message: 'processed' };
     }
 
+    if (input.kind === 'privacy.process') {
+      if (role !== 'safety') throw new Error('JOB_KIND_NOT_ALLOWED_FOR_ROLE');
+      if (!handlers.privacyTaskHandler) throw new Error('JOB_HANDLER_UNAVAILABLE');
+      return handlers.privacyTaskHandler(input);
+    }
+
     if (role !== 'ai') {
       throw new Error('JOB_KIND_NOT_ALLOWED_FOR_ROLE');
+    }
+    if (input.kind === 'submission.recognize') {
+      if (!handlers.submissionRecognitionHandler) throw new Error('JOB_HANDLER_UNAVAILABLE');
+      return handlers.submissionRecognitionHandler(input);
     }
     if (input.kind === 'generated-learning.generate') {
       if (!handlers.generatedLearningHandler) throw new Error('JOB_HANDLER_UNAVAILABLE');

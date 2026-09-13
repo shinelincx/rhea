@@ -100,6 +100,7 @@ export interface OpenAssessmentModelRun {
   authorizationDecisionId: string;
   capabilityVersionId: string;
   externalTraceId: string | null;
+  failureDetail?: string | null;
   finishedAt: string;
   inputTokens: number | null;
   modelOrEngineVersion: string;
@@ -119,6 +120,7 @@ export type SuggestedAssessmentUnavailableReason =
   | 'CONSENT_WITHDRAWN'
   | 'LOW_CONFIDENCE'
   | 'MODEL_UNAVAILABLE'
+  | 'SAFETY_BLOCKED'
   | 'RUBRIC_REQUIRED'
   | 'SOURCE_CHANGED';
 

@@ -101,6 +101,10 @@ function authorizationSnapshot(
 }
 
 function view(item: StoredSuggestedAssessment): SuggestedAssessmentView {
+  const unavailable = unavailableDetail(item.unavailableReason);
+  if (unavailable && item.unavailableReason === 'SAFETY_BLOCKED' && item.modelRun?.failureDetail) {
+    unavailable.explanation = item.modelRun.failureDetail;
+  }
   return {
     acceptedResult: structuredClone(item.acceptedResult),
     aiDisclosure: DISCLOSURE,
@@ -138,7 +142,7 @@ function view(item: StoredSuggestedAssessment): SuggestedAssessmentView {
     stateRevision: item.stateRevision,
     status: item.status,
     suggestion: structuredClone(item.suggestion),
-    unavailable: unavailableDetail(item.unavailableReason),
+    unavailable,
     unavailableReason: item.unavailableReason,
     updatedAt: item.updatedAt,
   };
@@ -162,6 +166,11 @@ function unavailableDetail(reason: SuggestedAssessmentUnavailableReason | null) 
     MODEL_UNAVAILABLE: {
       explanation: 'AI 服务暂时不可用，因此不会猜测评价。',
       needs: ['稍后重试或人工复核'],
+    },
+    SAFETY_BLOCKED: {
+      explanation:
+        '内容触发了儿童安全保护，因此不会继续生成。请先离开危险或不舒服的情境，并告诉一位可信任的成年人。AI 不能提供实时救援。',
+      needs: ['可信任成年人的帮助；如有人可能受伤，请联系当地紧急服务'],
     },
     RUBRIC_REQUIRED: {
       explanation: '开放题必须先有适用且可信的评分量规，AI 不能临时创造评价维度。',
@@ -234,11 +243,13 @@ function modelRun(
   capability: NonNullable<StoredSuggestedAssessment['capability']>,
   finishedAt: string,
   succeeded: boolean,
+  failureDetail: string | null = null,
 ) {
   return {
     authorizationDecisionId: authorization.decisionId,
     capabilityVersionId: capability.id,
     externalTraceId: result?.externalTraceId ?? null,
+    failureDetail,
     finishedAt,
     inputTokens: result?.inputTokens ?? null,
     modelOrEngineVersion: capability.modelOrEngine.version,
@@ -476,6 +487,7 @@ export class SuggestedAssessmentService {
     let modelAttempted = false;
     let suggestion: OpenAssessmentModelCandidate | null = null;
     let unavailableReason: SuggestedAssessmentUnavailableReason | null = null;
+    let safetyGuidance: string | null = null;
     let succeeded = false;
 
     const authorized = async (phase: 'before_send' | 'after_receive') => {
@@ -505,16 +517,27 @@ export class SuggestedAssessmentService {
       else {
         await this.#requireCurrentBasis(item, item.actor);
         modelAttempted = true;
-        result = await this.#modelGateway.runStructured({
-          ageBand: item.ageBand,
-          capability: structuredClone(item.capability),
-          learningBasis: structuredClone(item.basis),
-          purpose: 'open_assessment_suggestion',
-          question: { subject: item.question.subject, text: sanitizeModelText(item.question.text) },
-          response: { text: sanitizeModelText(item.response.text) },
-          rubric: structuredClone(item.rubric),
-          taskType: item.taskType,
-        });
+        result = await this.#modelGateway.runStructured(
+          {
+            ageBand: item.ageBand,
+            capability: structuredClone(item.capability),
+            learningBasis: structuredClone(item.basis),
+            purpose: 'open_assessment_suggestion',
+            question: {
+              subject: item.question.subject,
+              text: sanitizeModelText(item.question.text),
+            },
+            response: { text: sanitizeModelText(item.response.text) },
+            rubric: structuredClone(item.rubric),
+            taskType: item.taskType,
+          },
+          {
+            ageBand: item.ageBand,
+            familySpaceId: item.familySpaceId,
+            learningProfileId: item.learningProfileId,
+            sourceReferenceId: item.id,
+          },
+        );
         if (result.provider !== item.capability.provider.id)
           throw new Error('MODEL_PROVIDER_MISMATCH');
         if (!(await authorized('after_receive'))) unavailableReason = 'CAPABILITY_UNAVAILABLE';
@@ -539,10 +562,26 @@ export class SuggestedAssessmentService {
       }
     } catch (error) {
       suggestion = null;
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'SAFETY_BLOCKED'
+      ) {
+        safetyGuidance =
+          'guidance' in error && typeof (error as { guidance?: unknown }).guidance === 'string'
+            ? (error as { guidance: string }).guidance
+            : '请马上找一位你信任的成年人。';
+      }
       unavailableReason =
-        error instanceof AssessmentError && error.code === 'BASIS_CHANGED'
-          ? 'SOURCE_CHANGED'
-          : 'MODEL_UNAVAILABLE';
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: unknown }).code === 'SAFETY_BLOCKED'
+          ? 'SAFETY_BLOCKED'
+          : error instanceof AssessmentError && error.code === 'BASIS_CHANGED'
+            ? 'SOURCE_CHANGED'
+            : 'MODEL_UNAVAILABLE';
     }
 
     const finishedAt = this.#clock.now.toISOString();
@@ -550,7 +589,7 @@ export class SuggestedAssessmentService {
       item.requiresProfessionalReview ||
       suggestion?.dimensions.some(({ state }) => state === 'insufficient_evidence') === true;
     const completedRun = modelAttempted
-      ? modelRun(result, item.authorization, item.capability, finishedAt, succeeded)
+      ? modelRun(result, item.authorization, item.capability, finishedAt, succeeded, safetyGuidance)
       : null;
     let completed = await this.#store.completeGeneration({
       expectedStateRevision: generationRevision,

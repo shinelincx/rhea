@@ -57,6 +57,33 @@ export interface FamilySetupInput {
   pin: string;
 }
 
+export interface MobilePrivacyTask {
+  completedAt: string | null;
+  deadlineAt: string;
+  errorCode: string | null;
+  id: string;
+  kind: 'erasure' | 'export';
+  status: 'completed' | 'failed' | 'pending' | 'processing' | 'retry_scheduled';
+}
+
+export interface MobileErasurePreview {
+  confirmationText: string;
+  deadlineDays: 30;
+  effects: string[];
+}
+export interface MobileErasureCertificate {
+  completedAt: string;
+  id: string;
+  statement: string;
+  targetNames: string[];
+  taskId: string;
+}
+export interface MobileExportDownload {
+  fileName: string;
+  generatedAt: string;
+  payload: unknown;
+}
+
 export interface FamilyEntryGateway {
   changeConsent(input: {
     accessToken: string;
@@ -75,6 +102,46 @@ export interface FamilyEntryGateway {
     consents: MobileConsent[];
   }>;
   logout(accessToken: string): Promise<void>;
+  getPrivacyTask?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    taskId: string;
+  }): Promise<MobilePrivacyTask>;
+  getErasureCertificate?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+    taskId: string;
+  }): Promise<MobileErasureCertificate>;
+  previewErasure?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<MobileErasurePreview>;
+  requestErasure?(input: {
+    accessToken: string;
+    confirmationText: string;
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<MobilePrivacyTask>;
+  requestExport?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+  }): Promise<MobilePrivacyTask>;
+  downloadExport?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+    taskId: string;
+  }): Promise<MobileExportDownload>;
+  grantSupportAccess?(input: {
+    accessToken: string;
+    familySpaceId: string;
+    learningProfileId: string;
+    reason: string;
+    supportPrincipalId: string;
+  }): Promise<{ expiresAt: string; id: string }>;
   setupFamily(input: FamilySetupInput): Promise<{
     deviceAccessToken: string;
     profiles: MobileLearningProfile[];
@@ -141,6 +208,16 @@ export function createFamilyEntryGateway(
     return envelope.data;
   }
 
+  async function reverify(accessToken: string) {
+    if (!identityAssertion)
+      throw new FamilyEntryGatewayError('IDENTITY_INVALID', '监护人登录服务尚未配置，请稍后再试');
+    await request('/v1/guardian-reverification', {
+      body: JSON.stringify({ identityAssertion }),
+      headers: { Authorization: `Bearer ${accessToken}` },
+      method: 'POST',
+    });
+  }
+
   return {
     async openGuardianSettings(familySpaceId) {
       if (!identityAssertion) {
@@ -169,11 +246,7 @@ export function createFamilyEntryGateway(
         throw new FamilyEntryGatewayError('IDENTITY_INVALID', '监护人登录服务尚未配置，请稍后再试');
       }
       const authorization = { Authorization: `Bearer ${input.accessToken}` };
-      await request('/v1/guardian-reverification', {
-        body: JSON.stringify({ identityAssertion }),
-        headers: authorization,
-        method: 'POST',
-      });
+      await reverify(input.accessToken);
       return request<MobileConsent>(
         `/v1/family-spaces/${input.familySpaceId}/consents/${input.kind}`,
         {
@@ -243,6 +316,68 @@ export function createFamilyEntryGateway(
         headers: { Authorization: `Bearer ${accessToken}` },
         method: 'DELETE',
       });
+    },
+    async previewErasure(input) {
+      await reverify(input.accessToken);
+      return request<MobileErasurePreview>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/erasure-preview`,
+        { headers: { Authorization: `Bearer ${input.accessToken}` } },
+      );
+    },
+    async requestExport(input) {
+      await reverify(input.accessToken);
+      return request<MobilePrivacyTask>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/exports`,
+        { headers: { Authorization: `Bearer ${input.accessToken}` }, method: 'POST' },
+      );
+    },
+    async getPrivacyTask(input) {
+      await reverify(input.accessToken);
+      return request<MobilePrivacyTask>(
+        `/v1/family-spaces/${input.familySpaceId}/privacy-tasks/${input.taskId}`,
+        { headers: { Authorization: `Bearer ${input.accessToken}` } },
+      );
+    },
+    async getErasureCertificate(input) {
+      await reverify(input.accessToken);
+      return request<MobileErasureCertificate>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/privacy-tasks/${input.taskId}/certificate`,
+        { headers: { Authorization: `Bearer ${input.accessToken}` } },
+      );
+    },
+    async downloadExport(input) {
+      await reverify(input.accessToken);
+      return request<MobileExportDownload>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/exports/${input.taskId}/download`,
+        { headers: { Authorization: `Bearer ${input.accessToken}` } },
+      );
+    },
+    async requestErasure(input) {
+      await reverify(input.accessToken);
+      return request<MobilePrivacyTask>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/erasure`,
+        {
+          body: JSON.stringify({ confirmationText: input.confirmationText }),
+          headers: { Authorization: `Bearer ${input.accessToken}` },
+          method: 'POST',
+        },
+      );
+    },
+    async grantSupportAccess(input) {
+      await reverify(input.accessToken);
+      return request<{ expiresAt: string; id: string }>(
+        `/v1/family-spaces/${input.familySpaceId}/learning-profiles/${input.learningProfileId}/support-access-grants`,
+        {
+          body: JSON.stringify({
+            durationMinutes: 60,
+            reason: input.reason,
+            scopes: ['processing_status', 'technical_metadata'],
+            supportPrincipalId: input.supportPrincipalId,
+          }),
+          headers: { Authorization: `Bearer ${input.accessToken}` },
+          method: 'POST',
+        },
+      );
     },
   };
 }

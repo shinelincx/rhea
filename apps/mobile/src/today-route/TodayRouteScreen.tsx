@@ -11,6 +11,7 @@ interface TodayRouteScreenProps {
   onStartCapture?: () => void;
   onStartChallenge?: () => void;
   onStartReview?: () => void;
+  onOpenGrowth?: () => void;
   onSwitchProfile?: () => void;
 }
 
@@ -23,6 +24,7 @@ export function TodayRouteScreen({
   onStartCapture,
   onStartChallenge,
   onStartReview,
+  onOpenGrowth,
   onSwitchProfile,
 }: TodayRouteScreenProps) {
   const [state, setState] = useState<ScreenState>({ status: 'loading' });
@@ -157,6 +159,15 @@ export function TodayRouteScreen({
                   ]}
                 >
                   <Text style={styles.reviewButtonText}>进入同伴挑战</Text>
+                </Pressable>
+              ) : null}
+              {onOpenGrowth ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onOpenGrowth}
+                  style={styles.reviewButton}
+                >
+                  <Text style={styles.reviewButtonText}>查看我的成长</Text>
                 </Pressable>
               ) : null}
             </View>

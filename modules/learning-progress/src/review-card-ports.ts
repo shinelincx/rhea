@@ -12,7 +12,15 @@ import type {
 } from './review-card-types.js';
 
 export interface ReviewCardModelGatewayPort {
-  runStructured(task: ReviewCardModelTask): Promise<ReviewCardModelResult>;
+  runStructured(
+    task: ReviewCardModelTask,
+    safetyContext: {
+      ageBand: ReviewCardModelTask['ageBand'];
+      familySpaceId: string;
+      learningProfileId: string;
+      sourceReferenceId: string;
+    },
+  ): Promise<ReviewCardModelResult>;
 }
 
 export interface ReviewCardPublicationGate {

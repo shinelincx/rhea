@@ -537,6 +537,30 @@ describe('generated learning', () => {
     expect(conflictSetup.calls).toHaveLength(0);
   });
 
+  it('preserves the exact child-safety guidance while withholding generated content', async () => {
+    const guidance = '请先停止这件事，并告诉一位你信任的成年人。';
+    const { service } = setup({
+      gateway: {
+        async runStructured() {
+          throw Object.assign(new Error('SAFETY_BLOCKED'), {
+            code: 'SAFETY_BLOCKED',
+            guidance,
+          });
+        },
+      },
+    });
+    const queued = await request(service, 'safety-guidance');
+
+    await expect(
+      service.processRequest({ learningProfileId: actor.id, requestId: queued.id }),
+    ).resolves.toMatchObject({
+      generatedContent: null,
+      safetyGuidance: guidance,
+      status: 'unavailable',
+      unavailableReason: 'SAFETY_BLOCKED',
+    });
+  });
+
   it('discards late output after basis or consent changes and rejects stale reads', async () => {
     const sourceChanged = setup();
     const first = await request(sourceChanged.service);

@@ -24,6 +24,40 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/china-providers:
+    dependencies:
+      '@rhea/assessment':
+        specifier: workspace:*
+        version: link:../../modules/assessment
+      '@rhea/family-access':
+        specifier: workspace:*
+        version: link:../../modules/family-access
+      '@rhea/generated-learning':
+        specifier: workspace:*
+        version: link:../../modules/generated-learning
+      '@rhea/learning-progress':
+        specifier: workspace:*
+        version: link:../../modules/learning-progress
+      '@rhea/provider-governance':
+        specifier: workspace:*
+        version: link:../../modules/provider-governance
+      '@rhea/safety-escalation':
+        specifier: workspace:*
+        version: link:../../modules/safety-escalation
+      '@rhea/submission':
+        specifier: workspace:*
+        version: link:../../modules/submission
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/media-inspection:
     dependencies:
       '@rhea/submission':
@@ -73,6 +107,9 @@ importers:
       '@rhea/submission':
         specifier: workspace:*
         version: link:../../modules/submission
+      '@rhea/workload-credentials-adapter':
+        specifier: workspace:*
+        version: link:../workload-credentials
     devDependencies:
       '@types/node':
         specifier: 24.10.13
@@ -282,6 +319,99 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/postgres-metrics:
+    dependencies:
+      '@rhea/metrics-governance':
+        specifier: workspace:*
+        version: link:../../modules/metrics-governance
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  adapters/postgres-privacy:
+    dependencies:
+      '@alicloud/credentials':
+        specifier: 2.4.7
+        version: 2.4.7(supports-color@8.1.1)
+      '@alicloud/kms20160120':
+        specifier: 3.3.0
+        version: 3.3.0(supports-color@8.1.1)
+      '@alicloud/openapi-client':
+        specifier: 0.4.15
+        version: 0.4.15(supports-color@8.1.1)
+      '@rhea/privacy-lifecycle':
+        specifier: workspace:*
+        version: link:../../modules/privacy-lifecycle
+      '@rhea/submission':
+        specifier: workspace:*
+        version: link:../../modules/submission
+      '@rhea/workload-credentials-adapter':
+        specifier: workspace:*
+        version: link:../workload-credentials
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  adapters/postgres-provider-governance:
+    dependencies:
+      '@rhea/provider-governance':
+        specifier: workspace:*
+        version: link:../../modules/provider-governance
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   adapters/postgres-quality-control:
     dependencies:
       '@rhea/quality-control':
@@ -331,6 +461,43 @@ importers:
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  adapters/postgres-safety:
+    dependencies:
+      '@alicloud/credentials':
+        specifier: 2.4.7
+        version: 2.4.7(supports-color@8.1.1)
+      '@alicloud/kms20160120':
+        specifier: 3.3.0
+        version: 3.3.0(supports-color@8.1.1)
+      '@alicloud/openapi-client':
+        specifier: 0.4.15
+        version: 0.4.15(supports-color@8.1.1)
+      '@rhea/safety-escalation':
+        specifier: workspace:*
+        version: link:../../modules/safety-escalation
+      '@rhea/workload-credentials-adapter':
+        specifier: workspace:*
+        version: link:../workload-credentials
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
+    devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -429,6 +596,22 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/workload-credentials:
+    dependencies:
+      '@alicloud/credentials':
+        specifier: 2.4.7
+        version: 2.4.7(supports-color@8.1.1)
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   apps/app-api:
     dependencies:
       '@nestjs/common':
@@ -446,6 +629,9 @@ importers:
       '@rhea/challenge':
         specifier: workspace:*
         version: link:../../modules/challenge
+      '@rhea/china-provider-adapters':
+        specifier: workspace:*
+        version: link:../../adapters/china-providers
       '@rhea/family-access':
         specifier: workspace:*
         version: link:../../modules/family-access
@@ -464,6 +650,9 @@ importers:
       '@rhea/media-inspection-adapter':
         specifier: workspace:*
         version: link:../../adapters/media-inspection
+      '@rhea/metrics-governance':
+        specifier: workspace:*
+        version: link:../../modules/metrics-governance
       '@rhea/model-gateway-adapter':
         specifier: workspace:*
         version: link:../../adapters/model-gateway
@@ -488,15 +677,33 @@ importers:
       '@rhea/postgres-learning-progress':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-progress
+      '@rhea/postgres-metrics':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-metrics
+      '@rhea/postgres-privacy':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-privacy
+      '@rhea/postgres-provider-governance':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-provider-governance
       '@rhea/postgres-quality-control':
         specifier: workspace:*
         version: link:../../adapters/postgres-quality-control
       '@rhea/postgres-reporting':
         specifier: workspace:*
         version: link:../../adapters/postgres-reporting
+      '@rhea/postgres-safety':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-safety
       '@rhea/postgres-submission':
         specifier: workspace:*
         version: link:../../adapters/postgres-submission
+      '@rhea/privacy-lifecycle':
+        specifier: workspace:*
+        version: link:../../modules/privacy-lifecycle
+      '@rhea/provider-governance':
+        specifier: workspace:*
+        version: link:../../modules/provider-governance
       '@rhea/quality-control':
         specifier: workspace:*
         version: link:../../modules/quality-control
@@ -509,9 +716,15 @@ importers:
       '@rhea/reporting':
         specifier: workspace:*
         version: link:../../modules/reporting
+      '@rhea/safety-escalation':
+        specifier: workspace:*
+        version: link:../../modules/safety-escalation
       '@rhea/submission':
         specifier: workspace:*
         version: link:../../modules/submission
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
       reflect-metadata:
         specifier: 0.2.2
         version: 0.2.2
@@ -522,6 +735,37 @@ importers:
       '@nestjs/testing':
         specifier: 12.0.1
         version: 12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(@nestjs/core@12.0.1(@nestjs/common@12.0.1(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@8.1.1))(reflect-metadata@0.2.2)(rxjs@7.8.2))
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  apps/credential-broker:
+    dependencies:
+      '@alicloud/credentials':
+        specifier: 2.4.7
+        version: 2.4.7(supports-color@8.1.1)
+      '@alicloud/kms20160120':
+        specifier: 3.3.0
+        version: 3.3.0(supports-color@8.1.1)
+      '@alicloud/openapi-client':
+        specifier: 0.4.15
+        version: 0.4.15(supports-color@8.1.1)
+      '@rhea/object-storage-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/object-storage
+      '@rhea/workload-credentials-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/workload-credentials
+    devDependencies:
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
@@ -537,18 +781,36 @@ importers:
       '@rhea/assessment':
         specifier: workspace:*
         version: link:../../modules/assessment
+      '@rhea/challenge':
+        specifier: workspace:*
+        version: link:../../modules/challenge
+      '@rhea/china-provider-adapters':
+        specifier: workspace:*
+        version: link:../../adapters/china-providers
       '@rhea/generated-learning':
         specifier: workspace:*
         version: link:../../modules/generated-learning
+      '@rhea/job-runtime':
+        specifier: workspace:*
+        version: link:../../packages/job-runtime
       '@rhea/learning-content':
         specifier: workspace:*
         version: link:../../modules/learning-content
       '@rhea/learning-progress':
         specifier: workspace:*
         version: link:../../modules/learning-progress
+      '@rhea/media-inspection-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/media-inspection
+      '@rhea/metrics-governance':
+        specifier: workspace:*
+        version: link:../../modules/metrics-governance
       '@rhea/model-gateway-adapter':
         specifier: workspace:*
         version: link:../../adapters/model-gateway
+      '@rhea/object-storage-adapter':
+        specifier: workspace:*
+        version: link:../../adapters/object-storage
       '@rhea/postgres-assessment':
         specifier: workspace:*
         version: link:../../adapters/postgres-assessment
@@ -561,19 +823,61 @@ importers:
       '@rhea/postgres-learning-progress':
         specifier: workspace:*
         version: link:../../adapters/postgres-learning-progress
+      '@rhea/postgres-metrics':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-metrics
+      '@rhea/postgres-privacy':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-privacy
+      '@rhea/postgres-provider-governance':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-provider-governance
       '@rhea/postgres-quality-control':
         specifier: workspace:*
         version: link:../../adapters/postgres-quality-control
+      '@rhea/postgres-safety':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-safety
+      '@rhea/postgres-submission':
+        specifier: workspace:*
+        version: link:../../adapters/postgres-submission
+      '@rhea/privacy-lifecycle':
+        specifier: workspace:*
+        version: link:../../modules/privacy-lifecycle
+      '@rhea/provider-governance':
+        specifier: workspace:*
+        version: link:../../modules/provider-governance
       '@rhea/quality-control':
         specifier: workspace:*
         version: link:../../modules/quality-control
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
+      '@rhea/redis-challenge-match':
+        specifier: workspace:*
+        version: link:../../adapters/redis-challenge-match
+      '@rhea/safety-escalation':
+        specifier: workspace:*
+        version: link:../../modules/safety-escalation
+      '@rhea/submission':
+        specifier: workspace:*
+        version: link:../../modules/submission
+      ioredis:
+        specifier: 5.10.0
+        version: 5.10.0(supports-color@8.1.1)
+      pg:
+        specifier: 8.16.3
+        version: 8.16.3
     devDependencies:
+      '@rhea/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
+      '@types/pg':
+        specifier: 8.16.0
+        version: 8.16.0
       tsx:
         specifier: 4.20.6
         version: 4.20.6
@@ -744,6 +1048,42 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  modules/metrics-governance:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/privacy-lifecycle:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/provider-governance:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   modules/quality-control:
     devDependencies:
       '@types/node':
@@ -757,6 +1097,18 @@ importers:
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
   modules/reporting:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  modules/safety-escalation:
     devDependencies:
       '@types/node':
         specifier: 24.10.13
@@ -789,6 +1141,21 @@ importers:
       '@types/node':
         specifier: 24.10.13
         version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
+  packages/acceptance:
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -831,6 +1198,63 @@ importers:
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
 packages:
+
+  '@alicloud/credentials@2.4.7':
+    resolution: {integrity: sha512-pVeLM4Mjdh2PSs+h36CDBOCsvXyZTBG3tgT7chzH8jqWgVGU4UIgYw2h76ZviBpqADFPs3QReYg2AX/gzmqwOw==}
+
+  '@alicloud/darabonba-array@0.1.2':
+    resolution: {integrity: sha512-ZPuQ+bJyjrd8XVVm55kl+ypk7OQoi1ZH/DiToaAEQaGvgEjrTcvQkg71//vUX/6cvbLIF5piQDvhrLb+lUEIPQ==}
+
+  '@alicloud/darabonba-encode-util@0.0.1':
+    resolution: {integrity: sha512-Sl5vCRVAYMqwmvXpJLM9hYoCHOMsQlGxaWSGhGWulpKk/NaUBArtoO1B0yHruJf1C5uHhEJIaylYcM48icFHgw==}
+
+  '@alicloud/darabonba-encode-util@0.0.2':
+    resolution: {integrity: sha512-mlsNctkeqmR0RtgE1Rngyeadi5snLOAHBCWEtYf68d7tyKskosXDTNeZ6VCD/UfrUu4N51ItO8zlpfXiOgeg3A==}
+
+  '@alicloud/darabonba-map@0.0.1':
+    resolution: {integrity: sha512-2ep+G3YDvuI+dRYVlmER1LVUQDhf9kEItmVB/bbEu1pgKzelcocCwAc79XZQjTcQGFgjDycf3vH87WLDGLFMlw==}
+
+  '@alicloud/darabonba-signature-util@0.0.4':
+    resolution: {integrity: sha512-I1TtwtAnzLamgqnAaOkN0IGjwkiti//0a7/auyVThdqiC/3kyafSAn6znysWOmzub4mrzac2WiqblZKFcN5NWg==}
+
+  '@alicloud/darabonba-string@1.0.3':
+    resolution: {integrity: sha512-NyWwrU8cAIesWk3uHL1Q7pTDTqLkCI/0PmJXC4/4A0MFNAZ9Ouq0iFBsRqvfyUujSSM+WhYLuTfakQXiVLkTMA==}
+
+  '@alicloud/endpoint-util@0.0.1':
+    resolution: {integrity: sha512-+pH7/KEXup84cHzIL6UJAaPqETvln4yXlD9JzlrqioyCSaWxbug5FUobsiI6fuUOpw5WwoB3fWAtGbFnJ1K3Yg==}
+
+  '@alicloud/gateway-pop@0.0.6':
+    resolution: {integrity: sha512-KF4I+JvfYuLKc3fWeWYIZ7lOVJ9jRW0sQXdXidZn1DKZ978ncfGf7i0LBfONGk4OxvNb/HD3/0yYhkgZgPbKtA==}
+
+  '@alicloud/gateway-pop@0.0.8':
+    resolution: {integrity: sha512-2vYabazWDmIHgJFOBmYGK7Nrii9dDdbw4Xnl1cehVyB5Ce99RZzjbwYN05DMhr20mOJVbM7N04DyLQucwBJZUA==}
+
+  '@alicloud/gateway-spi@0.0.8':
+    resolution: {integrity: sha512-KM7fu5asjxZPmrz9sJGHJeSU+cNQNOxW+SFmgmAIrITui5hXL2LB+KNRuzWmlwPjnuA2X3/keq9h6++S9jcV5g==}
+
+  '@alicloud/kms20160120@3.3.0':
+    resolution: {integrity: sha512-yUoL/cpQcvIx9SnIfBNn5Iwlim0CWh7udjshPc3y5p4NfC1Yik+HcNt40gyNiWNqDm7x6zmkGKk611BOGXJFuQ==}
+
+  '@alicloud/openapi-client@0.4.15':
+    resolution: {integrity: sha512-4VE0/k5ZdQbAhOSTqniVhuX1k5DUeUMZv74degn3wIWjLY6Bq+hxjaGsaHYlLZ2gA5wUrs8NcI5TE+lIQS3iiA==}
+
+  '@alicloud/openapi-core@1.0.8':
+    resolution: {integrity: sha512-xs8LdgMDcEUqv13kZ4nl+Vd+Fc1mixTF0g1lm5QSrNWDaLUUD5vqpuMtvUZnKNnq9PITfUQ+8KunAvNQJpFo8g==}
+
+  '@alicloud/openapi-util@0.3.3':
+    resolution: {integrity: sha512-vf0cQ/q8R2U7ZO88X5hDiu1yV3t/WexRj+YycWxRutkH/xVXfkmpRgps8lmNEk7Ar+0xnY8+daN2T+2OyB9F4A==}
+
+  '@alicloud/tea-typescript@1.8.0':
+    resolution: {integrity: sha512-CWXWaquauJf0sW30mgJRVu9aaXyBth5uMBCUc+5vKTK1zlgf3hIqRUjJZbjlwHwQ5y9anwcu18r48nOZb7l2QQ==}
+
+  '@alicloud/tea-util@1.4.11':
+    resolution: {integrity: sha512-HyPEEQ8F0WoZegiCp7sVdrdm6eBOB+GCvGl4182u69LDFktxfirGLcAx3WExUr1zFWkq2OSmBroTwKQ4w/+Yww==}
+
+  '@alicloud/tea-util@1.4.9':
+    resolution: {integrity: sha512-S0wz76rGtoPKskQtRTGqeuqBHFj8BqUn0Vh+glXKun2/9UpaaaWmuJwcmtImk6bJZfLYEShDF/kxDmDJoNYiTw==}
+
+  '@alicloud/tea-xml@0.0.3':
+    resolution: {integrity: sha512-+/9GliugjrLglsXVrd1D80EqqKgGpyA0eQ6+1ZdUOYCaRguaSwz44trX3PaxPu/HhIPJg9PsGQQ3cSLXWZjbAA==}
 
   '@aws-sdk/checksums@3.1000.29':
     resolution: {integrity: sha512-Dtu0gr4dnATZAPwEYbpCsG+MpLM7OAliy2gTepEFQwl1vZ6DL3QMH2FveMa3HLvPsOdhJsPRB3KtxVhph9T75A==}
@@ -1328,6 +1752,9 @@ packages:
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
 
+  '@darabonba/typescript@1.0.5':
+    resolution: {integrity: sha512-pfxHFVM8I3h8K2o8skpDQLMmR5iAeQ2eNpP1HrKDEm/9ZPF8aKwDKPwwEszT1NnIo0Y3++E7x1YsVkVpGjA/xw==}
+
   '@emnapi/runtime@1.11.3':
     resolution: {integrity: sha512-Xz4Tpyki7XyrpbUK1jR1AhdAdaXyhhY4lZ3neLodmhpuWfy2PAQN5B46sAiU4liOXGLkHypn/qU+jvfWSCYYLA==}
 
@@ -1806,6 +2233,9 @@ packages:
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
     cpu: [x64]
     os: [win32]
+
+  '@ioredis/commands@1.5.1':
+    resolution: {integrity: sha512-JH8ZL/ywcJyR9MmJ5BNqZllXNZQqQbnVZOqpPQqE1vHiFgAw4NHbvE0FOduNU8IX9babitBT46571OnPTT0Zcw==}
 
   '@ioredis/commands@2.0.0':
     resolution: {integrity: sha512-vrx0AE/T0h7cRZwfo1M39Cr+ZhZrkf0V8mQN75wucKCxCLD9l/VX6no3gFvrLqD1IlG/1LtzWovqEw3t0Vr9zg==}
@@ -2411,6 +2841,15 @@ packages:
   '@types/jsdom@20.0.1':
     resolution: {integrity: sha512-d0r18sZPmMQr1eG35u12FZfhIXNrnsPU/g5wvRKCUf/tOGilKKwYMYGqh33BNR6ba+2gkHw1EUiHoN3mn7E5IQ==}
 
+  '@types/node@12.20.55':
+    resolution: {integrity: sha512-J8xLz7q2OFulZ2cyGTLE1TbbZcjpno7FaN6zdJNrgAdrJ+DZzh/uFR6YrTb4C+nXakvud8Q4+rbhoIWlYQbUFQ==}
+
+  '@types/node@20.19.43':
+    resolution: {integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==}
+
+  '@types/node@22.20.1':
+    resolution: {integrity: sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q==}
+
   '@types/node@24.10.13':
     resolution: {integrity: sha512-oH72nZRfDv9lADUBSo104Aq7gPHpQZc4BTx38r9xf9pg5LfP6EzSyH2n7qFmmxRQXh7YlUXODcYsg6PuTDSxGg==}
 
@@ -2436,6 +2875,9 @@ packages:
 
   '@types/tough-cookie@4.0.5':
     resolution: {integrity: sha512-/Ad8+nIOV7Rl++6f1BdKxFSMgmoqEoYbHRpPcx3JEfv8VRsQe9Z4mCXeJBzxs7mbHY/XOZZuXlRNfhpVPbs6ZA==}
+
+  '@types/xml2js@0.4.14':
+    resolution: {integrity: sha512-4YnrRemBShWRO2QjvUin8ESA41rH+9nQGLUGZV/1IDhi3SL9OhdpNC/MrulTWuptXKwhx/aDxE7toV0f/ypIXQ==}
 
   '@types/yargs-parser@21.0.3':
     resolution: {integrity: sha512-I4q9QU9MQv4oEOz4tAHJtNz1cwuLxn2F3xcc2iV5WdqLPpUnj30aUuxt1mAxYTG+oe8CZMV/+6rU4S4gRDzqtQ==}
@@ -3454,6 +3896,9 @@ packages:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
 
+  httpx@2.3.3:
+    resolution: {integrity: sha512-k1qv94u1b6e+XKCxVbLgYlOypVP9MPGpnN5G/vxFf6tDO4V3xpz3d6FUOY/s8NtPgaq5RBVVgSB+7IHpVxMYzw==}
+
   human-signals@2.1.0:
     resolution: {integrity: sha512-B4FFZ6q/T2jhhksgkbEW3HBvWIfDW85snkQgawt07S7J5QXTk6BkNV+0yAeZrM5QpMAdYlocGoljn0sJ/WQkFw==}
     engines: {node: '>=10.17.0'}
@@ -3492,15 +3937,26 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
+  ini@1.3.8:
+    resolution: {integrity: sha512-JV/yugV2uzW5iMRSiZAyDtQd+nxtUnjeLt0acNdw98kKLrvuRVyB80tsREOE7yvGVgalhZ6RNXCmEHkUKBKxew==}
+
   inline-style-prefixer@7.0.1:
     resolution: {integrity: sha512-lhYo5qNTQp3EvSSp3sRvXMbVQTLrvGV6DycRMJ5dm2BLMiJ30wpXKdDdgX+GmJZ5uQMucwRKHamXSst3Sj/Giw==}
 
   invariant@2.2.4:
     resolution: {integrity: sha512-phJfQVBuaJM5raOpJjSfkiD6BpbCE4Ns//LaXl6wGYtUBY83nWS6Rf9tXm2e8VaK60JEjYldbPif/A2B1C2gNA==}
 
+  ioredis@5.10.0:
+    resolution: {integrity: sha512-HVBe9OFuqs+Z6n64q09PQvP1/R4Bm+30PAyyD4wIEqssh3v9L21QjCVk4kRLucMBcDokJTcLjsGeVRlq/nH6DA==}
+    engines: {node: '>=12.22.0'}
+
   ioredis@6.0.0:
     resolution: {integrity: sha512-f+Dtubxfpf6KYFq7WVXJoOLn0bk4TJrMrN9SzeE+jrWrCWj7XX3fA6vkryafhADX+GMymRxgDJDOI33COkJc0w==}
     engines: {node: '>=20.0.0'}
+
+  ip-address@10.7.0:
+    resolution: {integrity: sha512-BGFsyJd5mpXp3rK6jIdADLNgpJUK1jnjzvYF8lK+VyDab9JAmqN0YOKDdP17HlgKb2+ehPgDc8EtnRLbGCAMhA==}
+    engines: {node: '>= 12'}
 
   ipaddr.js@2.5.0:
     resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
@@ -3786,6 +4242,9 @@ packages:
     engines: {node: '>=6'}
     hasBin: true
 
+  kitx@2.2.0:
+    resolution: {integrity: sha512-tBMwe6AALTBQJb0woQDD40734NKzb0Kzi3k7wQj9ar3AbP9oqhoVrdXPh7rk2r00/glIgd0YbToIUJsnxWMiIg==}
+
   kleur@3.0.3:
     resolution: {integrity: sha512-eTIzlVOSUR+JxdDFepEYcBMtZ9Qqdef+rnzWdRZuMbOywu5tO2w2N7rqjoANZ5k9vywhL6Br1VRjUIgTQx4E8w==}
     engines: {node: '>=6'}
@@ -3891,6 +4350,12 @@ packages:
 
   lodash.debounce@4.0.8:
     resolution: {integrity: sha512-FT1yDzDYEoYWhnSGnpE/4Kj1fLZkDFyqRb7fNt6FdYOSxlUWAtp42Eh6Wb0rGIv/m9Bgo7x4GhQbm5Ys4SG5ow==}
+
+  lodash.defaults@4.2.0:
+    resolution: {integrity: sha512-qjxPLHd3r5DnsdGacqOMU6pb/avJzdh9tFX2ymgoZE27BmjXrNy/y4LoaiTeAb+O3gL8AfpJGtqfX/ae2leYYQ==}
+
+  lodash.isarguments@3.1.0:
+    resolution: {integrity: sha512-chi4NHZlZqZD18a0imDHnZPrDeBbTtVN7GXMwuGdRH9qotxAjYs3aVLKc7zNOG9eddR5Ksd8rvFEBc9SsggPpg==}
 
   lodash.throttle@4.1.1:
     resolution: {integrity: sha512-wIkUCfVKpVsWo3JSZlc+8MB5it+2AN5W8J7YVMST30UrvcQNZ1Okbj+rbVniijTWE6FGYy4XJq/rHkas8qJMLQ==}
@@ -4114,6 +4579,12 @@ packages:
     resolution: {integrity: sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==}
     engines: {node: '>=10'}
     hasBin: true
+
+  moment-timezone@0.5.48:
+    resolution: {integrity: sha512-f22b8LV1gbTO2ms2j2z13MuPogNoh5UzxL3nzNAYKGraILnbGc9NEE6dyiiiLv46DGRb8A4kg8UKWLjPthxBHw==}
+
+  moment@2.30.1:
+    resolution: {integrity: sha512-uEmtNhbDOrWPFS+hdjFCBfy9f2YoyzRpwcl+DqpC6taX21FzsTLQVbMV/W7PzNSX6x/bhC1zA3c2UQ5NzH6how==}
 
   ms@2.0.0:
     resolution: {integrity: sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A==}
@@ -4547,6 +5018,10 @@ packages:
     resolution: {integrity: sha512-1qny3OExCf0UvUV/5wpYKf2YwPcOqXzkwKKSmKHiE6ZMQs5heeE/c8eXK+PNllPvmjgAbfnsbpkGZWy8cBpn9w==}
     engines: {node: '>=4'}
 
+  redis-parser@3.0.0:
+    resolution: {integrity: sha512-DJnGAeenTdpMEH6uAJRK/uiyEIH9WVsUmoLwzudwGJUwZPp80PDBWPHXSAGNPwNvIXAbe7MSUB1zQFugFml66A==}
+    engines: {node: '>=4'}
+
   reflect-metadata@0.2.2:
     resolution: {integrity: sha512-urBwgfrvVP/eAyXx4hluJivBKzuEbSQs9rKWCrCkbSxNv8mxPcUZKeuoF3Uy4mJl3Lwprp6yy5/39VWigZ4K6Q==}
 
@@ -4733,6 +5208,21 @@ packages:
   slugify@1.6.9:
     resolution: {integrity: sha512-vZ7rfeehZui7wQs438JXBckYLkIIdfHOXsaVEUMyS5fHo1483l1bMdo0EDSWYclY0yZKFOipDy4KHuKs6ssvdg==}
     engines: {node: '>=8.0.0'}
+
+  sm3@1.0.3:
+    resolution: {integrity: sha512-KyFkIfr8QBlFG3uc3NaljaXdYcsbRy1KrSfc4tsQV8jW68jAktGeOcifu530Vx/5LC+PULHT0Rv8LiI8Gw+c1g==}
+
+  smart-buffer@4.2.0:
+    resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
+    engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
+
+  socks-proxy-agent@6.2.1:
+    resolution: {integrity: sha512-a6KW9G+6B3nWZ1yB8G7pJwL3ggLy1uTzKAgCb7ttblwqdz9fMGJUuTy3uFzEP48FAs9FLILlmzDlE2JJhVQaXQ==}
+    engines: {node: '>= 10'}
+
+  socks@2.8.10:
+    resolution: {integrity: sha512-e0VyvkVTwVYViNovRkZ9aodhxVlyoMn7eJhVUPxZ+eK9P/7CBkxvvsBOHqFPEH416726W8tLXXXjKwqgTErrCQ==}
+    engines: {node: '>= 10.0.0', npm: '>= 3.0.0'}
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
@@ -4987,6 +5477,9 @@ packages:
     resolution: {integrity: sha512-rvKSBiC5zqCCiDZ9kAOszZcDvdAHwwIKJG33Ykj43OKcWsnmcBRL09YTU4nOeHZ8Y2a7l1MgTd08SBe9A8Qj6A==}
     engines: {node: '>=18'}
 
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
   undici-types@7.16.0:
     resolution: {integrity: sha512-Zz+aZWSj8LE6zoxD+xrjh4VfkIG8Ya6LvYkZqtUQGJPZjYl53ypCaUwWqo7eI0x66KBGeRo+mlBEkMSeSZ38Nw==}
 
@@ -5227,6 +5720,10 @@ packages:
     resolution: {integrity: sha512-eLTh0kA8uHceqesPqSE+VvO1CDDJWMwlQfB6LuN6T8w6MaDJ8Txm8P7s5cHD0miF0V+GGTZrDQfxPZQVsur33w==}
     engines: {node: '>=4.0.0'}
 
+  xml2js@0.6.2:
+    resolution: {integrity: sha512-T4rieHaC1EXcES0Kxxj4JWgaUQHDk+qwHcYOCFHfiwKz7tOVPLq7Hjq9dM1WCMhylqMEfP7hMcOIChvotiZegA==}
+    engines: {node: '>=4.0.0'}
+
   xmlbuilder@11.0.1:
     resolution: {integrity: sha512-fDlsI/kFEx7gLvbecc0/ohLG50fugQp8ryHzMTuW9vSa1GJ0XYWKnhsUx7oie3G98+r56aTQIUB4kht42R3JvA==}
     engines: {node: '>=4.0'}
@@ -5270,6 +5767,173 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
 snapshots:
+
+  '@alicloud/credentials@2.4.7(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      httpx: 2.3.3(supports-color@8.1.1)
+      ini: 1.3.8
+      kitx: 2.2.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/darabonba-array@0.1.2(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/darabonba-encode-util@0.0.1(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      moment: 2.30.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/darabonba-encode-util@0.0.2':
+    dependencies:
+      moment: 2.30.1
+
+  '@alicloud/darabonba-map@0.0.1(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/darabonba-signature-util@0.0.4(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/darabonba-encode-util': 0.0.1(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/darabonba-string@1.0.3(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/endpoint-util@0.0.1(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      kitx: 2.2.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/gateway-pop@0.0.6(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/credentials': 2.4.7(supports-color@8.1.1)
+      '@alicloud/darabonba-array': 0.1.2(supports-color@8.1.1)
+      '@alicloud/darabonba-encode-util': 0.0.2
+      '@alicloud/darabonba-map': 0.0.1(supports-color@8.1.1)
+      '@alicloud/darabonba-signature-util': 0.0.4(supports-color@8.1.1)
+      '@alicloud/darabonba-string': 1.0.3(supports-color@8.1.1)
+      '@alicloud/endpoint-util': 0.0.1(supports-color@8.1.1)
+      '@alicloud/gateway-spi': 0.0.8(supports-color@8.1.1)
+      '@alicloud/openapi-util': 0.3.3(supports-color@8.1.1)
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@alicloud/tea-util': 1.4.11(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@alicloud/gateway-pop@0.0.8(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/credentials': 2.4.7(supports-color@8.1.1)
+      '@alicloud/darabonba-array': 0.1.2(supports-color@8.1.1)
+      '@alicloud/darabonba-encode-util': 0.0.2
+      '@alicloud/darabonba-map': 0.0.1(supports-color@8.1.1)
+      '@alicloud/darabonba-signature-util': 0.0.4(supports-color@8.1.1)
+      '@alicloud/darabonba-string': 1.0.3(supports-color@8.1.1)
+      '@alicloud/endpoint-util': 0.0.1(supports-color@8.1.1)
+      '@alicloud/gateway-spi': 0.0.8(supports-color@8.1.1)
+      '@alicloud/openapi-util': 0.3.3(supports-color@8.1.1)
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@alicloud/tea-util': 1.4.11(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@alicloud/gateway-spi@0.0.8(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/credentials': 2.4.7(supports-color@8.1.1)
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/kms20160120@3.3.0(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/gateway-pop': 0.0.8(supports-color@8.1.1)
+      '@alicloud/openapi-core': 1.0.8(supports-color@8.1.1)
+      '@darabonba/typescript': 1.0.5(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@alicloud/openapi-client@0.4.15(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/credentials': 2.4.7(supports-color@8.1.1)
+      '@alicloud/gateway-spi': 0.0.8(supports-color@8.1.1)
+      '@alicloud/openapi-util': 0.3.3(supports-color@8.1.1)
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@alicloud/tea-util': 1.4.9(supports-color@8.1.1)
+      '@alicloud/tea-xml': 0.0.3(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/openapi-core@1.0.8(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/credentials': 2.4.7(supports-color@8.1.1)
+      '@alicloud/gateway-pop': 0.0.6(supports-color@8.1.1)
+      '@alicloud/gateway-spi': 0.0.8(supports-color@8.1.1)
+      '@darabonba/typescript': 1.0.5(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@alicloud/openapi-util@0.3.3(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@alicloud/tea-util': 1.4.9(supports-color@8.1.1)
+      kitx: 2.2.0
+      sm3: 1.0.3
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/tea-typescript@1.8.0(supports-color@8.1.1)':
+    dependencies:
+      '@types/node': 12.20.55
+      httpx: 2.3.3(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/tea-util@1.4.11(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@darabonba/typescript': 1.0.5(supports-color@8.1.1)
+      kitx: 2.2.0
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
+  '@alicloud/tea-util@1.4.9(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      kitx: 2.2.0
+    transitivePeerDependencies:
+      - supports-color
+
+  '@alicloud/tea-xml@0.0.3(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      '@types/xml2js': 0.4.14
+      xml2js: 0.6.0
+    transitivePeerDependencies:
+      - supports-color
 
   '@aws-sdk/checksums@3.1000.29':
     dependencies:
@@ -5959,6 +6623,23 @@ snapshots:
 
   '@borewit/text-codec@0.2.2': {}
 
+  '@darabonba/typescript@1.0.5(supports-color@8.1.1)':
+    dependencies:
+      '@alicloud/tea-typescript': 1.8.0(supports-color@8.1.1)
+      http-proxy-agent: 5.0.0(supports-color@8.1.1)
+      https-proxy-agent: 5.0.1(supports-color@8.1.1)
+      httpx: 2.3.3(supports-color@8.1.1)
+      lodash: 4.18.1
+      moment: 2.30.1
+      moment-timezone: 0.5.48
+      socks-proxy-agent: 6.2.1(supports-color@8.1.1)
+      ws: 8.21.3
+      xml2js: 0.6.2
+    transitivePeerDependencies:
+      - bufferutil
+      - supports-color
+      - utf-8-validate
+
   '@emnapi/runtime@1.11.3':
     dependencies:
       tslib: 2.8.1
@@ -6511,6 +7192,8 @@ snapshots:
 
   '@img/sharp-win32-x64@0.34.4':
     optional: true
+
+  '@ioredis/commands@1.5.1': {}
 
   '@ioredis/commands@2.0.0': {}
 
@@ -7114,6 +7797,16 @@ snapshots:
       '@types/tough-cookie': 4.0.5
       parse5: 7.3.0
 
+  '@types/node@12.20.55': {}
+
+  '@types/node@20.19.43':
+    dependencies:
+      undici-types: 6.21.0
+
+  '@types/node@22.20.1':
+    dependencies:
+      undici-types: 6.21.0
+
   '@types/node@24.10.13':
     dependencies:
       undici-types: 7.16.0
@@ -7145,6 +7838,10 @@ snapshots:
   '@types/stack-utils@2.0.3': {}
 
   '@types/tough-cookie@4.0.5': {}
+
+  '@types/xml2js@0.4.14':
+    dependencies:
+      '@types/node': 24.10.13
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -8241,6 +8938,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  httpx@2.3.3(supports-color@8.1.1):
+    dependencies:
+      '@types/node': 20.19.43
+      debug: 4.4.3(supports-color@8.1.1)
+    transitivePeerDependencies:
+      - supports-color
+
   human-signals@2.1.0: {}
 
   hyphenate-style-name@1.1.0: {}
@@ -8269,6 +8973,8 @@ snapshots:
 
   inherits@2.0.4: {}
 
+  ini@1.3.8: {}
+
   inline-style-prefixer@7.0.1:
     dependencies:
       css-in-js-utils: 3.1.0
@@ -8276,6 +8982,20 @@ snapshots:
   invariant@2.2.4:
     dependencies:
       loose-envify: 1.4.0
+
+  ioredis@5.10.0(supports-color@8.1.1):
+    dependencies:
+      '@ioredis/commands': 1.5.1
+      cluster-key-slot: 1.1.1
+      debug: 4.4.3(supports-color@8.1.1)
+      denque: 2.1.0
+      lodash.defaults: 4.2.0
+      lodash.isarguments: 3.1.0
+      redis-errors: 1.2.0
+      redis-parser: 3.0.0
+      standard-as-callback: 2.1.0
+    transitivePeerDependencies:
+      - supports-color
 
   ioredis@6.0.0(supports-color@8.1.1):
     dependencies:
@@ -8287,6 +9007,8 @@ snapshots:
       standard-as-callback: 2.1.0
     transitivePeerDependencies:
       - supports-color
+
+  ip-address@10.7.0: {}
 
   ipaddr.js@2.5.0: {}
 
@@ -8798,6 +9520,10 @@ snapshots:
 
   json5@2.2.3: {}
 
+  kitx@2.2.0:
+    dependencies:
+      '@types/node': 22.20.1
+
   kleur@3.0.3: {}
 
   lan-network@0.2.1: {}
@@ -8875,6 +9601,10 @@ snapshots:
       p-locate: 4.1.0
 
   lodash.debounce@4.0.8: {}
+
+  lodash.defaults@4.2.0: {}
+
+  lodash.isarguments@3.1.0: {}
 
   lodash.throttle@4.1.1: {}
 
@@ -9302,6 +10032,12 @@ snapshots:
   minipass@7.1.3: {}
 
   mkdirp@1.0.4: {}
+
+  moment-timezone@0.5.48:
+    dependencies:
+      moment: 2.30.1
+
+  moment@2.30.1: {}
 
   ms@2.0.0: {}
 
@@ -9755,6 +10491,10 @@ snapshots:
 
   redis-errors@1.2.0: {}
 
+  redis-parser@3.0.0:
+    dependencies:
+      redis-errors: 1.2.0
+
   reflect-metadata@0.2.2: {}
 
   regenerate-unicode-properties@10.2.2:
@@ -9958,6 +10698,23 @@ snapshots:
   slash@5.1.0: {}
 
   slugify@1.6.9: {}
+
+  sm3@1.0.3: {}
+
+  smart-buffer@4.2.0: {}
+
+  socks-proxy-agent@6.2.1(supports-color@8.1.1):
+    dependencies:
+      agent-base: 6.0.2(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
+      socks: 2.8.10
+    transitivePeerDependencies:
+      - supports-color
+
+  socks@2.8.10:
+    dependencies:
+      ip-address: 10.7.0
+      smart-buffer: 4.2.0
 
   sonic-boom@4.2.1:
     dependencies:
@@ -10186,6 +10943,8 @@ snapshots:
 
   uint8array-extras@1.5.0: {}
 
+  undici-types@6.21.0: {}
+
   undici-types@7.16.0: {}
 
   unicode-canonical-property-names-ecmascript@2.0.1: {}
@@ -10336,6 +11095,11 @@ snapshots:
   xml-name-validator@4.0.0: {}
 
   xml2js@0.6.0:
+    dependencies:
+      sax: 1.6.1
+      xmlbuilder: 11.0.1
+
+  xml2js@0.6.2:
     dependencies:
       sax: 1.6.1
       xmlbuilder: 11.0.1

@@ -1,5 +1,7 @@
 import {
   LearningProgressService,
+  GamificationService,
+  MemoryGamificationStore,
   MemoryLearningProgressStore,
   MemoryReviewCardStore,
   ReviewCardService,
@@ -22,6 +24,7 @@ export function createLocalLearningProgressBundle(
   consentReader: AiProcessingConsentPublicationReader,
 ) {
   const wrongItemStore = new MemoryLearningProgressStore();
+  const gamificationService = new GamificationService({ store: new MemoryGamificationStore() });
   const reviewCardStore = new MemoryReviewCardStore(wrongItemStore.mastery);
   const service = new LearningProgressService({
     assessmentReader: assessment,
@@ -53,7 +56,7 @@ export function createLocalLearningProgressBundle(
     reviewCardStore,
     wrongItemStore,
   });
-  return { reviewCardService, service };
+  return { gamificationService, reviewCardService, service };
 }
 
 export function createLocalLearningProgress(

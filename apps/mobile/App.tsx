@@ -27,6 +27,8 @@ import { TodayRouteScreen } from './src/today-route/TodayRouteScreen';
 import { createTodayRouteLoader } from './src/today-route/load-today-route';
 import { ChallengeScreen } from './src/challenge/ChallengeScreen';
 import { createChallengeGateway } from './src/challenge/challenge-gateway';
+import { createGrowthGateway } from './src/growth/growth-gateway';
+import { GrowthScreen } from './src/growth/GrowthScreen';
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:3000';
 const loadTodayRoute = createTodayRouteLoader(apiBaseUrl);
@@ -40,6 +42,7 @@ const generatedLearningGateway = createGeneratedLearningGateway(apiBaseUrl);
 const reviewCardGateway = createReviewCardGateway(apiBaseUrl);
 const reportingGateway = createReportingGateway(apiBaseUrl);
 const challengeGateway = createChallengeGateway(apiBaseUrl);
+const growthGateway = createGrowthGateway(apiBaseUrl);
 const captureDraftRepository = new EncryptedCaptureDraftRepository(
   Platform.OS === 'web' ? new InMemoryAesDraftCryptoPort() : new ExpoAesDraftCryptoPort(),
   Platform.OS === 'web' ? new MemoryDraftFilePort() : new ExpoDraftFilePort(),
@@ -60,9 +63,9 @@ export default function App() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [guardianContext, setGuardianContext] = useState<GuardianContext | null>(null);
-  const [learnerRoute, setLearnerRoute] = useState<'today' | 'capture' | 'review' | 'challenge'>(
-    'today',
-  );
+  const [learnerRoute, setLearnerRoute] = useState<
+    'today' | 'capture' | 'review' | 'challenge' | 'growth'
+  >('today');
 
   useEffect(() => {
     if (!learnerSession) {
@@ -113,7 +116,15 @@ export default function App() {
           reportingGateway={reportingGateway}
         />
       ) : learnerSession ? (
-        learnerRoute === 'challenge' ? (
+        learnerRoute === 'growth' ? (
+          <GrowthScreen
+            accessToken={learnerSession.accessToken}
+            familySpaceId={learnerSession.profile.familySpaceId}
+            gateway={growthGateway}
+            learningProfileId={learnerSession.profile.id}
+            onBack={() => setLearnerRoute('today')}
+          />
+        ) : learnerRoute === 'challenge' ? (
           <ChallengeScreen
             accessToken={learnerSession.accessToken}
             familySpaceId={learnerSession.profile.familySpaceId}
@@ -153,6 +164,7 @@ export default function App() {
             onStartCapture={() => setLearnerRoute('capture')}
             onStartChallenge={() => setLearnerRoute('challenge')}
             onStartReview={() => setLearnerRoute('review')}
+            onOpenGrowth={() => setLearnerRoute('growth')}
             onSwitchProfile={() => void switchProfile()}
           />
         )

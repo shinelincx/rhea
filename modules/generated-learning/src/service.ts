@@ -53,6 +53,15 @@ function requiredText(value: string, field: string, maxLength = 500): string {
   return text;
 }
 
+function isSafetyBlocked(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'SAFETY_BLOCKED'
+  );
+}
+
 function hash(value: unknown): string {
   return stableGeneratedLearningHash(value);
 }
@@ -470,6 +479,11 @@ function view(
     materialId: request.materialId,
     purpose: request.purpose,
     revealedHintLevel: level,
+    safetyGuidance:
+      unavailableReason === 'SAFETY_BLOCKED'
+        ? (request.latestChecks.find((item) => item.kind === 'safety' && !item.passed)?.detail ??
+          null)
+        : null,
     sourceVersion: {
       basisSelectionVersion: request.source.basis.selectionVersion,
       basisSourceVersionId: request.source.basis.sourceVersionId,
@@ -646,11 +660,32 @@ export class GeneratedLearningService {
       }
       let result: ModelTaskResult;
       try {
-        result = await this.#modelGateway.runStructured(taskFor(request));
-      } catch {
+        result = await this.#modelGateway.runStructured(taskFor(request), {
+          ageBand: request.source.ageBand,
+          familySpaceId: request.familySpaceId,
+          learningProfileId: request.learningProfileId,
+          sourceReferenceId: request.id,
+        });
+      } catch (error) {
         modelRuns.push(
           modelRun(request, capability, attempt, false, null, this.#clock.now.toISOString()),
         );
+        if (isSafetyBlocked(error)) {
+          const safetyGuidance =
+            typeof (error as { guidance?: unknown }).guidance === 'string'
+              ? (error as { guidance: string }).guidance
+              : '请马上找一位你信任的成年人。';
+          return this.#fail(
+            request,
+            expectedStateRevision,
+            'SAFETY_BLOCKED',
+            [
+              ...latestChecks.filter((item) => item.kind !== 'safety'),
+              { detail: safetyGuidance, kind: 'safety', passed: false },
+            ],
+            modelRuns,
+          );
+        }
         continue;
       }
       if (result.provider !== capability.provider.id) {

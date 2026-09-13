@@ -1,0 +1,33 @@
+{
+  "name": "@rhea/postgres-provider-governance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "import-manifest": "tsx src/import-manifest.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@rhea/provider-governance": "workspace:*",
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@rhea/database": "workspace:*",
+    "@types/node": "24.10.13",
+    "@types/pg": "8.16.0",
+    "tsx": "4.20.6",
+    "typescript": "6.0.3",
+    "vitest": "5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "production": "./dist/index.js",
+      "default": "./src/index.ts"
+    }
+  }
+}

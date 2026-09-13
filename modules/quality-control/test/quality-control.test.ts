@@ -457,6 +457,7 @@ describe('quality control', () => {
 
     expect(before.primary?.capabilityVersion.id).toBe('generation-v2');
     const after = await qualityControl.rollbackCapability({
+      actorId: 'release-manager-1',
       authorization: request,
       commandId: 'rollback-generation-v2',
       containedAt: '2026-09-10T15:00:00.000Z',
@@ -483,6 +484,7 @@ describe('quality control', () => {
     });
 
     await qualityControl.containCapability({
+      actorId: 'release-manager-1',
       commandId: 'contain-bailian',
       containedAt: '2026-09-10T16:00:00.000Z',
       expectedContainmentEpoch: 1,
@@ -597,6 +599,7 @@ describe('quality control', () => {
     };
     const before = await isolatedQualityControl.authorizeCapability(authorization);
     const after = await isolatedQualityControl.rollbackCapability({
+      actorId: 'release-manager-1',
       authorization,
       commandId: 'rollback-without-fallback',
       containedAt: '2026-09-10T15:00:00.000Z',

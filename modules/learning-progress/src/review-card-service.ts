@@ -569,29 +569,57 @@ export class ReviewCardService {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       let result: Awaited<ReturnType<ReviewCardModelGatewayPort['runStructured']>>;
       try {
-        result = await this.#modelGateway.runStructured({
-          ageBand: request.source.ageBand,
-          capability: structuredClone(request.capability),
-          constraints: {
-            answerMustBeDeterministicallyVerifiable: true,
-            doNotCopyOriginalQuestion: true,
-            hintPolicy: 'orientation_then_method_then_feedback',
-            maxExplanationSteps: 6,
-            rewriteStrategy: REWRITE_STRATEGIES[request.source.subject],
+        result = await this.#modelGateway.runStructured(
+          {
+            ageBand: request.source.ageBand,
+            capability: structuredClone(request.capability),
+            constraints: {
+              answerMustBeDeterministicallyVerifiable: true,
+              doNotCopyOriginalQuestion: true,
+              hintPolicy: 'orientation_then_method_then_feedback',
+              maxExplanationSteps: 6,
+              rewriteStrategy: REWRITE_STRATEGIES[request.source.subject],
+            },
+            knowledgePointName: request.source.knowledgePointName,
+            original: {
+              expectedAnswer: sanitizeModelText(request.source.originalExpectedAnswer),
+              question: sanitizeModelText(request.source.originalQuestion),
+              response: sanitizeModelText(request.source.originalResponse),
+            },
+            purpose: 'review_card',
+            riskLevel: 'medium',
+            subject: request.source.subject,
+            unitName: request.source.unitName,
           },
-          knowledgePointName: request.source.knowledgePointName,
-          original: {
-            expectedAnswer: sanitizeModelText(request.source.originalExpectedAnswer),
-            question: sanitizeModelText(request.source.originalQuestion),
-            response: sanitizeModelText(request.source.originalResponse),
+          {
+            ageBand: request.source.ageBand,
+            familySpaceId: request.familySpaceId,
+            learningProfileId: request.learningProfileId,
+            sourceReferenceId: request.id,
           },
-          purpose: 'review_card',
-          riskLevel: 'medium',
-          subject: request.source.subject,
-          unitName: request.source.unitName,
-        });
-      } catch {
+        );
+      } catch (error) {
         modelRuns.push(this.#modelRun(request, attempt, false, null));
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          (error as { code?: unknown }).code === 'SAFETY_BLOCKED'
+        ) {
+          const guidance =
+            'guidance' in error && typeof (error as { guidance?: unknown }).guidance === 'string'
+              ? (error as { guidance: string }).guidance
+              : '请马上找一位你信任的成年人。';
+          await this.#fail(
+            request,
+            'SAFETY_BLOCKED',
+            [...latestChecks, { detail: guidance, kind: 'safety', passed: false }],
+            modelRuns,
+          );
+          return this.#viewRequest(
+            await this.#requireRequest(request.id, request.learningProfileId),
+          );
+        }
         continue;
       }
       modelRuns.push(this.#modelRun(request, attempt, true, result));
@@ -973,6 +1001,11 @@ export class ReviewCardService {
       id: request.id,
       learningProfileId: request.learningProfileId,
       rebuildPending: request.rebuildPending,
+      safetyGuidance:
+        request.unavailableReason === 'SAFETY_BLOCKED'
+          ? (request.latestChecks.find((check) => check.kind === 'safety' && !check.passed)
+              ?.detail ?? null)
+          : null,
       status: request.status,
       unavailableReason: request.unavailableReason,
       updatedAt: request.updatedAt,

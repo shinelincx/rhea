@@ -5,9 +5,17 @@ import type { AiProcessingConsentPublicationReader, FamilyAccess } from '@rhea/f
 import type { JobClient } from '@rhea/job-runtime';
 import type { AssessmentService, SuggestedAssessmentService } from '@rhea/assessment';
 import type { GeneratedLearningService } from '@rhea/generated-learning';
-import type { LearningProgressService, ReviewCardService } from '@rhea/learning-progress';
+import type {
+  GamificationService,
+  LearningProgressService,
+  ReviewCardService,
+} from '@rhea/learning-progress';
 import type { ReportingService } from '@rhea/reporting';
 import type { ChallengeService } from '@rhea/challenge';
+import type { SafetyEscalationService } from '@rhea/safety-escalation';
+import type { PrivacyLifecycleService } from '@rhea/privacy-lifecycle';
+import type { MetricsGovernanceService } from '@rhea/metrics-governance';
+import type { QualityControlService } from '@rhea/quality-control';
 
 import { AssessmentController } from './assessment/assessment.controller.js';
 import { AssessmentExceptionFilter } from './assessment/assessment-exception.filter.js';
@@ -38,6 +46,8 @@ import {
   type LearningContentService,
 } from './learning-content/learning-content.provider.js';
 import { LearningProgressController } from './learning-progress/learning-progress.controller.js';
+import { GamificationController } from './learning-progress/gamification.controller.js';
+import { GAMIFICATION_SERVICE } from './learning-progress/gamification.provider.js';
 import { ReviewCardController } from './learning-progress/review-card.controller.js';
 import { LearningProgressExceptionFilter } from './learning-progress/learning-progress-exception.filter.js';
 import {
@@ -66,6 +76,23 @@ import {
   GENERATED_LEARNING_SERVICE,
   type GeneratedLearningScheduler,
 } from './generated-learning/generated-learning.provider.js';
+import { SupportAccessController } from './safety/support-access.controller.js';
+import { SafetyEscalationExceptionFilter } from './safety/safety-exception.filter.js';
+import { SAFETY_ESCALATION_SERVICE } from './safety/safety.provider.js';
+import { SUPPORT_DATA_READER, type SupportDataReader } from './safety/support-data.provider.js';
+import { PrivacyController } from './privacy/privacy.controller.js';
+import { PrivacyLifecycleExceptionFilter } from './privacy/privacy-exception.filter.js';
+import {
+  PRIVACY_LIFECYCLE_SERVICE,
+  PRIVACY_TASK_SCHEDULER,
+  type PrivacyTaskScheduler,
+} from './privacy/privacy.provider.js';
+import { OperationsController } from './operations/operations.controller.js';
+import {
+  METRICS_GOVERNANCE_SERVICE,
+  QUALITY_CONTROL_OPERATIONS_SERVICE,
+  SAFETY_OPERATIONS_SERVICE,
+} from './operations/operations.provider.js';
 
 @Module({})
 export class AppModule {
@@ -80,6 +107,7 @@ export class AppModule {
     professionalReviewAccess: ProfessionalReviewAccess,
     learningContentService: LearningContentService,
     learningProgressService: LearningProgressService,
+    gamificationService: GamificationService,
     reviewCardService: ReviewCardService,
     reviewCardScheduler: ReviewCardScheduler,
     reviewCardConsentReader: AiProcessingConsentPublicationReader,
@@ -88,6 +116,13 @@ export class AppModule {
     generatedLearningService: GeneratedLearningService,
     generatedLearningScheduler: GeneratedLearningScheduler,
     reportingService: ReportingService,
+    safetyEscalationService: SafetyEscalationService,
+    supportDataReader: SupportDataReader,
+    privacyLifecycleService: PrivacyLifecycleService,
+    privacyTaskScheduler: PrivacyTaskScheduler,
+    metricsGovernanceService: MetricsGovernanceService,
+    qualityControlOperationsService: QualityControlService,
+    safetyOperationsService: SafetyEscalationService,
     shutdownResources: Array<{ close(): Promise<void> }>,
   ): DynamicModule {
     return {
@@ -100,11 +135,15 @@ export class AppModule {
         HealthController,
         LearningContentController,
         LearningProgressController,
+        GamificationController,
         ReviewCardController,
         ProbeJobsController,
         ProfessionalReviewController,
         ReportingController,
         SubmissionController,
+        SupportAccessController,
+        PrivacyController,
+        OperationsController,
       ],
       providers: [
         {
@@ -138,6 +177,14 @@ export class AppModule {
         {
           provide: APP_FILTER,
           useClass: ReportingExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: SafetyEscalationExceptionFilter,
+        },
+        {
+          provide: APP_FILTER,
+          useClass: PrivacyLifecycleExceptionFilter,
         },
         {
           provide: ASSESSMENT_SERVICE,
@@ -180,6 +227,10 @@ export class AppModule {
           useValue: learningProgressService,
         },
         {
+          provide: GAMIFICATION_SERVICE,
+          useValue: gamificationService,
+        },
+        {
           provide: REVIEW_CARD_SERVICE,
           useValue: reviewCardService,
         },
@@ -210,6 +261,34 @@ export class AppModule {
         {
           provide: REPORTING_SERVICE,
           useValue: reportingService,
+        },
+        {
+          provide: SAFETY_ESCALATION_SERVICE,
+          useValue: safetyEscalationService,
+        },
+        {
+          provide: SUPPORT_DATA_READER,
+          useValue: supportDataReader,
+        },
+        {
+          provide: PRIVACY_LIFECYCLE_SERVICE,
+          useValue: privacyLifecycleService,
+        },
+        {
+          provide: PRIVACY_TASK_SCHEDULER,
+          useValue: privacyTaskScheduler,
+        },
+        {
+          provide: METRICS_GOVERNANCE_SERVICE,
+          useValue: metricsGovernanceService,
+        },
+        {
+          provide: QUALITY_CONTROL_OPERATIONS_SERVICE,
+          useValue: qualityControlOperationsService,
+        },
+        {
+          provide: SAFETY_OPERATIONS_SERVICE,
+          useValue: safetyOperationsService,
         },
         ...shutdownResources.map((resource, index) => ({
           provide: `SHUTDOWN_RESOURCE_${index}`,

@@ -8,13 +8,18 @@ import {
   type SubmitJobInput,
   type SubmittedJob,
 } from '@rhea/job-runtime';
-import { Queue, Worker, type ConnectionOptions } from 'bullmq';
+import { Queue, Worker, type ConnectionOptions, type JobType } from 'bullmq';
 
 export type { JobHandler, SubmitJobInput } from '@rhea/job-runtime';
 
 export interface BullMqOptions {
   queueName: string;
   redisUrl: string;
+}
+
+export interface ProfileJobPurgeResult {
+  inspected: number;
+  removed: number;
 }
 
 function connectionFromUrl(redisUrl: string): ConnectionOptions {
@@ -56,6 +61,15 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
   const kind = requireJobKind(kindValue);
   if (!isRecord(payload)) throw new Error('INVALID_JOB_PAYLOAD');
   if (
+    kind === 'submission.recognize' &&
+    (typeof payload.processingJobId !== 'string' ||
+      !payload.processingJobId.trim() ||
+      typeof payload.learningProfileId !== 'string' ||
+      !payload.learningProfileId.trim())
+  ) {
+    throw new Error('INVALID_JOB_PAYLOAD');
+  }
+  if (
     (kind === 'generated-learning.generate' || kind === 'review-card.generate') &&
     (typeof payload.requestId !== 'string' ||
       !payload.requestId.trim() ||
@@ -73,23 +87,39 @@ function requireJobInput(kindValue: unknown, payload: unknown): SubmitJobInput {
   ) {
     throw new Error('INVALID_JOB_PAYLOAD');
   }
-  return kind === 'generated-learning.generate' || kind === 'review-card.generate'
+  if (
+    kind === 'privacy.process' &&
+    (typeof payload.taskId !== 'string' || !payload.taskId.trim())
+  ) {
+    throw new Error('INVALID_JOB_PAYLOAD');
+  }
+  return kind === 'submission.recognize'
     ? {
         kind,
         payload: {
           learningProfileId: payload.learningProfileId as string,
-          requestId: payload.requestId as string,
+          processingJobId: payload.processingJobId as string,
         },
       }
-    : kind === 'open-assessment.generate'
+    : kind === 'generated-learning.generate' || kind === 'review-card.generate'
       ? {
           kind,
           payload: {
             learningProfileId: payload.learningProfileId as string,
-            suggestionId: payload.suggestionId as string,
+            requestId: payload.requestId as string,
           },
         }
-      : { kind, payload: { outcome: payload.outcome } };
+      : kind === 'open-assessment.generate'
+        ? {
+            kind,
+            payload: {
+              learningProfileId: payload.learningProfileId as string,
+              suggestionId: payload.suggestionId as string,
+            },
+          }
+        : kind === 'privacy.process'
+          ? { kind, payload: { taskId: payload.taskId as string } }
+          : { kind, payload: { outcome: payload.outcome } };
 }
 
 export class BullMqJobClient implements JobClient {
@@ -169,6 +199,79 @@ export class BullMqJobClient implements JobClient {
 
     return { id: job.id, status: 'queued' };
   }
+}
+
+export async function purgeLearningProfileJobs(
+  options: { queueNames: string[]; redisUrl: string },
+  learningProfileId: string,
+): Promise<ProfileJobPurgeResult> {
+  const result: ProfileJobPurgeResult = { inspected: 0, removed: 0 };
+  const jobStates = [
+    'active',
+    'completed',
+    'delayed',
+    'failed',
+    'paused',
+    'prioritized',
+    'waiting',
+    'waiting-children',
+  ] as unknown as JobType[];
+  for (const queueName of new Set(options.queueNames)) {
+    const queue = new Queue(queueName, { connection: connectionFromUrl(options.redisUrl) });
+    try {
+      const schedulers = await queue.getJobSchedulers(0, -1, true);
+      result.inspected += schedulers.length;
+      for (const scheduler of schedulers) {
+        if (
+          !isRecord(scheduler.template?.data) ||
+          scheduler.template.data.learningProfileId !== learningProfileId
+        )
+          continue;
+        if (await queue.removeJobScheduler(scheduler.key)) result.removed += 1;
+      }
+
+      const jobs = await queue.getJobs([...jobStates], 0, -1);
+      result.inspected += jobs.length;
+      for (const job of jobs) {
+        if (!isRecord(job.data) || job.data.learningProfileId !== learningProfileId || !job.id)
+          continue;
+        const removed = await queue.remove(job.id, { removeChildren: true });
+        if (removed === 1) {
+          result.removed += 1;
+          continue;
+        }
+        const remaining = await queue.getJob(job.id);
+        if (
+          remaining &&
+          isRecord(remaining.data) &&
+          remaining.data.learningProfileId === learningProfileId
+        ) {
+          throw new Error(`PROFILE_QUEUE_JOB_STILL_ACTIVE:${queueName}:${job.id}`);
+        }
+      }
+
+      const [remainingJobs, remainingSchedulers] = await Promise.all([
+        queue.getJobs([...jobStates], 0, -1),
+        queue.getJobSchedulers(0, -1, true),
+      ]);
+      const remainingJob = remainingJobs.find(
+        (job) => isRecord(job.data) && job.data.learningProfileId === learningProfileId,
+      );
+      const remainingScheduler = remainingSchedulers.find(
+        (scheduler) =>
+          isRecord(scheduler.template?.data) &&
+          scheduler.template.data.learningProfileId === learningProfileId,
+      );
+      if (remainingJob || remainingScheduler) {
+        throw new Error(
+          `PROFILE_QUEUE_JOB_STILL_ACTIVE:${queueName}:${remainingJob?.id ?? remainingScheduler?.key}`,
+        );
+      }
+    } finally {
+      await queue.close();
+    }
+  }
+  return result;
 }
 
 export function createJobWorker(options: BullMqOptions, handler: JobHandler): Worker {
