@@ -1,5 +1,6 @@
 import {
   ChallengeService,
+  MemoryChallengeMatchPool,
   MemoryChallengeStore,
   type ChallengeAuthorizationPort,
 } from '@rhea/challenge';
@@ -30,7 +31,9 @@ export function createLocalChallenge(authorization: ChallengeAuthorizationPort) 
   return new ChallengeService({
     authorization,
     invitationPepper: 'local-development-challenge-pepper',
+    matchPool: new MemoryChallengeMatchPool(),
     packFactory: createDeterministicChallengePackFactory(capabilityAuthority),
+    pairAvoidancePepper: 'local-development-avoidance-pepper',
     store: new MemoryChallengeStore(),
   });
 }

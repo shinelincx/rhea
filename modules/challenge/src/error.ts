@@ -15,6 +15,8 @@ export type ChallengeErrorCode =
   | 'ITEM_NOT_FOUND'
   | 'PARTNER_RELATION_INACTIVE'
   | 'PARTNER_RELATION_NOT_FOUND'
+  | 'RANDOM_MATCH_UNAVAILABLE'
+  | 'REPORT_NOT_ALLOWED'
   | 'WRITE_CONFLICT';
 
 export class ChallengeError extends Error {

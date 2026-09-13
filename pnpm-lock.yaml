@@ -410,6 +410,25 @@ importers:
         specifier: 5.0.0
         version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
 
+  adapters/redis-challenge-match:
+    dependencies:
+      '@rhea/challenge':
+        specifier: workspace:*
+        version: link:../../modules/challenge
+      ioredis:
+        specifier: 6.0.0
+        version: 6.0.0(supports-color@8.1.1)
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.13
+        version: 24.10.13
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.0
+        version: 5.0.0(@types/node@24.10.13)(jsdom@20.0.3(supports-color@8.1.1))(vite@8.2.2(@types/node@24.10.13)(terser@5.51.2)(tsx@4.20.6)(yaml@2.9.0))
+
   apps/app-api:
     dependencies:
       '@nestjs/common':
@@ -484,6 +503,9 @@ importers:
       '@rhea/queue-adapter':
         specifier: workspace:*
         version: link:../../adapters/queue
+      '@rhea/redis-challenge-match':
+        specifier: workspace:*
+        version: link:../../adapters/redis-challenge-match
       '@rhea/reporting':
         specifier: workspace:*
         version: link:../../modules/reporting

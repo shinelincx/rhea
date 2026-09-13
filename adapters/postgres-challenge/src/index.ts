@@ -1,9 +1,12 @@
 import type {
   ChallengeRecord,
   ChallengeStore,
+  ChallengeMatchPoolEntry,
   ConsumeInviteResult,
+  DeidentifiedChallengeResult,
   PartnerInviteRecord,
   PartnerRelationRecord,
+  SaveRandomChallengeResult,
 } from '@rhea/challenge';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 
@@ -226,6 +229,123 @@ export class PostgresChallengeStore implements ChallengeStore {
          )
          ORDER BY created_at DESC, id`,
         [learningProfileId],
+      );
+      return result.rows.map((row) => json<ChallengeRecord>(row.record));
+    });
+  }
+
+  async saveMatchPoolEntry(entry: ChallengeMatchPoolEntry): Promise<boolean> {
+    return this.#withProfile(
+      entry.actor.learningProfileId,
+      entry.actor.familySpaceId,
+      async (client) => {
+        const result = await client.query(
+          `INSERT INTO learning.random_match_entries (
+             entry_id, family_space_id, learning_profile_id, grade, status,
+             challenge_id, record, entered_at, expires_at
+           ) VALUES ($1, $2, $3, $4, 'waiting', NULL, $5::jsonb, $6, $7)
+           ON CONFLICT (learning_profile_id) DO UPDATE
+           SET entry_id = EXCLUDED.entry_id,
+               family_space_id = EXCLUDED.family_space_id,
+               grade = EXCLUDED.grade,
+               status = 'waiting',
+               challenge_id = NULL,
+               record = EXCLUDED.record,
+               entered_at = EXCLUDED.entered_at,
+               expires_at = EXCLUDED.expires_at
+           WHERE learning.random_match_entries.status <> 'matched'`,
+          [
+            entry.entryId,
+            entry.actor.familySpaceId,
+            entry.actor.learningProfileId,
+            entry.grade,
+            JSON.stringify(entry),
+            entry.enteredAt,
+            entry.expiresAt,
+          ],
+        );
+        return result.rowCount === 1;
+      },
+    );
+  }
+
+  async saveRandomChallenge(
+    record: ChallengeRecord,
+    entries: ChallengeMatchPoolEntry[],
+  ): Promise<SaveRandomChallengeResult> {
+    const participant = entries[1] ?? entries[0];
+    if (!participant) return 'conflict';
+    return this.#withProfile(
+      participant.actor.learningProfileId,
+      participant.actor.familySpaceId,
+      async (client) => {
+        const result = await client.query<{ outcome: SaveRandomChallengeResult }>(
+          `SELECT learning.create_random_challenge($1::jsonb, $2::jsonb) AS outcome`,
+          [JSON.stringify(record), JSON.stringify(entries)],
+        );
+        return result.rows[0]?.outcome ?? 'conflict';
+      },
+    );
+  }
+
+  async finalizeRandomChallenge(input: {
+    challenge: ChallengeRecord;
+    expectedVersion: number;
+    reportedByProfileId: string | null;
+    reportReason: string | null;
+    results: DeidentifiedChallengeResult[];
+  }): Promise<boolean> {
+    const participant =
+      input.challenge.authorizationSnapshots.find(
+        (snapshot) => snapshot.learningProfileId === input.reportedByProfileId,
+      ) ?? input.challenge.authorizationSnapshots[0];
+    if (!participant) return false;
+    return this.#withProfile(
+      participant.learningProfileId,
+      participant.familySpaceId,
+      async (client) => {
+        const result = await client.query<{ finalized: boolean }>(
+          `SELECT learning.finalize_random_challenge($1::jsonb) AS finalized`,
+          [JSON.stringify(input)],
+        );
+        return result.rows[0]?.finalized === true;
+      },
+    );
+  }
+
+  async getChallengeResult(
+    id: string,
+    learningProfileId: string,
+  ): Promise<DeidentifiedChallengeResult | null> {
+    return this.#withProfile(learningProfileId, null, async (client) => {
+      const result = await client.query<JsonRow>(
+        `SELECT record
+         FROM learning.deidentified_challenge_results
+         WHERE challenge_id = $1 AND owner_learning_profile_id = $2`,
+        [id, learningProfileId],
+      );
+      return result.rows[0] ? json<DeidentifiedChallengeResult>(result.rows[0].record) : null;
+    });
+  }
+
+  async listChallengeResults(learningProfileId: string): Promise<DeidentifiedChallengeResult[]> {
+    return this.#withProfile(learningProfileId, null, async (client) => {
+      const result = await client.query<JsonRow>(
+        `SELECT record
+         FROM learning.deidentified_challenge_results
+         WHERE owner_learning_profile_id = $1
+         ORDER BY ended_at DESC, challenge_id`,
+        [learningProfileId],
+      );
+      return result.rows.map((row) => json<DeidentifiedChallengeResult>(row.record));
+    });
+  }
+
+  async listDueRandomChallenges(dueAt: string, limit: number): Promise<ChallengeRecord[]> {
+    return this.#withRole(async (client) => {
+      const result = await client.query<JsonRow>(
+        `SELECT learning.read_due_random_challenges($1, $2) AS record`,
+        [dueAt, limit],
       );
       return result.rows.map((row) => json<ChallengeRecord>(row.record));
     });

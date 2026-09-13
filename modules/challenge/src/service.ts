@@ -14,21 +14,44 @@ import type {
   ChallengeGeneratedItem,
   ChallengeGeneratedPack,
   ChallengePackFactory,
+  ChallengeMatchPoolEntry,
+  ChallengeMatchPoolPort,
   ChallengeSubject,
   ChallengeView,
+  MatchPoolView,
   PartnerInviteView,
   PartnerRelationView,
+  RandomChallengeReportReason,
 } from './types.js';
 
 const INVITE_LIFETIME_MS = 15 * 60_000;
+const MATCH_ENTRY_LIFETIME_MS = 2 * 60_000;
+const RANDOM_CHALLENGE_LIFETIME_MS = 24 * 60 * 60_000;
 const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const SUBJECTS = new Set<ChallengeSubject>(['chinese', 'english', 'mathematics', 'science']);
+const REPORT_REASONS = new Set<RandomChallengeReportReason>([
+  'other_preset',
+  'suspected_cheating',
+  'uncomfortable',
+  'unsafe_content',
+]);
+const IDENTITY_ADJECTIVES = ['勇敢', '好奇', '闪亮', '专注', '友善', '机敏'];
+const IDENTITY_ANIMALS = ['海豚', '熊猫', '小鹿', '海獭', '企鹅', '狐狸'];
+const RANDOM_TARGETS: Record<ChallengeSubject, string> = {
+  chinese: '同年级语文基础挑战',
+  english: '同年级英语基础挑战',
+  mathematics: '同年级数学基础挑战',
+  science: '同年级科学基础挑战',
+};
 
 export interface ChallengeServiceDependencies {
   authorization: ChallengeAuthorizationPort;
   clock?: { readonly now: Date };
+  identityFactory?: () => { avatarKey: string; nickname: string };
   invitationPepper: string;
+  matchPool?: ChallengeMatchPoolPort;
   packFactory: ChallengePackFactory;
+  pairAvoidancePepper?: string;
   store: ChallengeStore;
 }
 
@@ -75,13 +98,22 @@ function publicRelation(record: PartnerRelationRecord): PartnerRelationView {
 export class ChallengeService {
   readonly #authorization: ChallengeAuthorizationPort;
   readonly #clock: { readonly now: Date };
+  readonly #identityFactory: () => { avatarKey: string; nickname: string };
   readonly #invitationPepper: string;
+  readonly #matchPool: ChallengeMatchPoolPort | null;
   readonly #packFactory: ChallengePackFactory;
+  readonly #pairAvoidancePepper: string | null;
   readonly #store: ChallengeStore;
 
   constructor(dependencies: ChallengeServiceDependencies) {
     if (dependencies.invitationPepper.length < 24) {
       throw new ChallengeError('INPUT_INVALID', '邀请码保护密钥至少需要 24 个字符');
+    }
+    if (
+      dependencies.matchPool &&
+      (!dependencies.pairAvoidancePepper || dependencies.pairAvoidancePepper.length < 24)
+    ) {
+      throw new ChallengeError('INPUT_INVALID', '随机匹配回避密钥至少需要 24 个字符');
     }
     this.#authorization = dependencies.authorization;
     this.#clock = dependencies.clock ?? {
@@ -89,8 +121,21 @@ export class ChallengeService {
         return new Date();
       },
     };
+    this.#identityFactory =
+      dependencies.identityFactory ??
+      (() => {
+        const bytes = randomBytes(3);
+        const adjective = IDENTITY_ADJECTIVES[bytes[0]! % IDENTITY_ADJECTIVES.length]!;
+        const animal = IDENTITY_ANIMALS[bytes[1]! % IDENTITY_ANIMALS.length]!;
+        return {
+          avatarKey: `safe-${bytes[2]! % 12}`,
+          nickname: `${adjective}${animal}`,
+        };
+      });
     this.#invitationPepper = dependencies.invitationPepper;
+    this.#matchPool = dependencies.matchPool ?? null;
     this.#packFactory = dependencies.packFactory;
+    this.#pairAvoidancePepper = dependencies.pairAvoidancePepper ?? null;
     this.#store = dependencies.store;
   }
 
@@ -202,7 +247,7 @@ export class ChallengeService {
       subject: input.subject,
       target,
     });
-    this.#validatePacks(generated, relation);
+    this.#validatePacks(generated, relation.participants);
     const publicationSnapshots = await Promise.all(
       relation.participants.map((participant) => this.#requireAuthorized(participant)),
     );
@@ -223,8 +268,13 @@ export class ChallengeService {
       cancelledAt: null,
       cancelledByProfileId: null,
       createdAt: now,
+      endedReason: null,
+      expiresAt: null,
       id: randomUUID(),
+      identities: [],
+      mode: 'partner',
       packs: structuredClone(generated.packs),
+      pairAvoidanceToken: null,
       relationId: relation.id,
       status: 'active',
       subject: input.subject,
@@ -244,20 +294,162 @@ export class ChallengeService {
     return this.#view(record, input.actor);
   }
 
+  async enterMatchPool(input: {
+    actor: ChallengeActor;
+    subject?: ChallengeSubject;
+  }): Promise<MatchPoolView> {
+    if (!this.#matchPool || !this.#pairAvoidancePepper) {
+      throw new ChallengeError('RANDOM_MATCH_UNAVAILABLE', '随机匹配服务暂不可用，请稍后再试');
+    }
+    const authorization = await this.#requireAuthorized(input.actor);
+    const existing = (await this.#store.listChallenges(input.actor.learningProfileId)).find(
+      (challenge) => challenge.mode === 'random' && challenge.status === 'active',
+    );
+    if (existing && !this.#isExpired(existing)) {
+      return {
+        challenge: this.#view(existing, input.actor),
+        grade: authorization.grade!,
+        status: 'matched',
+      };
+    }
+    if (existing) await this.#finalizeRandom(existing, 'expired', input.actor.learningProfileId);
+    const subject = input.subject ?? 'mathematics';
+    if (!SUBJECTS.has(subject)) throw new ChallengeError('INPUT_INVALID', '挑战学科无效');
+    const target = RANDOM_TARGETS[subject];
+    const now = this.#clock.now;
+    const entry: ChallengeMatchPoolEntry = {
+      actor: structuredClone(input.actor),
+      enteredAt: now.toISOString(),
+      entryId: randomUUID(),
+      expiresAt: new Date(now.getTime() + MATCH_ENTRY_LIFETIME_MS).toISOString(),
+      grade: authorization.grade!,
+    };
+    if (!(await this.#store.saveMatchPoolEntry(entry))) {
+      const active = (await this.#store.listChallenges(input.actor.learningProfileId)).find(
+        (challenge) => challenge.mode === 'random' && challenge.status === 'active',
+      );
+      if (active) {
+        return {
+          challenge: this.#view(active, input.actor),
+          grade: authorization.grade!,
+          status: 'matched',
+        };
+      }
+      throw new ChallengeError('WRITE_CONFLICT', '匹配状态已经变化，请重试');
+    }
+    const outcome = await this.#matchPool.enter(entry);
+    if (outcome.kind === 'waiting') return this.#waitingView(entry);
+    const opponentEntry = outcome.opponent;
+    if (
+      Date.parse(opponentEntry.expiresAt) <= now.getTime() ||
+      opponentEntry.actor.familySpaceId === input.actor.familySpaceId ||
+      opponentEntry.actor.learningProfileId === input.actor.learningProfileId
+    ) {
+      await this.#matchPool.remove(opponentEntry);
+      await this.#matchPool.restore([entry]);
+      return this.#waitingView(entry);
+    }
+
+    let opponentAuthorization: ChallengeAuthorizationSnapshot;
+    try {
+      opponentAuthorization = await this.#requireAuthorized(opponentEntry.actor);
+    } catch {
+      await this.#matchPool.remove(opponentEntry);
+      await this.#matchPool.restore([entry]);
+      return this.#waitingView(entry);
+    }
+    if (opponentAuthorization.grade !== authorization.grade) {
+      await this.#matchPool.restore([opponentEntry, entry]);
+      return this.#waitingView(entry);
+    }
+
+    const participants = [opponentEntry.actor, input.actor];
+    const generated = await this.#packFactory.createEquivalentPacks({
+      grade: authorization.grade!,
+      participants: structuredClone(participants),
+      subject,
+      target,
+    });
+    this.#validatePacks(generated, participants);
+    const publicationSnapshots = await Promise.all(
+      participants.map((participant) => this.#requireAuthorized(participant)),
+    );
+    if (publicationSnapshots.some((snapshot) => snapshot.grade !== authorization.grade)) {
+      await this.#matchPool.restore([opponentEntry, entry]);
+      return this.#waitingView(entry);
+    }
+
+    const identities = participants.map((participant) => ({
+      ...this.#identityFactory(),
+      learningProfileId: participant.learningProfileId,
+    }));
+    const challenge: ChallengeRecord = {
+      answers: [],
+      authorizationDecisionId: required(generated.authorizationDecisionId, '题包授权决策'),
+      authorizationSnapshots: publicationSnapshots.map((snapshot) => ({
+        consentRevision: snapshot.consentRevision,
+        familySpaceId: snapshot.familySpaceId,
+        grade: snapshot.grade!,
+        learningProfileId: snapshot.learningProfileId,
+      })),
+      capabilityVersionId: required(generated.capabilityVersionId, '题包能力版本'),
+      cancelledAt: null,
+      cancelledByProfileId: null,
+      createdAt: now.toISOString(),
+      endedReason: null,
+      expiresAt: new Date(now.getTime() + RANDOM_CHALLENGE_LIFETIME_MS).toISOString(),
+      id: randomUUID(),
+      identities,
+      mode: 'random',
+      packs: structuredClone(generated.packs),
+      pairAvoidanceToken: this.#pairToken(participants),
+      relationId: null,
+      status: 'active',
+      subject,
+      target,
+      version: 1,
+    };
+    const saved = await this.#store.saveRandomChallenge(challenge, [opponentEntry, entry]);
+    if (saved === 'avoided') {
+      await this.#matchPool.restore([opponentEntry, entry]);
+      return this.#waitingView(entry);
+    }
+    if (saved === 'conflict') return this.#waitingView(entry);
+    return {
+      challenge: this.#view(challenge, input.actor),
+      grade: authorization.grade!,
+      status: 'matched',
+    };
+  }
+
   async getChallenge(input: {
     actor: ChallengeActor;
     challengeId: string;
   }): Promise<ChallengeView> {
-    const record = await this.#challengeForParticipant(input.challengeId, input.actor);
-    return this.#view(record, input.actor);
+    const challengeId = required(input.challengeId, '挑战');
+    const record = await this.#store.getChallenge(challengeId, input.actor.learningProfileId);
+    if (record) {
+      this.#assertParticipant(record, input.actor);
+      if (this.#isExpired(record)) {
+        return this.#finalizeRandom(record, 'expired', input.actor.learningProfileId);
+      }
+      return this.#view(record, input.actor);
+    }
+    const result = await this.#store.getChallengeResult(challengeId, input.actor.learningProfileId);
+    if (!result) throw new ChallengeError('CHALLENGE_NOT_FOUND', '挑战不存在');
+    return structuredClone(result.view);
   }
 
   async listChallenges(input: { actor: ChallengeActor }): Promise<ChallengeView[]> {
-    return Promise.all(
-      (await this.#store.listChallenges(input.actor.learningProfileId)).map(async (challenge) =>
-        this.#view(challenge, input.actor),
-      ),
-    );
+    await this.expireDueRandomChallenges();
+    const [active, results] = await Promise.all([
+      this.#store.listChallenges(input.actor.learningProfileId),
+      this.#store.listChallengeResults(input.actor.learningProfileId),
+    ]);
+    return [
+      ...active.map((challenge) => this.#view(challenge, input.actor)),
+      ...results.map((result) => structuredClone(result.view)),
+    ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
   async submitAnswer(input: {
@@ -277,13 +469,37 @@ export class ChallengeService {
     if (challenge.status !== 'active') {
       throw new ChallengeError('CHALLENGE_NOT_ACTIVE', '这场挑战已经结束，不能继续作答');
     }
-    const relation = await this.#relationForParticipant(challenge.relationId, input.actor);
-    if (relation.status !== 'active') {
-      throw new ChallengeError('PARTNER_RELATION_INACTIVE', '学习伙伴关系已解除，挑战已经结束');
+    if (this.#isExpired(challenge)) {
+      await this.#finalizeRandom(challenge, 'expired', input.actor.learningProfileId);
+      throw new ChallengeError('CHALLENGE_NOT_ACTIVE', '这场挑战已经结束，不能继续作答');
     }
-    await Promise.all(
-      relation.participants.map((participant) => this.#requireAuthorized(participant)),
-    );
+    if (challenge.mode === 'partner') {
+      const relation = await this.#relationForParticipant(challenge.relationId!, input.actor);
+      if (relation.status !== 'active') {
+        throw new ChallengeError('PARTNER_RELATION_INACTIVE', '学习伙伴关系已解除，挑战已经结束');
+      }
+      await Promise.all(
+        relation.participants.map((participant) => this.#requireAuthorized(participant)),
+      );
+    } else {
+      try {
+        await Promise.all(
+          challenge.authorizationSnapshots.map((snapshot) =>
+            this.#requireAuthorized({
+              familySpaceId: snapshot.familySpaceId,
+              learningProfileId: snapshot.learningProfileId,
+            }),
+          ),
+        );
+      } catch (error) {
+        await this.#finalizeRandom(
+          challenge,
+          'authorization_withdrawn',
+          input.actor.learningProfileId,
+        );
+        throw error;
+      }
+    }
     const pack = challenge.packs.find(
       (candidate) => candidate.learningProfileId === input.actor.learningProfileId,
     )!;
@@ -318,6 +534,17 @@ export class ChallengeService {
       )
     ) {
       updated.status = 'completed';
+      updated.endedReason = 'completed';
+    }
+    if (updated.status === 'completed' && updated.mode === 'random') {
+      return this.#finalizeRandom(
+        updated,
+        'completed',
+        input.actor.learningProfileId,
+        null,
+        null,
+        challenge.version,
+      );
     }
     if (!(await this.#store.saveChallenge(updated, challenge.version))) {
       const latest = await this.#store.getChallenge(challenge.id, input.actor.learningProfileId);
@@ -341,9 +568,13 @@ export class ChallengeService {
   }): Promise<ChallengeView> {
     const challenge = await this.#challengeForParticipant(input.challengeId, input.actor);
     if (challenge.status !== 'active') return this.#view(challenge, input.actor);
+    if (challenge.mode === 'random') {
+      return this.#finalizeRandom(challenge, 'left', input.actor.learningProfileId);
+    }
     const updated = structuredClone(challenge);
     updated.cancelledAt = this.#clock.now.toISOString();
     updated.cancelledByProfileId = input.actor.learningProfileId;
+    updated.endedReason = 'left';
     updated.status = 'cancelled';
     updated.version += 1;
     if (!(await this.#store.saveChallenge(updated, challenge.version))) {
@@ -374,6 +605,7 @@ export class ChallengeService {
           ...challenge,
           cancelledAt: dissolvedAt,
           cancelledByProfileId: input.actor.learningProfileId,
+          endedReason: 'relation_dissolved' as const,
           status: 'cancelled' as const,
           version: challenge.version + 1,
         };
@@ -383,6 +615,42 @@ export class ChallengeService {
       }),
     );
     return publicRelation(updated);
+  }
+
+  async reportRandomChallenge(input: {
+    actor: ChallengeActor;
+    challengeId: string;
+    reason: RandomChallengeReportReason;
+  }): Promise<ChallengeView> {
+    if (!REPORT_REASONS.has(input.reason)) {
+      throw new ChallengeError('INPUT_INVALID', '请选择举报原因');
+    }
+    const challenge = await this.#challengeForParticipant(input.challengeId, input.actor);
+    if (challenge.mode !== 'random') {
+      throw new ChallengeError('REPORT_NOT_ALLOWED', '只有随机匹配挑战可以在这里举报');
+    }
+    if (challenge.status !== 'active') return this.#view(challenge, input.actor);
+    return this.#finalizeRandom(
+      challenge,
+      'reported',
+      input.actor.learningProfileId,
+      input.actor.learningProfileId,
+      input.reason,
+    );
+  }
+
+  async expireDueRandomChallenges(limit = 100): Promise<number> {
+    const due = await this.#store.listDueRandomChallenges(this.#clock.now.toISOString(), limit);
+    let expired = 0;
+    for (const challenge of due) {
+      try {
+        await this.#finalizeRandom(challenge, 'expired');
+        expired += 1;
+      } catch (error) {
+        if (!(error instanceof ChallengeError) || error.code !== 'WRITE_CONFLICT') throw error;
+      }
+    }
+    return expired;
   }
 
   async #requireAuthorized(actor: ChallengeActor): Promise<ChallengeAuthorizationSnapshot> {
@@ -433,10 +701,79 @@ export class ChallengeService {
       actor.learningProfileId,
     );
     if (!challenge) throw new ChallengeError('CHALLENGE_NOT_FOUND', '挑战不存在');
+    this.#assertParticipant(challenge, actor);
+    return challenge;
+  }
+
+  #assertParticipant(challenge: ChallengeRecord, actor: ChallengeActor): void {
     if (!challenge.packs.some((pack) => pack.learningProfileId === actor.learningProfileId)) {
       throw new ChallengeError('ACCESS_DENIED', '不能访问其他学习者的挑战');
     }
-    return challenge;
+  }
+
+  async #finalizeRandom(
+    challenge: ChallengeRecord,
+    endedReason: Exclude<ChallengeView['endedReason'], null | 'relation_dissolved'>,
+    viewForProfileId = challenge.authorizationSnapshots[0]?.learningProfileId,
+    reportedByProfileId: string | null = null,
+    reportReason: RandomChallengeReportReason | null = null,
+    expectedVersion = challenge.version,
+  ): Promise<ChallengeView> {
+    if (challenge.mode !== 'random') {
+      throw new ChallengeError('WRITE_CONFLICT', '只有随机挑战可执行去标识结束流程');
+    }
+    const endedAt = this.#clock.now.toISOString();
+    const ended: ChallengeRecord = {
+      ...structuredClone(challenge),
+      cancelledAt: endedReason === 'completed' ? null : endedAt,
+      cancelledByProfileId:
+        endedReason === 'left' ? (viewForProfileId ?? null) : reportedByProfileId,
+      endedReason,
+      status: endedReason === 'completed' ? 'completed' : 'cancelled',
+      version: expectedVersion + 1,
+    };
+    const results = ended.authorizationSnapshots.map((snapshot) => {
+      const owner = {
+        familySpaceId: snapshot.familySpaceId,
+        learningProfileId: snapshot.learningProfileId,
+      };
+      return {
+        challengeId: ended.id,
+        endedAt,
+        owner,
+        view: {
+          ...this.#view(ended, owner),
+          opponentIdentity: null,
+          relationId: null,
+        },
+      };
+    });
+    if (
+      !(await this.#store.finalizeRandomChallenge({
+        challenge: ended,
+        expectedVersion,
+        reportedByProfileId,
+        reportReason,
+        results,
+      }))
+    ) {
+      if (viewForProfileId) {
+        const existing = await this.#store.getChallengeResult(ended.id, viewForProfileId);
+        if (existing) return structuredClone(existing.view);
+      }
+      throw new ChallengeError('WRITE_CONFLICT', '挑战状态已经变化，请刷新');
+    }
+    const selected = results.find((result) => result.owner.learningProfileId === viewForProfileId);
+    return structuredClone((selected ?? results[0])!.view);
+  }
+
+  #isExpired(challenge: ChallengeRecord): boolean {
+    return (
+      challenge.mode === 'random' &&
+      challenge.status === 'active' &&
+      challenge.expiresAt !== null &&
+      Date.parse(challenge.expiresAt) <= this.#clock.now.getTime()
+    );
   }
 
   #issueCode(): string {
@@ -448,13 +785,33 @@ export class ChallengeService {
     return createHmac('sha256', this.#invitationPepper).update(code).digest('base64url');
   }
 
+  #pairToken(participants: ChallengeActor[]): string {
+    return createHmac('sha256', this.#pairAvoidancePepper!)
+      .update(
+        participants
+          .map((participant) => participant.learningProfileId)
+          .sort()
+          .join('\u0000'),
+      )
+      .digest('base64url');
+  }
+
+  #waitingView(entry: ChallengeMatchPoolEntry): MatchPoolView {
+    return {
+      entryId: entry.entryId,
+      expiresAt: entry.expiresAt,
+      grade: entry.grade,
+      status: 'waiting',
+    };
+  }
+
   #validatePacks(
     generated: {
       authorizationDecisionId: string;
       capabilityVersionId: string;
       packs: ChallengeGeneratedPack[];
     },
-    relation: PartnerRelationRecord,
+    participants: ChallengeActor[],
   ): void {
     if (!generated.authorizationDecisionId.trim() || !generated.capabilityVersionId.trim()) {
       throw new ChallengeError('GENERATED_PACK_INVALID', '挑战题包缺少获准能力版本');
@@ -462,7 +819,7 @@ export class ChallengeService {
     if (generated.packs.length !== 2) {
       throw new ChallengeError('GENERATED_PACK_INVALID', '挑战必须为双方各生成一个独立题包');
     }
-    const packs = relation.participants.map((participant) =>
+    const packs = participants.map((participant) =>
       generated.packs.find((pack) => pack.learningProfileId === participant.learningProfileId),
     );
     if (packs.some((pack) => !pack)) {
@@ -546,7 +903,9 @@ export class ChallengeService {
       authorizationDecisionId: challenge.authorizationDecisionId,
       capabilityVersionId: challenge.capabilityVersionId,
       createdAt: challenge.createdAt,
+      endedReason: challenge.endedReason,
       evidenceQualification: 'assisted_only',
+      expiresAt: challenge.expiresAt,
       id: challenge.id,
       items: pack.items.map((item) => {
         const response = ownAnswers.find((answer) => answer.itemId === item.id);
@@ -567,7 +926,19 @@ export class ChallengeService {
       }),
       knowledgeFeedback,
       myProgress: { completedItems: ownAnswers.length, totalItems: pack.items.length },
+      mode: challenge.mode,
       noPenalty: true,
+      opponentIdentity:
+        challenge.mode === 'random'
+          ? (() => {
+              const identity = challenge.identities.find(
+                (candidate) => candidate.learningProfileId === opponentPack.learningProfileId,
+              );
+              return identity
+                ? { avatarKey: identity.avatarKey, nickname: identity.nickname }
+                : null;
+            })()
+          : null,
       opponentProgress: {
         completedItems: opponentAnswers.length,
         totalItems: opponentPack.items.length,

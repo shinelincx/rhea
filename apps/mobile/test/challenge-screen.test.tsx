@@ -21,7 +21,9 @@ const challenge: MobileChallenge = {
   authorizationDecisionId: 'decision-1',
   capabilityVersionId: 'capability-1',
   createdAt: '2026-09-12T01:00:00.000Z',
+  endedReason: null,
   evidenceQualification: 'assisted_only',
+  expiresAt: null,
   id: 'challenge-1',
   items: [
     {
@@ -35,7 +37,9 @@ const challenge: MobileChallenge = {
   ],
   knowledgeFeedback: [],
   myProgress: { completedItems: 0, totalItems: 1 },
+  mode: 'partner',
   noPenalty: true,
+  opponentIdentity: null,
   opponentProgress: { completedItems: 0, totalItems: 1 },
   relationId: relation.id,
   score: null,
@@ -62,6 +66,19 @@ function gateway(): ChallengeGateway {
     async createChallenge() {
       return challenge;
     },
+    async enterRandomMatch() {
+      return {
+        challenge: {
+          ...challenge,
+          expiresAt: '2026-09-13T01:00:00.000Z',
+          mode: 'random',
+          opponentIdentity: { avatarKey: 'safe-1', nickname: '闪亮海豚' },
+          relationId: null,
+        },
+        grade: 3,
+        status: 'matched',
+      };
+    },
     async listChallenges() {
       return [challenge];
     },
@@ -69,7 +86,17 @@ function gateway(): ChallengeGateway {
       return challenge;
     },
     async leaveChallenge() {
-      return { ...challenge, status: 'cancelled' };
+      return { ...challenge, endedReason: 'left', status: 'cancelled' };
+    },
+    async reportRandomChallenge() {
+      return {
+        ...challenge,
+        endedReason: 'reported',
+        mode: 'random',
+        opponentIdentity: null,
+        relationId: null,
+        status: 'cancelled',
+      };
     },
     async submitAnswer() {
       return {
@@ -125,5 +152,25 @@ describe('ChallengeScreen', () => {
     await fireEvent.press(view.getByText('提交这一题'));
     await waitFor(() => expect(view.getByText('100%')).toBeTruthy());
     expect(view.getByText(/只作为辅助学习反馈/)).toBeTruthy();
+  });
+
+  it('shows only an ephemeral stranger identity and reports with preset reasons', async () => {
+    const view = await render(
+      <ChallengeScreen
+        accessToken="token"
+        familySpaceId="family-1"
+        gateway={gateway()}
+        learningProfileId="profile-1"
+        onBack={jest.fn()}
+      />,
+    );
+    await view.findByText('开始随机匹配');
+    await fireEvent.press(view.getByText('开始随机匹配'));
+    await view.findByText('闪亮海豚');
+    expect(view.getByText(/不能聊天、搜索或查看资料/)).toBeTruthy();
+    await fireEvent.press(view.getByText('这场互动让我不舒服'));
+    await fireEvent.press(view.getByText('感到不舒服'));
+    await view.findByText(/以后不会再匹配到对方/);
+    expect(view.queryByText('闪亮海豚')).toBeNull();
   });
 });

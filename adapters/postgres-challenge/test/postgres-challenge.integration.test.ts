@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ChallengeService,
   MemoryChallengeAuthorization,
+  MemoryChallengeMatchPool,
   type ChallengeActor,
   type ChallengePackFactory,
 } from '@rhea/challenge';
@@ -26,12 +27,22 @@ describeWithDatabase('PostgresChallengeStore', () => {
     familySpaceId: randomUUID(),
     learningProfileId: randomUUID(),
   };
+  const carol: ChallengeActor = {
+    familySpaceId: randomUUID(),
+    learningProfileId: randomUUID(),
+  };
+  const dora: ChallengeActor = {
+    familySpaceId: randomUUID(),
+    learningProfileId: randomUUID(),
+  };
 
   beforeAll(async () => {
     await applyMigrations(pool!, await loadDefaultMigrations());
-    for (const [actor, name, guardianId] of [
-      [alice, 'Alice', randomUUID()],
-      [bob, 'Bob', randomUUID()],
+    for (const [actor, name, guardianId, grade] of [
+      [alice, 'Alice', randomUUID(), 3],
+      [bob, 'Bob', randomUUID(), 3],
+      [carol, 'Carol', randomUUID(), 3],
+      [dora, 'Dora', randomUUID(), 4],
     ] as const) {
       await pool!.query(`INSERT INTO learning.guardians (id, identity_subject) VALUES ($1, $2)`, [
         guardianId,
@@ -44,8 +55,8 @@ describeWithDatabase('PostgresChallengeStore', () => {
       await pool!.query(
         `INSERT INTO learning.learning_profiles
           (id, family_space_id, display_name, grade, pin_hash)
-         VALUES ($1, $2, $3, 3, 'integration-test')`,
-        [actor.learningProfileId, actor.familySpaceId, name],
+         VALUES ($1, $2, $3, $4, 'integration-test')`,
+        [actor.learningProfileId, actor.familySpaceId, name, grade],
       );
       await pool!.query(
         `INSERT INTO learning.family_consents
@@ -135,5 +146,112 @@ describeWithDatabase('PostgresChallengeStore', () => {
     expect(bobView.items[0]?.prompt).toBe('1+2=?');
     expect(JSON.stringify(bobView)).not.toContain('1+1=?');
     expect(bobView.opponentProgress.completedItems).toBe(1);
+  });
+
+  it('persists grade-only random matching and deidentifies immediately on report', async () => {
+    const authorization = new MemoryChallengeAuthorization([
+      { ...alice, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...bob, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...carol, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...dora, consentRevision: 1, grade: 4, status: 'granted' },
+    ]);
+    const store = new PostgresChallengeStore(pool!);
+    const service = new ChallengeService({
+      authorization,
+      identityFactory: () => ({ avatarKey: 'safe-planet', nickname: '星球搭档' }),
+      invitationPepper: 'integration-test-pepper-is-long-enough',
+      matchPool: new MemoryChallengeMatchPool(),
+      packFactory: {
+        async createEquivalentPacks({ participants }) {
+          return {
+            authorizationDecisionId: `random-decision-${suffix}`,
+            capabilityVersionId: `random-capability-${suffix}`,
+            packs: participants.map((participant, index) => ({
+              items: [
+                {
+                  difficulty: 'foundation' as const,
+                  gradingRule: { expected: String(index + 2), kind: 'numeric' as const },
+                  id: `random-item-${index}-${suffix}`,
+                  knowledgePoint: '加法',
+                  prompt: index === 0 ? '1+1=?' : '1+2=?',
+                },
+              ],
+              learningProfileId: participant.learningProfileId,
+            })),
+          };
+        },
+      },
+      pairAvoidancePepper: 'integration-avoidance-pepper-long-enough',
+      store,
+    });
+
+    await expect(service.enterMatchPool({ actor: dora })).resolves.toMatchObject({
+      grade: 4,
+      status: 'waiting',
+    });
+    await expect(service.enterMatchPool({ actor: alice })).resolves.toMatchObject({
+      grade: 3,
+      status: 'waiting',
+    });
+    const match = await service.enterMatchPool({ actor: bob });
+    expect(match.status).toBe('matched');
+    if (match.status !== 'matched') throw new Error('expected random match');
+    expect(match.challenge).toMatchObject({ mode: 'random', relationId: null });
+    expect(JSON.stringify(match.challenge)).not.toContain(alice.learningProfileId);
+
+    const reported = await service.reportRandomChallenge({
+      actor: alice,
+      challengeId: match.challenge.id,
+      reason: 'uncomfortable',
+    });
+    expect(reported).toMatchObject({
+      endedReason: 'reported',
+      noPenalty: true,
+      opponentIdentity: null,
+      status: 'cancelled',
+    });
+    expect(JSON.stringify(reported)).not.toContain(bob.learningProfileId);
+
+    const persistence = await pool!.query<{
+      active_matches: string;
+      avoidance_tokens: string;
+      identity_mappings: string;
+      owner_results: string;
+      safety_reports: string;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM learning.challenge_matches WHERE id = $1)::text AS active_matches,
+         (SELECT count(*) FROM learning.random_match_identity_mappings WHERE challenge_id = $1)::text AS identity_mappings,
+         (SELECT count(*) FROM learning.deidentified_challenge_results WHERE challenge_id = $1)::text AS owner_results,
+         (SELECT count(*) FROM learning.pair_avoidance_tokens WHERE reason = 'reported')::text AS avoidance_tokens,
+         (SELECT count(*) FROM safety.challenge_reports WHERE challenge_id = $1)::text AS safety_reports`,
+      [match.challenge.id],
+    );
+    expect(persistence.rows[0]).toEqual({
+      active_matches: '0',
+      avoidance_tokens: '1',
+      identity_mappings: '0',
+      owner_results: '2',
+      safety_reports: '1',
+    });
+
+    const challengeClient = await pool!.connect();
+    try {
+      await challengeClient.query('BEGIN');
+      await challengeClient.query('SET LOCAL ROLE rhea_challenge_app');
+      await expect(
+        challengeClient.query('SELECT * FROM safety.challenge_reports'),
+      ).rejects.toMatchObject({
+        code: '42501',
+      });
+      await challengeClient.query('ROLLBACK');
+    } finally {
+      challengeClient.release();
+    }
+
+    await service.enterMatchPool({ actor: alice });
+    await expect(service.enterMatchPool({ actor: bob })).resolves.toMatchObject({
+      status: 'waiting',
+    });
   });
 });

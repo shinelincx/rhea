@@ -34,6 +34,7 @@
     "@rhea/postgres-quality-control": "workspace:*",
     "@rhea/postgres-reporting": "workspace:*",
     "@rhea/queue-adapter": "workspace:*",
+    "@rhea/redis-challenge-match": "workspace:*",
     "@rhea/quality-control": "workspace:*",
     "@rhea/reporting": "workspace:*",
     "@rhea/submission": "workspace:*",

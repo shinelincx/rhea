@@ -1,5 +1,9 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post } from '@nestjs/common';
-import type { ChallengeActor, ChallengeSubject } from '@rhea/challenge';
+import type {
+  ChallengeActor,
+  ChallengeSubject,
+  RandomChallengeReportReason,
+} from '@rhea/challenge';
 import { FamilyAccessError } from '@rhea/family-access';
 
 import { FAMILY_ACCESS, type FamilyAccess } from '../family-access/family-access.provider.js';
@@ -84,6 +88,22 @@ export class ChallengeController {
     };
   }
 
+  @Post('random-match-entries')
+  async enterRandomMatch(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Body() body: { subject?: unknown } | undefined,
+  ) {
+    const actor = await this.actor(authorization, familySpaceId, learningProfileId);
+    return {
+      data: await this.challenge.enterMatchPool({
+        actor,
+        ...(typeof body?.subject === 'string' ? { subject: body.subject as ChallengeSubject } : {}),
+      }),
+    };
+  }
+
   @Get('challenges')
   async listChallenges(
     @Headers('authorization') authorization: string | undefined,
@@ -134,6 +154,24 @@ export class ChallengeController {
   ) {
     const actor = await this.actor(authorization, familySpaceId, learningProfileId);
     return { data: await this.challenge.leaveChallenge({ actor, challengeId }) };
+  }
+
+  @Post('challenges/:challengeId/report')
+  async report(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('familySpaceId') familySpaceId: string,
+    @Param('learningProfileId') learningProfileId: string,
+    @Param('challengeId') challengeId: string,
+    @Body() body: { reason?: unknown },
+  ) {
+    const actor = await this.actor(authorization, familySpaceId, learningProfileId);
+    return {
+      data: await this.challenge.reportRandomChallenge({
+        actor,
+        challengeId,
+        reason: (typeof body.reason === 'string' ? body.reason : '') as RandomChallengeReportReason,
+      }),
+    };
   }
 
   private async actor(

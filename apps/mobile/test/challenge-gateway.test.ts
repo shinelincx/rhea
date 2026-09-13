@@ -4,7 +4,9 @@ const challenge: MobileChallenge = {
   authorizationDecisionId: 'decision-1',
   capabilityVersionId: 'capability-1',
   createdAt: '2026-09-12T01:00:00.000Z',
+  endedReason: null,
   evidenceQualification: 'assisted_only',
+  expiresAt: null,
   id: 'challenge-1',
   items: [
     {
@@ -18,7 +20,9 @@ const challenge: MobileChallenge = {
   ],
   knowledgeFeedback: [],
   myProgress: { completedItems: 0, totalItems: 1 },
+  mode: 'partner',
   noPenalty: true,
+  opponentIdentity: null,
   opponentProgress: { completedItems: 0, totalItems: 1 },
   relationId: 'relation-1',
   score: null,

@@ -73,7 +73,16 @@ export interface ChallengeView {
   authorizationDecisionId: string;
   capabilityVersionId: string;
   createdAt: string;
+  endedReason:
+    | 'authorization_withdrawn'
+    | 'completed'
+    | 'expired'
+    | 'left'
+    | 'relation_dissolved'
+    | 'reported'
+    | null;
   evidenceQualification: 'assisted_only';
+  expiresAt: string | null;
   id: string;
   items: ChallengeItemView[];
   knowledgeFeedback: Array<{
@@ -82,12 +91,38 @@ export interface ChallengeView {
     totalItems: number;
   }>;
   myProgress: { completedItems: number; totalItems: number };
+  mode: 'partner' | 'random';
   noPenalty: boolean;
+  opponentIdentity: { avatarKey: string; nickname: string } | null;
   opponentProgress: { completedItems: number; totalItems: number };
-  relationId: string;
+  relationId: string | null;
   score: null | { accuracy: number; correctItems: number; totalItems: number };
   speedAffectsScore: false;
   status: 'active' | 'cancelled' | 'completed';
   subject: ChallengeSubject;
   target: string;
 }
+
+export interface ChallengeMatchPoolEntry {
+  actor: ChallengeActor;
+  enteredAt: string;
+  entryId: string;
+  expiresAt: string;
+  grade: number;
+}
+
+export type ChallengeMatchPoolOutcome =
+  { kind: 'candidate'; opponent: ChallengeMatchPoolEntry } | { kind: 'waiting' };
+
+export interface ChallengeMatchPoolPort {
+  enter(entry: ChallengeMatchPoolEntry): Promise<ChallengeMatchPoolOutcome>;
+  remove(entry: ChallengeMatchPoolEntry): Promise<void>;
+  restore(entries: ChallengeMatchPoolEntry[]): Promise<void>;
+}
+
+export type MatchPoolView =
+  | { entryId: string; expiresAt: string; grade: number; status: 'waiting' }
+  | { challenge: ChallengeView; grade: number; status: 'matched' };
+
+export type RandomChallengeReportReason =
+  'other_preset' | 'suspected_cheating' | 'uncomfortable' | 'unsafe_content';

@@ -4,6 +4,7 @@ import {
   ChallengeError,
   ChallengeService,
   MemoryChallengeAuthorization,
+  MemoryChallengeMatchPool,
   MemoryChallengeStore,
   type ChallengeActor,
   type ChallengePackFactory,
@@ -320,5 +321,159 @@ describe('ChallengeService objective asynchronous challenge', () => {
       }),
     ).rejects.toMatchObject({ code: 'PARTNER_RELATION_INACTIVE' });
     await expect(service.listChallenges({ actor: alice })).resolves.toEqual([]);
+  });
+});
+
+describe('ChallengeService grade-only stranger matching', () => {
+  function randomFixture() {
+    const clock = { now: new Date('2026-09-12T01:00:00.000Z') };
+    const carol: ChallengeActor = {
+      familySpaceId: 'family-c',
+      learningProfileId: 'carol',
+    };
+    const upperGrade: ChallengeActor = {
+      familySpaceId: 'family-d',
+      learningProfileId: 'dora',
+    };
+    const authorization = new MemoryChallengeAuthorization([
+      { ...alice, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...bob, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...carol, consentRevision: 1, grade: 3, status: 'granted' },
+      { ...upperGrade, consentRevision: 1, grade: 4, status: 'granted' },
+    ]);
+    const store = new MemoryChallengeStore();
+    const matchPool = new MemoryChallengeMatchPool();
+    let identitySequence = 0;
+    const service = new ChallengeService({
+      authorization,
+      clock,
+      identityFactory: () => ({
+        avatarKey: `planet-${identitySequence}`,
+        nickname: `星球搭档 ${++identitySequence}`,
+      }),
+      invitationPepper: 'test-only-pepper-with-enough-entropy',
+      matchPool,
+      packFactory: packs(),
+      pairAvoidancePepper: 'test-only-avoidance-pepper-long-enough',
+      store,
+    });
+    return { authorization, carol, clock, matchPool, service, store, upperGrade };
+  }
+
+  it('matches only by guardian grade and exposes a per-match system identity without social fields', async () => {
+    const { carol, service, upperGrade } = randomFixture();
+
+    await expect(service.enterMatchPool({ actor: upperGrade })).resolves.toMatchObject({
+      grade: 4,
+      status: 'waiting',
+    });
+    await expect(service.enterMatchPool({ actor: alice })).resolves.toMatchObject({
+      grade: 3,
+      status: 'waiting',
+    });
+    const matched = await service.enterMatchPool({ actor: carol });
+
+    expect(matched.status).toBe('matched');
+    if (matched.status !== 'matched') throw new Error('expected a match');
+    expect(matched.challenge).toMatchObject({
+      evidenceQualification: 'assisted_only',
+      mode: 'random',
+      opponentIdentity: { avatarKey: expect.any(String), nickname: expect.any(String) },
+      relationId: null,
+      speedAffectsScore: false,
+      status: 'active',
+    });
+    expect(JSON.stringify(matched.challenge)).not.toContain(alice.learningProfileId);
+    expect(Object.keys(matched.challenge.opponentIdentity!)).toEqual(['avatarKey', 'nickname']);
+    expect('messages' in matched.challenge).toBe(false);
+    await expect(service.enterMatchPool({ actor: carol })).resolves.toMatchObject({
+      challenge: { id: matched.challenge.id },
+      status: 'matched',
+    });
+  });
+
+  it('deidentifies ended matches, permanently avoids a reported pair, and never penalizes exit', async () => {
+    const { service, store } = randomFixture();
+    await service.enterMatchPool({ actor: alice });
+    const firstMatch = await service.enterMatchPool({ actor: bob });
+    if (firstMatch.status !== 'matched') throw new Error('expected a match');
+    const aliceView = await service.getChallenge({
+      actor: alice,
+      challengeId: firstMatch.challenge.id,
+    });
+    const reported = await service.reportRandomChallenge({
+      actor: alice,
+      challengeId: firstMatch.challenge.id,
+      reason: 'uncomfortable',
+    });
+    expect(reported).toMatchObject({
+      noPenalty: true,
+      opponentIdentity: null,
+      status: 'cancelled',
+    });
+    expect(store.debugState().challenges).toHaveLength(0);
+    const aliceResult = store
+      .debugState()
+      .results.find((result) => result.owner.learningProfileId === alice.learningProfileId);
+    expect(JSON.stringify(aliceResult)).not.toContain(bob.learningProfileId);
+    expect(store.debugState().avoidanceTokens).toHaveLength(1);
+    expect(JSON.stringify(reported)).not.toContain(aliceView.opponentIdentity?.nickname);
+
+    await service.enterMatchPool({ actor: alice });
+    const blockedRematch = await service.enterMatchPool({ actor: bob });
+    expect(blockedRematch.status).toBe('waiting');
+
+    const carolActor = { familySpaceId: 'family-c', learningProfileId: 'carol' };
+    const matchedElsewhere = await service.enterMatchPool({ actor: carolActor });
+    expect(matchedElsewhere.status).toBe('matched');
+  });
+
+  it('expires an unfinished challenge and removes the live opponent mapping', async () => {
+    const { clock, service, store } = randomFixture();
+    await service.enterMatchPool({ actor: alice });
+    const match = await service.enterMatchPool({ actor: bob });
+    if (match.status !== 'matched') throw new Error('expected a match');
+    clock.now = new Date('2026-09-13T01:01:00.000Z');
+
+    await expect(service.expireDueRandomChallenges()).resolves.toBe(1);
+    await expect(
+      service.getChallenge({ actor: alice, challengeId: match.challenge.id }),
+    ).resolves.toMatchObject({
+      noPenalty: true,
+      opponentIdentity: null,
+      status: 'cancelled',
+    });
+    expect(store.debugState().identityMappings).toHaveLength(0);
+  });
+
+  it('ends and deidentifies an active random match when authorization is withdrawn', async () => {
+    const { authorization, service, store } = randomFixture();
+    await service.enterMatchPool({ actor: alice });
+    const match = await service.enterMatchPool({ actor: bob });
+    if (match.status !== 'matched') throw new Error('expected a match');
+    authorization.set({
+      ...bob,
+      consentRevision: 2,
+      grade: 3,
+      status: 'withdrawn',
+    });
+
+    await expect(
+      service.submitAnswer({
+        actor: alice,
+        answer: '2',
+        challengeId: match.challenge.id,
+        commandId: 'after-withdrawal',
+        itemId: 'alice-1',
+      }),
+    ).rejects.toMatchObject({ code: 'CHALLENGE_CONSENT_REQUIRED' });
+    expect(store.debugState().challenges).toHaveLength(0);
+    await expect(
+      service.getChallenge({ actor: alice, challengeId: match.challenge.id }),
+    ).resolves.toMatchObject({
+      endedReason: 'authorization_withdrawn',
+      opponentIdentity: null,
+      status: 'cancelled',
+    });
   });
 });

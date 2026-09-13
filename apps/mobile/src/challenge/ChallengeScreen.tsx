@@ -15,6 +15,7 @@ import type {
   ChallengeGateway,
   ChallengeScope,
   MobileChallenge,
+  MobileMatchPoolView,
   MobilePartnerRelation,
 } from './challenge-gateway';
 
@@ -44,7 +45,9 @@ export function ChallengeScreen({
   const [invite, setInvite] = useState<{ code: string; expiresAt: string } | null>(null);
   const [inviteCode, setInviteCode] = useState('');
   const [answer, setAnswer] = useState('');
+  const [matchState, setMatchState] = useState<MobileMatchPoolView | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [reporting, setReporting] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -91,7 +94,21 @@ export function ChallengeScreen({
           <Text accessibilityRole="header" style={styles.title}>
             {selected.target}
           </Text>
+          {selected.mode === 'random' && selected.opponentIdentity ? (
+            <View style={styles.partnerIdentity}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>星</Text>
+              </View>
+              <View>
+                <Text style={styles.partnerName}>{selected.opponentIdentity.nickname}</Text>
+                <Text style={styles.meta}>本场系统身份 · 挑战结束后自动解除</Text>
+              </View>
+            </View>
+          ) : null}
           <Text style={styles.rule}>异步完成 · 速度不计分 · 随时退出不受惩罚</Text>
+          {selected.mode === 'random' ? (
+            <Text style={styles.body}>本场不能聊天、搜索或查看资料；结束后临时身份自动解除。</Text>
+          ) : null}
           <View style={styles.progressCard}>
             <Text style={styles.cardTitle}>本场进度</Text>
             <Text style={styles.body}>
@@ -192,18 +209,72 @@ export function ChallengeScreen({
           )}
 
           {selected.status === 'active' ? (
-            <Pressable
-              accessibilityRole="button"
-              disabled={busy}
-              onPress={() =>
-                void act(async () =>
-                  setSelected(await gateway.leaveChallenge({ ...scope, challengeId: selected.id })),
-                )
-              }
-              style={styles.leaveButton}
-            >
-              <Text style={styles.leaveText}>退出这场挑战（无惩罚）</Text>
-            </Pressable>
+            <>
+              <Pressable
+                accessibilityRole="button"
+                disabled={busy}
+                onPress={() =>
+                  void act(async () =>
+                    setSelected(
+                      await gateway.leaveChallenge({ ...scope, challengeId: selected.id }),
+                    ),
+                  )
+                }
+                style={styles.leaveButton}
+              >
+                <Text style={styles.leaveText}>退出这场挑战（无惩罚）</Text>
+              </Pressable>
+              {selected.mode === 'random' ? (
+                <View style={styles.reportArea}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => setReporting((current) => !current)}
+                    style={styles.textButton}
+                  >
+                    <Text style={styles.reportText}>这场互动让我不舒服</Text>
+                  </Pressable>
+                  {reporting ? (
+                    <View style={styles.reportOptions}>
+                      <Text style={styles.body}>
+                        选择原因后会立刻结束互动，并且以后不再匹配到对方。
+                      </Text>
+                      {[
+                        ['uncomfortable', '感到不舒服'],
+                        ['suspected_cheating', '怀疑不当作答'],
+                        ['unsafe_content', '出现不安全内容'],
+                        ['other_preset', '其他安全原因'],
+                      ].map(([reason, label]) => (
+                        <Pressable
+                          accessibilityRole="button"
+                          disabled={busy}
+                          key={reason}
+                          onPress={() =>
+                            void act(async () => {
+                              setSelected(
+                                await gateway.reportRandomChallenge({
+                                  ...scope,
+                                  challengeId: selected.id,
+                                  reason: reason as
+                                    | 'other_preset'
+                                    | 'suspected_cheating'
+                                    | 'uncomfortable'
+                                    | 'unsafe_content',
+                                }),
+                              );
+                              setReporting(false);
+                              setNotice('已结束互动，以后不会再匹配到对方。');
+                            })
+                          }
+                          style={styles.leaveButton}
+                        >
+                          <Text style={styles.leaveText}>{label}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
+            </>
           ) : null}
           {notice ? (
             <Text accessibilityLiveRegion="polite" style={styles.error}>
@@ -232,6 +303,43 @@ export function ChallengeScreen({
         <Text style={styles.intro}>
           和学习伙伴做不同题面的同目标练习。没有速度排名，也不会因退出受惩罚。
         </Text>
+
+        <View style={styles.randomSection}>
+          <Text accessibilityRole="header" style={styles.cardTitle}>
+            随机匹配同年级伙伴
+          </Text>
+          <Text style={styles.body}>
+            只按监护人设置的年级匹配。双方只看到本场系统昵称和头像，不能聊天、搜索或查看资料。
+          </Text>
+          {matchState?.status === 'waiting' ? (
+            <Text accessibilityLiveRegion="polite" style={styles.matchingNotice}>
+              正在寻找同年级伙伴，可以稍后再看看；离开页面不会扣分。
+            </Text>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() =>
+              void act(async () => {
+                const outcome = await gateway.enterRandomMatch({
+                  ...scope,
+                  subject: 'mathematics',
+                });
+                setMatchState(outcome);
+                if (outcome.status === 'matched') setSelected(outcome.challenge);
+              })
+            }
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryText}>
+              {busy
+                ? '正在寻找…'
+                : matchState?.status === 'waiting'
+                  ? '再看看是否匹配成功'
+                  : '开始随机匹配'}
+            </Text>
+          </Pressable>
+        </View>
 
         <View style={styles.section}>
           <Text accessibilityRole="header" style={styles.cardTitle}>
@@ -521,6 +629,22 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.lg,
   },
+  randomSection: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  matchingNotice: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    color: colors.foreground,
+    fontSize: 14,
+    lineHeight: 22,
+    padding: spacing.md,
+  },
   question: { color: colors.foreground, fontSize: 24, fontWeight: '800', lineHeight: 34 },
   questionCard: {
     backgroundColor: colors.surface,
@@ -537,6 +661,9 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   resultNumber: { color: colors.primary, fontSize: 42, fontWeight: '900' },
+  reportArea: { gap: spacing.sm },
+  reportOptions: { gap: spacing.sm },
+  reportText: { color: colors.error, fontSize: 14, fontWeight: '700' },
   rule: {
     backgroundColor: colors.primarySoft,
     borderRadius: radii.md,

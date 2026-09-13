@@ -1,4 +1,6 @@
 export type MobileChallengeSubject = 'chinese' | 'english' | 'mathematics' | 'science';
+export type MobileChallengeReportReason =
+  'other_preset' | 'suspected_cheating' | 'uncomfortable' | 'unsafe_content';
 
 export interface ChallengeScope {
   accessToken: string;
@@ -26,7 +28,16 @@ export interface MobileChallenge {
   authorizationDecisionId: string;
   capabilityVersionId: string;
   createdAt: string;
+  endedReason:
+    | 'authorization_withdrawn'
+    | 'completed'
+    | 'expired'
+    | 'left'
+    | 'relation_dissolved'
+    | 'reported'
+    | null;
   evidenceQualification: 'assisted_only';
+  expiresAt: string | null;
   id: string;
   items: MobileChallengeItem[];
   knowledgeFeedback: Array<{
@@ -35,15 +46,21 @@ export interface MobileChallenge {
     totalItems: number;
   }>;
   myProgress: { completedItems: number; totalItems: number };
+  mode: 'partner' | 'random';
   noPenalty: true;
+  opponentIdentity: { avatarKey: string; nickname: string } | null;
   opponentProgress: { completedItems: number; totalItems: number };
-  relationId: string;
+  relationId: string | null;
   score: null | { accuracy: number; correctItems: number; totalItems: number };
   speedAffectsScore: false;
   status: 'active' | 'cancelled' | 'completed';
   subject: MobileChallengeSubject;
   target: string;
 }
+
+export type MobileMatchPoolView =
+  | { entryId: string; expiresAt: string; grade: number; status: 'waiting' }
+  | { challenge: MobileChallenge; grade: number; status: 'matched' };
 
 export interface ChallengeGateway {
   createChallenge(
@@ -55,11 +72,17 @@ export interface ChallengeGateway {
   ): Promise<MobileChallenge>;
   createInvite(input: ChallengeScope): Promise<{ code: string; expiresAt: string }>;
   dissolveRelation(input: ChallengeScope & { relationId: string }): Promise<MobilePartnerRelation>;
+  enterRandomMatch(
+    input: ChallengeScope & { subject?: MobileChallengeSubject },
+  ): Promise<MobileMatchPoolView>;
   getChallenge(input: ChallengeScope & { challengeId: string }): Promise<MobileChallenge>;
   leaveChallenge(input: ChallengeScope & { challengeId: string }): Promise<MobileChallenge>;
   listChallenges(input: ChallengeScope): Promise<MobileChallenge[]>;
   listRelations(input: ChallengeScope): Promise<MobilePartnerRelation[]>;
   redeemInvite(input: ChallengeScope & { code: string }): Promise<MobilePartnerRelation>;
+  reportRandomChallenge(
+    input: ChallengeScope & { challengeId: string; reason: MobileChallengeReportReason },
+  ): Promise<MobileChallenge>;
   submitAnswer(
     input: ChallengeScope & {
       answer: string;
@@ -210,15 +233,44 @@ function challenge(value: unknown): MobileChallenge {
   if (root.noPenalty !== true || root.speedAffectsScore !== false) {
     throw new ChallengeGatewayError('RESPONSE_INVALID', '挑战非惩罚或速度规则无效');
   }
+  const opponentIdentity =
+    root.opponentIdentity === null
+      ? null
+      : (() => {
+          const identity = record(root.opponentIdentity, '临时身份');
+          if (Object.keys(identity).some((key) => key !== 'avatarKey' && key !== 'nickname')) {
+            throw new ChallengeGatewayError('RESPONSE_INVALID', '临时身份包含不允许的资料');
+          }
+          return {
+            avatarKey: text(identity.avatarKey, '临时头像'),
+            nickname: text(identity.nickname, '临时昵称'),
+          };
+        })();
   return {
     authorizationDecisionId: text(root.authorizationDecisionId, '授权决策'),
     capabilityVersionId: text(root.capabilityVersionId, '能力版本'),
     createdAt: text(root.createdAt, '创建时间'),
+    endedReason:
+      root.endedReason === null
+        ? null
+        : oneOf(
+            root.endedReason,
+            [
+              'authorization_withdrawn',
+              'completed',
+              'expired',
+              'left',
+              'relation_dissolved',
+              'reported',
+            ] as const,
+            '结束原因',
+          ),
     evidenceQualification: oneOf(
       root.evidenceQualification,
       ['assisted_only'] as const,
       '证据资格',
     ),
+    expiresAt: nullableText(root.expiresAt, '挑战有效期'),
     id: text(root.id, '挑战标识'),
     items,
     knowledgeFeedback: root.knowledgeFeedback.map((value) => {
@@ -230,9 +282,11 @@ function challenge(value: unknown): MobileChallenge {
       };
     }),
     myProgress: progress(root.myProgress),
+    mode: oneOf(root.mode, ['partner', 'random'] as const, '挑战模式'),
     noPenalty: true,
+    opponentIdentity,
     opponentProgress: progress(root.opponentProgress),
-    relationId: text(root.relationId, '关系标识'),
+    relationId: nullableText(root.relationId, '关系标识'),
     score,
     speedAffectsScore: false,
     status: oneOf(root.status, ['active', 'cancelled', 'completed'] as const, '挑战状态'),
@@ -243,6 +297,24 @@ function challenge(value: unknown): MobileChallenge {
     ),
     target: text(root.target, '挑战目标'),
   };
+}
+
+function matchPoolView(value: unknown): MobileMatchPoolView {
+  const item = record(value, '随机匹配');
+  const status = oneOf(item.status, ['waiting', 'matched'] as const, '匹配状态');
+  const grade = count(item.grade, '匹配年级');
+  if (grade < 1 || grade > 6) {
+    throw new ChallengeGatewayError('RESPONSE_INVALID', '匹配年级格式无效');
+  }
+  if (status === 'waiting') {
+    return {
+      entryId: text(item.entryId, '匹配排队标识'),
+      expiresAt: text(item.expiresAt, '匹配排队有效期'),
+      grade,
+      status,
+    };
+  }
+  return { challenge: challenge(item.challenge), grade, status };
 }
 
 export function createChallengeGateway(baseUrl: string): ChallengeGateway {
@@ -306,6 +378,14 @@ export function createChallengeGateway(baseUrl: string): ChallengeGateway {
         }),
       );
     },
+    async enterRandomMatch(input) {
+      return matchPoolView(
+        await request(input, 'random-match-entries', {
+          method: 'POST',
+          body: JSON.stringify({ subject: input.subject }),
+        }),
+      );
+    },
     async listChallenges(scope) {
       const value = await request(scope, 'challenges');
       if (!Array.isArray(value))
@@ -331,6 +411,14 @@ export function createChallengeGateway(baseUrl: string): ChallengeGateway {
       return challenge(
         await request(input, `challenges/${encodeURIComponent(input.challengeId)}/leave`, {
           method: 'POST',
+        }),
+      );
+    },
+    async reportRandomChallenge(input) {
+      return challenge(
+        await request(input, `challenges/${encodeURIComponent(input.challengeId)}/report`, {
+          method: 'POST',
+          body: JSON.stringify({ reason: input.reason }),
         }),
       );
     },
