@@ -126,32 +126,37 @@ DECLARE
   v_pair_token text := p_record ->> 'pairAvoidanceToken';
   v_item jsonb;
   v_identity jsonb;
+  v_identity_profile_count integer;
   v_pack jsonb;
   v_position integer;
+  v_expected_target text;
 BEGIN
+  v_expected_target := CASE p_record ->> 'subject'
+    WHEN 'chinese' THEN '同年级语文基础挑战'
+    WHEN 'english' THEN '同年级英语基础挑战'
+    WHEN 'mathematics' THEN '同年级数学基础挑战'
+    WHEN 'science' THEN '同年级科学基础挑战'
+    ELSE ''
+  END;
+  SELECT count(DISTINCT (identity_row.value ->> 'learningProfileId')::uuid)
+  INTO v_identity_profile_count
+  FROM jsonb_array_elements(p_record -> 'identities') AS identity_row(value);
+
   IF p_record ->> 'mode' <> 'random'
      OR p_record -> 'relationId' <> 'null'::jsonb
      OR jsonb_array_length(p_entries) <> 2
      OR jsonb_array_length(p_record -> 'packs') <> 2
      OR jsonb_array_length(p_record -> 'identities') <> 2
-     OR (
-       SELECT count(DISTINCT (identity ->> 'learningProfileId')::uuid)
-       FROM jsonb_array_elements(p_record -> 'identities') identity
-     ) <> 2
-     OR p_record ->> 'target' <> CASE p_record ->> 'subject'
-       WHEN 'chinese' THEN '同年级语文基础挑战'
-       WHEN 'english' THEN '同年级英语基础挑战'
-       WHEN 'mathematics' THEN '同年级数学基础挑战'
-       WHEN 'science' THEN '同年级科学基础挑战'
-       ELSE ''
-     END
+     OR v_identity_profile_count <> 2
+     OR p_record ->> 'target' <> v_expected_target
      OR EXISTS (
        SELECT 1
-       FROM jsonb_array_elements(p_record -> 'identities') identity
-       WHERE (identity ->> 'learningProfileId')::uuid NOT IN (v_profile_a, v_profile_b)
+       FROM jsonb_array_elements(p_record -> 'identities') AS identity_row(value)
+       WHERE (identity_row.value ->> 'learningProfileId')::uuid NOT IN (v_profile_a, v_profile_b)
           OR EXISTS (
-            SELECT 1 FROM jsonb_object_keys(identity) identity_key
-            WHERE identity_key NOT IN ('avatarKey', 'learningProfileId', 'nickname')
+            SELECT 1
+            FROM jsonb_object_keys(identity_row.value) AS identity_key(key)
+            WHERE identity_key.key NOT IN ('avatarKey', 'learningProfileId', 'nickname')
           )
      )
      OR NOT learning.challenge_authorizations_current(p_record -> 'authorizationSnapshots') THEN
@@ -261,32 +266,36 @@ BEGIN
   IF jsonb_typeof(p_payload -> 'results') IS DISTINCT FROM 'array'
      OR jsonb_array_length(p_payload -> 'results') <> 2
      OR (
-       SELECT count(DISTINCT (result #>> '{owner,learningProfileId}')::uuid)
-       FROM jsonb_array_elements(p_payload -> 'results') result
+       SELECT count(DISTINCT (result_row.value #>> '{owner,learningProfileId}')::uuid)
+       FROM jsonb_array_elements(p_payload -> 'results') AS result_row(value)
      ) <> 2
      OR EXISTS (
        SELECT 1
-       FROM jsonb_array_elements(p_payload -> 'results') result
-       WHERE (result #>> '{owner,learningProfileId}')::uuid NOT IN (
+       FROM jsonb_array_elements(p_payload -> 'results') AS result_row(value)
+       WHERE (result_row.value #>> '{owner,learningProfileId}')::uuid NOT IN (
          v_match.participant_a_learning_profile_id,
          v_match.participant_b_learning_profile_id
        )
-          OR (result ->> 'challengeId')::uuid <> v_match.id
-          OR (result #>> '{view,id}')::uuid <> v_match.id
-          OR result #> '{view,opponentIdentity}' <> 'null'::jsonb
-          OR result #> '{view,relationId}' <> 'null'::jsonb
-          OR (result -> 'view') ?| ARRAY[
+          OR (result_row.value ->> 'challengeId')::uuid <> v_match.id
+          OR (result_row.value #>> '{view,id}')::uuid <> v_match.id
+          OR result_row.value #> '{view,opponentIdentity}' <> 'null'::jsonb
+          OR result_row.value #> '{view,relationId}' <> 'null'::jsonb
+          OR (result_row.value -> 'view') ?| ARRAY[
             'messages', 'school', 'className', 'contact', 'location'
           ]
           OR (
-            (result #>> '{owner,learningProfileId}')::uuid =
+            (result_row.value #>> '{owner,learningProfileId}')::uuid =
               v_match.participant_a_learning_profile_id
-            AND position(v_match.participant_b_learning_profile_id::text IN result::text) > 0
+            AND position(
+              v_match.participant_b_learning_profile_id::text IN result_row.value::text
+            ) > 0
           )
           OR (
-            (result #>> '{owner,learningProfileId}')::uuid =
+            (result_row.value #>> '{owner,learningProfileId}')::uuid =
               v_match.participant_b_learning_profile_id
-            AND position(v_match.participant_a_learning_profile_id::text IN result::text) > 0
+            AND position(
+              v_match.participant_a_learning_profile_id::text IN result_row.value::text
+            ) > 0
           )
      ) THEN
     RETURN false;
