@@ -360,6 +360,7 @@ describeWithDatabase('PostgreSQL migrations', () => {
       { allowed: true, count: '1' },
     ]);
     await pool.query('DELETE FROM safety.support_access_audit WHERE grant_id=$1', [grantId]);
+    await pool.query('DELETE FROM learning.learning_profiles WHERE id=$1', [learningProfileId]);
     await pool.query('DELETE FROM learning.family_spaces WHERE id=$1', [familySpaceId]);
     await pool.query('DELETE FROM learning.guardians WHERE id=$1', [guardianId]);
   });
