@@ -78,6 +78,7 @@ describeWithDatabase('Postgres safety adapter', () => {
     if (classificationId) {
       await pool?.query('DELETE FROM safety.classification_events WHERE id=$1', [classificationId]);
     }
+    await pool?.query('DELETE FROM learning.learning_profiles WHERE id=$1', [profileId]);
     await pool?.query('DELETE FROM learning.family_spaces WHERE id=$1', [familySpaceId]);
     await pool?.query('DELETE FROM learning.guardians WHERE id=$1', [guardianId]);
     await pool?.end();
@@ -104,11 +105,11 @@ describeWithDatabase('Postgres safety adapter', () => {
     await pool!.query(
       `INSERT INTO safety.challenge_report_classification_outbox(
          id,subject_token,source_reference_id,report_reason,age_band,created_at
-       ) VALUES($1,$2,$3,'uncomfortable','middle_primary',now())`,
+       ) VALUES($1,$2,$3,'uncomfortable','middle_primary','2000-01-01T00:00:00Z')`,
       [outboxId, 'b'.repeat(64), relaySourceReferenceToken],
     );
 
-    await expect(store.processChallengeReportClassifications()).resolves.toEqual({
+    await expect(store.processChallengeReportClassifications(1)).resolves.toEqual({
       claimed: 1,
       failed: 1,
       processed: 0,
@@ -127,7 +128,7 @@ describeWithDatabase('Postgres safety adapter', () => {
       "UPDATE safety.challenge_report_classification_outbox SET next_attempt_at='-infinity' WHERE id=$1",
       [outboxId],
     );
-    await expect(store.processChallengeReportClassifications()).resolves.toEqual({
+    await expect(store.processChallengeReportClassifications(1)).resolves.toEqual({
       claimed: 1,
       failed: 0,
       processed: 1,
