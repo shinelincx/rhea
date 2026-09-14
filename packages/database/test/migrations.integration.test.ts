@@ -181,11 +181,30 @@ describeWithDatabase('PostgreSQL migrations', () => {
     });
 
     const recoveryRequestId = crypto.randomUUID();
+    const recoveryFamilySpaceId = crypto.randomUUID();
     const recoveryProfileId = crypto.randomUUID();
+    const recoveryMaterialId = crypto.randomUUID();
     const recoveryClient = await pool.connect();
     try {
       await recoveryClient.query('BEGIN');
       await recoveryClient.query('SET LOCAL session_replication_role = replica');
+      await recoveryClient.query(
+        `INSERT INTO learning.family_spaces(id,name) VALUES($1,'Recovery integration family')`,
+        [recoveryFamilySpaceId],
+      );
+      await recoveryClient.query(
+        `INSERT INTO learning.learning_profiles(
+          id,family_space_id,display_name,grade,pin_hash
+        ) VALUES($1,$2,'Recovery learner',4,'not-a-real-pin-hash')`,
+        [recoveryProfileId, recoveryFamilySpaceId],
+      );
+      await recoveryClient.query(
+        `INSERT INTO learning.learning_materials(
+          id,family_space_id,learning_profile_id,confirmed_content_version_id,
+          source_hash,validity_epoch,created_at
+        ) VALUES($1,$2,$3,$4,repeat('b',64),1,now())`,
+        [recoveryMaterialId, recoveryFamilySpaceId, recoveryProfileId, crypto.randomUUID()],
+      );
       await recoveryClient.query(
         `INSERT INTO learning.generated_learning_requests (
           id,family_space_id,learning_profile_id,material_id,idempotency_key,
@@ -200,9 +219,9 @@ describeWithDatabase('PostgreSQL migrations', () => {
         )`,
         [
           recoveryRequestId,
-          crypto.randomUUID(),
+          recoveryFamilySpaceId,
           recoveryProfileId,
-          crypto.randomUUID(),
+          recoveryMaterialId,
           `recovery-${recoveryRequestId}`,
           crypto.randomUUID(),
         ],
