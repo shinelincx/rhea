@@ -6,6 +6,7 @@
   "scripts": {
     "build": "expo export --platform web",
     "dev": "expo start",
+    "prototype": "expo start --web",
     "test": "jest --runInBand",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "web": "expo start --web"

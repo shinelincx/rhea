@@ -29,6 +29,7 @@ import { ChallengeScreen } from './src/challenge/ChallengeScreen';
 import { createChallengeGateway } from './src/challenge/challenge-gateway';
 import { createGrowthGateway } from './src/growth/growth-gateway';
 import { GrowthScreen } from './src/growth/GrowthScreen';
+import { PrototypeDemoApp } from './src/prototype-demo/PrototypeDemoApp';
 
 const apiBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://127.0.0.1:3000';
 const loadTodayRoute = createTodayRouteLoader(apiBaseUrl);
@@ -59,7 +60,7 @@ interface GuardianContext {
   learningProfiles: MobileLearningProfile[];
 }
 
-export default function App() {
+function ConnectedApp() {
   const [learnerSession, setLearnerSession] = useState<LearnerSession | null>(null);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [guardianContext, setGuardianContext] = useState<GuardianContext | null>(null);
@@ -179,4 +180,8 @@ export default function App() {
       )}
     </SafeAreaProvider>
   );
+}
+
+export default function App() {
+  return process.env.EXPO_PUBLIC_DEMO_MODE === 'false' ? <ConnectedApp /> : <PrototypeDemoApp />;
 }
